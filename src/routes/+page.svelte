@@ -36,12 +36,12 @@
 		// Carrega a imagem do mapa (.jpg)
 		const imageOverlay = L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
 
-		// Marca d'água no canto inferior direito do mapa
+		// Apenas a imagem do logo no canto inferior direito, mais transparente
 		const LogoWatermark = L.Control.extend({
 			options: { position: 'bottomright' },
 			onAdd: function () {
 				const div = L.DomUtil.create('div', 'map-watermark');
-				div.innerHTML = `<img src="/logo.png" alt="DeepMap Logo" /> <span>DeepMap</span>`;
+				div.innerHTML = `<img src="/logo.png" alt="DeepMap Logo" />`;
 				return div;
 			}
 		});
@@ -68,11 +68,7 @@
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
-			<div class="brand-text">
-				<span class="brand-title">DeepMap</span>
-				<span class="brand-separator">|</span>
-				<span class="game-title">Elden Ring</span>
-			</div>
+			<span class="game-title">Elden Ring</span>
 		</div>
 
 		<div class="checklist-status">
@@ -147,7 +143,7 @@
 	.brand {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 12px;
 	}
 
 	.logo-img {
@@ -155,30 +151,11 @@
 		width: auto;
 	}
 
-	.brand-text {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.brand-title {
+	.game-title {
 		font-size: 1.2rem;
 		font-weight: 700;
 		color: #c8a355;
-		letter-spacing: 0.5px;
-	}
-
-	.brand-separator {
-		color: #4a4a55;
-		font-weight: 300;
-		font-size: 1.1rem;
-	}
-
-	.game-title {
-		font-size: 1rem;
-		font-weight: 500;
-		color: #a0a0ab;
-		letter-spacing: 0.5px;
+		letter-spacing: 1px;
 	}
 
 	.checklist-status {
@@ -277,45 +254,32 @@
 		background: #0b0b0e;
 	}
 
-	/* Marca d'água no canto inferior direito */
+	/* Marca d'água no canto inferior direito (Apenas logo e bem transparente) */
 	:global(.map-watermark) {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		background: rgba(22, 22, 26, 0.85);
-		padding: 6px 12px;
-		border-radius: 6px;
-		border: 1px solid rgba(200, 163, 85, 0.3);
+		justify-content: center;
+		background: rgba(22, 22, 26, 0.5);
+		padding: 6px;
+		border-radius: 8px;
+		border: 1px solid rgba(200, 163, 85, 0.2);
 		backdrop-filter: blur(4px);
 		margin-bottom: 12px;
 		margin-right: 12px;
+		opacity: 0.6; /* Transparência suave */
 		pointer-events: none;
 	}
 
 	:global(.map-watermark img) {
-		height: 22px;
+		height: 28px;
 		width: auto;
-	}
-
-	:global(.map-watermark span) {
-		color: #c8a355;
-		font-weight: 600;
-		font-size: 0.85rem;
-		letter-spacing: 0.5px;
+		display: block;
 	}
 
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
 		.mobile-toggle {
 			display: block;
-		}
-
-		.game-title {
-			display: none; /* Em ecrãs muito pequenos esconde o texto "Elden Ring" para não apertar a barra */
-		}
-
-		.brand-separator {
-			display: none;
 		}
 
 		.sidebar {
