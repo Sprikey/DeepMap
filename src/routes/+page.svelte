@@ -6,11 +6,11 @@
 	let sidebarAberta = false;
 
 	function toggleSidebar() {
-		sidebarAberta = !sidebarAberta;
-		setTimeout(() => {
-			if (map) map.invalidateSize();
-		}, 300);
-	}
+  sidebarAberta = !sidebarAberta;
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+  }, 300);
+}
 
 	onMount(async () => {
 		const L = await import('leaflet');
@@ -33,7 +33,11 @@
 			zoomSnap: 0.25
 		});
 
-		// Carrega a imagem do mapa (.jpg)
+  // ADICIONAR ESTA LINHA: impede o Leaflet de capturar toques no cabeçalho
+  L.DomEvent.disableClickPropagation(document.querySelector('.header'));
+  L.DomEvent.disableScrollPropagation(document.querySelector('.header'));
+		
+  // Carrega a imagem do mapa (.jpg)
 		const imageOverlay = L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
 
 		// Apenas a imagem do logo no canto inferior direito, mais transparente
@@ -62,20 +66,16 @@
 <div class="app-container">
 	<!-- Header Superior -->
 	<header class="header">
-		<button 
-    class="mobile-toggle" 
-    on:click={toggleSidebar} 
-    on:touchstart|preventDefault={toggleSidebar} 
-    aria-label="Abrir Menu"
->
-    {sidebarAberta ? '✕' : '☰'}
-</button>
+
+  <button class="mobile-toggle" on:click={toggleSidebar} aria-label="Abrir Menu">
+  {sidebarAberta ? '✕' : '☰'}
+  </button>
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
       <!-- Adiciona esta linha temporária: -->
-      <span class="version-tag">v1.0.2</span>
+      <span class="version-tag">v1.0.3</span>
 		</div>
 
 		<div class="checklist-status">
@@ -147,9 +147,11 @@
 	align-items: center;
 	justify-content: space-between;
 	padding: 0 16px;
-	z-index: 2000; /* MUDADO: De 1001 para 2000 para ficar sempre no topo */
-	position: relative; /* ADICIONADO: Garante que o z-index funciona */
-  flex-shrink: 0; /* ADICIONAR ESTA LINHA para impedir que o header se encolha */
+  z-index: 9999; /* Valor muito elevado para garantir prioridade total */
+  position: fixed; /* Posicionamento fixo sobre a janela */
+  top: 0;
+  left: 0;
+  right: 0;
 }
 
 	.brand {
@@ -208,7 +210,8 @@
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-    height: calc(100% - 56px); /* ADICIONAR ESTA LINHA: garante que o mapa ocupa só o espaço restante */
+    margin-top: 56px; /* Compensa a altura do header fixo */
+    height: calc(100vh - 56px);
 	}
 
 	.sidebar {
