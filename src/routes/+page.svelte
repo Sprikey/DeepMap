@@ -62,15 +62,20 @@
 <div class="app-container">
 	<!-- Header Superior -->
 	<header class="header">
-		<button class="mobile-toggle" on:click={toggleSidebar} aria-label="Abrir Menu">
-			{sidebarAberta ? '✕' : '☰'}
-		</button>
+		<button 
+    class="mobile-toggle" 
+    on:click={toggleSidebar} 
+    on:touchstart|preventDefault={toggleSidebar} 
+    aria-label="Abrir Menu"
+>
+    {sidebarAberta ? '✕' : '☰'}
+</button>
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
       <!-- Adiciona esta linha temporária: -->
-      <span class="version-tag">v1.0.1</span>
+      <span class="version-tag">v1.0.2</span>
 		</div>
 
 		<div class="checklist-status">
@@ -189,9 +194,11 @@
 	background: transparent;
 	border: none;
 	color: #c8a355;
-	font-size: 1.6rem;
+	font-size: 1.8rem;
 	cursor: pointer;
-	padding: 6px;
+	padding: 8px;
+  z-index: 2005; /* Prioridade máxima de clique */
+  pointer-events: auto;
 	touch-action: manipulation; /* ADICIONADO: Melhora o clique em telemóveis */
 }
 
@@ -296,31 +303,31 @@
 
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
-	.mobile-toggle {
-		display: block;
-	}
+    .mobile-toggle {
+        display: block;
+    }
 
-	.sidebar {
-		position: absolute;
-		top: 0;
-		bottom: 0;
-		left: 0;
-		width: 280px;
-		transform: translateX(-100%);
-		box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
-		z-index: 1500; /* MUDADO: Aumentado para 1500 para ficar acima do mapa */
-	}
+    .sidebar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 280px;
+        transform: translateX(-100%);
+        box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
+        z-index: 1500; /* Fica acima das camadas internas do Leaflet */
+    }
 
-	.sidebar.open {
-		transform: translateX(0);
-	}
+    .sidebar.open {
+        transform: translateX(0);
+    }
 
-	.backdrop {
-		position: absolute;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.6);
-		backdrop-filter: blur(2px);
-		z-index: 1400; /* MUDADO: Aumentado para 1400 para cobrir o mapa */
-	}
+    .backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(2px);
+        z-index: 1400; /* Cobre o mapa sem tapar o header */
+    }
 }
 </style>
