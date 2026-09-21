@@ -16,27 +16,46 @@
 		const L = await import('leaflet');
 		import('leaflet/dist/leaflet.css');
 
+		const height = 8000;
+		const width = 8000;
 		const bounds = [
 			[0, 0],
-			[8000, 8000]
+			[height, width]
 		];
 
 		map = L.map(mapContainer, {
 			crs: L.CRS.Simple,
 			maxBounds: bounds,
-			maxBoundsViscosity: 1.0,
+			maxBoundsViscosity: 0.8,
 			attributionControl: false,
-			minZoom: -2,
-			maxZoom: 2
+			minZoom: -3,
+			maxZoom: 2,
+			zoomSnap: 0.25
 		});
 
-		L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
-		map.fitBounds(bounds);
+		// Carrega a imagem do mapa (.jpg)
+		const imageOverlay = L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
 
-		// Garantir ajuste correto em telemóvel
+		// Marca d'água no canto inferior direito do mapa
+		const LogoWatermark = L.Control.extend({
+			options: { position: 'bottomright' },
+			onAdd: function () {
+				const div = L.DomUtil.create('div', 'map-watermark');
+				div.innerHTML = `<img src="/logo.png" alt="DeepMap Logo" /> <span>DeepMap</span>`;
+				return div;
+			}
+		});
+		map.addControl(new LogoWatermark());
+
+		imageOverlay.on('load', () => {
+			map.fitBounds(bounds);
+		});
+
+		map.fitBounds(bounds);
+		
 		setTimeout(() => {
-			map.invalidateSize();
-		}, 200);
+			if (map) map.invalidateSize();
+		}, 250);
 	});
 </script>
 
@@ -49,7 +68,11 @@
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
-			<span class="brand-title">Elden Ring</span>
+			<div class="brand-text">
+				<span class="brand-title">DeepMap</span>
+				<span class="brand-separator">|</span>
+				<span class="game-title">Elden Ring</span>
+			</div>
 		</div>
 
 		<div class="checklist-status">
@@ -83,7 +106,7 @@
 			</div>
 		</aside>
 
-		<!-- Mapa Leaflet -->
+		<!-- Contentor do Mapa Leaflet -->
 		<main class="map-wrapper">
 			<div bind:this={mapContainer} class="map-element"></div>
 		</main>
@@ -97,7 +120,7 @@
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
-		background-color: #0d0d0f;
+		background-color: #0b0b0e;
 		font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		color: #e0e0e0;
 	}
@@ -132,11 +155,30 @@
 		width: auto;
 	}
 
+	.brand-text {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
 	.brand-title {
-		font-size: 1.25rem;
+		font-size: 1.2rem;
 		font-weight: 700;
 		color: #c8a355;
-		letter-spacing: 1px;
+		letter-spacing: 0.5px;
+	}
+
+	.brand-separator {
+		color: #4a4a55;
+		font-weight: 300;
+		font-size: 1.1rem;
+	}
+
+	.game-title {
+		font-size: 1rem;
+		font-weight: 500;
+		color: #a0a0ab;
+		letter-spacing: 0.5px;
 	}
 
 	.checklist-status {
@@ -223,19 +265,57 @@
 		height: 100%;
 		width: 100%;
 		position: relative;
-		background: #0d0d0f;
+		background: #0b0b0e;
 	}
 
 	.map-element {
-		height: 100%;
-		width: 100%;
-		background: #0d0d0f;
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		background: #0b0b0e;
+	}
+
+	/* Marca d'água no canto inferior direito */
+	:global(.map-watermark) {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: rgba(22, 22, 26, 0.85);
+		padding: 6px 12px;
+		border-radius: 6px;
+		border: 1px solid rgba(200, 163, 85, 0.3);
+		backdrop-filter: blur(4px);
+		margin-bottom: 12px;
+		margin-right: 12px;
+		pointer-events: none;
+	}
+
+	:global(.map-watermark img) {
+		height: 22px;
+		width: auto;
+	}
+
+	:global(.map-watermark span) {
+		color: #c8a355;
+		font-weight: 600;
+		font-size: 0.85rem;
+		letter-spacing: 0.5px;
 	}
 
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
 		.mobile-toggle {
 			display: block;
+		}
+
+		.game-title {
+			display: none; /* Em ecrãs muito pequenos esconde o texto "Elden Ring" para não apertar a barra */
+		}
+
+		.brand-separator {
+			display: none;
 		}
 
 		.sidebar {
