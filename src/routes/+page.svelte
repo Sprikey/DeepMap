@@ -4,6 +4,7 @@
 	let mapContainer;
 	let map;
 	let sidebarAberta = false;
+  let btnMobile; // ADICIONADO
 
 	function toggleSidebar() {
   sidebarAberta = !sidebarAberta;
@@ -16,6 +17,15 @@
 		const L = await import('leaflet');
 		import('leaflet/dist/leaflet.css');
 
+    // Adicionar ouvinte de clique/toque nativo no botão
+  if (btnMobile) {
+    const handleNativeTouch = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleSidebar();
+    };
+    btnMobile.addEventListener('pointerdown', handleNativeTouch);
+  }
 		const height = 8000;
 		const width = 8000;
 		const bounds = [
@@ -67,15 +77,15 @@
 	<!-- Header Superior -->
 	<header class="header">
 
-  <button class="mobile-toggle" on:click={toggleSidebar} aria-label="Abrir Menu">
+  <button class="mobile-toggle" bind:this={btnMobile} aria-label="Abrir Menu">
   {sidebarAberta ? '✕' : '☰'}
-  </button>
+</button>
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
       <!-- Adiciona esta linha temporária: -->
-      <span class="version-tag">v1.0.3</span>
+      <span class="version-tag">v1.0.4</span>
 		</div>
 
 		<div class="checklist-status">
@@ -198,10 +208,10 @@
 	color: #c8a355;
 	font-size: 1.8rem;
 	cursor: pointer;
-	padding: 8px;
-  z-index: 2005; /* Prioridade máxima de clique */
-  pointer-events: auto;
-	touch-action: manipulation; /* ADICIONADO: Melhora o clique em telemóveis */
+  padding: 8px 12px;
+  position: relative;
+  z-index: 99999 !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 	/* Body & Sidebar */
@@ -306,31 +316,32 @@
 
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
-    .mobile-toggle {
-        display: block;
-    }
+  .mobile-toggle {
+    display: inline-block !important;
+  }
+  
+  .sidebar {
+    position: fixed;
+    top: 56px;
+    bottom: 0;
+    left: 0;
+    width: 280px;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
+    z-index: 9998;
+  }
 
-    .sidebar {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 280px;
-        transform: translateX(-100%);
-        box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
-        z-index: 1500; /* Fica acima das camadas internas do Leaflet */
-    }
+  .sidebar.open {
+    transform: translateX(0);
+  }
 
-    .sidebar.open {
-        transform: translateX(0);
-    }
-
-    .backdrop {
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(2px);
-        z-index: 1400; /* Cobre o mapa sem tapar o header */
-    }
+  .backdrop {
+    position: fixed;
+    top: 56px;
+    inset: 56px 0 0 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+    z-index: 9997;
+  }
 }
 </style>
