@@ -69,6 +69,8 @@
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
+      <!-- Adiciona esta linha temporária: -->
+      <span class="version-tag">v1.0.1</span>
 		</div>
 
 		<div class="checklist-status">
@@ -116,17 +118,20 @@
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
+    position: fixed; /* ADICIONAR ESTA LINHA para travar o scroll da página no telemóvel */
 		background-color: #0b0b0e;
 		font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		color: #e0e0e0;
 	}
 
 	.app-container {
-		display: flex;
-		flex-direction: column;
-		height: 100vh;
-		width: 100vw;
-	}
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	height: 100dvh; /* ADICIONAR ESTA LINHA: 100dvh ajusta à altura exata nos navegadores mobile */
+	width: 100vw;
+	overflow: hidden;
+}
 
 	/* Header */
 	.header {
@@ -139,6 +144,7 @@
 	padding: 0 16px;
 	z-index: 2000; /* MUDADO: De 1001 para 2000 para ficar sempre no topo */
 	position: relative; /* ADICIONADO: Garante que o z-index funciona */
+  flex-shrink: 0; /* ADICIONAR ESTA LINHA para impedir que o header se encolha */
 }
 
 	.brand {
@@ -158,6 +164,15 @@
 		color: #c8a355;
 		letter-spacing: 1px;
 	}
+
+  .version-tag {
+    font-size: 0.75rem;
+    color: #888899;
+    background: #22222a;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #333340;
+}
 
 	.checklist-status {
 		font-size: 0.9rem;
@@ -186,6 +201,7 @@
 		flex: 1;
 		position: relative;
 		overflow: hidden;
+    height: calc(100% - 56px); /* ADICIONAR ESTA LINHA: garante que o mapa ocupa só o espaço restante */
 	}
 
 	.sidebar {
