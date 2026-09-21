@@ -5,21 +5,17 @@
 	let map;
 	let sidebarAberta = false;
 
-	// Alterna a abertura do menu em dispositivos móveis
 	function toggleSidebar() {
 		sidebarAberta = !sidebarAberta;
-		// Notifica o Leaflet para recalcular a área do mapa após a animação do menu
 		setTimeout(() => {
 			if (map) map.invalidateSize();
 		}, 300);
 	}
 
 	onMount(async () => {
-		// Importação dinâmica do Leaflet para compatibilidade com SSR no SvelteKit
 		const L = await import('leaflet');
 		import('leaflet/dist/leaflet.css');
 
-		// Coordenadas para sistema de mapa baseado numa imagem plana (CRS.Simple)
 		const bounds = [
 			[0, 0],
 			[8000, 8000]
@@ -29,24 +25,18 @@
 			crs: L.CRS.Simple,
 			maxBounds: bounds,
 			maxBoundsViscosity: 1.0,
-			attributionControl: false // Remove atribuição padrão para limpar a UI
+			attributionControl: false,
+			minZoom: -2,
+			maxZoom: 2
 		});
 
-		// Adiciona a imagem de 8000x8000px como sobreposição do mapa
 		L.imageOverlay('/mapa-elden-ring.png', bounds).addTo(map);
 		map.fitBounds(bounds);
-		map.setZoom(-1);
 
-		// Marca d'água / Logo fixo no canto inferior esquerdo do mapa
-		const LogoWatermark = L.Control.extend({
-			options: { position: 'bottomleft' },
-			onAdd: function () {
-				const div = L.DomUtil.create('div', 'map-watermark');
-				div.innerHTML = `<img src="/logo.png" alt="DeepMap Logo" /> <span>DeepMap</span>`;
-				return div;
-			}
-		});
-		map.addControl(new LogoWatermark());
+		// Garantir ajuste correto em telemóvel
+		setTimeout(() => {
+			map.invalidateSize();
+		}, 200);
 	});
 </script>
 
@@ -59,7 +49,7 @@
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
-			<span class="brand-title">DeepMap</span>
+			<span class="brand-title">Elden Ring</span>
 		</div>
 
 		<div class="checklist-status">
@@ -68,12 +58,11 @@
 	</header>
 
 	<div class="body-container">
-		<!-- Fundo escuro ao abrir menu no telemóvel -->
 		{#if sidebarAberta}
 			<div class="backdrop" on:click={toggleSidebar} role="presentation"></div>
 		{/if}
 
-		<!-- Barra Lateral (Sidebar) -->
+		<!-- Barra Lateral -->
 		<aside class="sidebar" class:open={sidebarAberta}>
 			<div class="sidebar-content">
 				<h2>Filtros</h2>
@@ -94,7 +83,7 @@
 			</div>
 		</aside>
 
-		<!-- Contentor do Mapa Leaflet -->
+		<!-- Mapa Leaflet -->
 		<main class="map-wrapper">
 			<div bind:this={mapContainer} class="map-element"></div>
 		</main>
@@ -108,7 +97,7 @@
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
-		background-color: #0f0f12;
+		background-color: #0d0d0f;
 		font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		color: #e0e0e0;
 	}
@@ -146,7 +135,7 @@
 	.brand-title {
 		font-size: 1.25rem;
 		font-weight: 700;
-		color: #c8a355; /* Cor dourada Elden Ring */
+		color: #c8a355;
 		letter-spacing: 1px;
 	}
 
@@ -228,44 +217,22 @@
 		height: 16px;
 	}
 
-	/* Layout do Mapa */
+	/* Mapa */
 	.map-wrapper {
 		flex: 1;
 		height: 100%;
 		width: 100%;
 		position: relative;
+		background: #0d0d0f;
 	}
 
 	.map-element {
 		height: 100%;
 		width: 100%;
-		background: #0b0b0e;
+		background: #0d0d0f;
 	}
 
-	/* Marca d'água no Leaflet */
-	:global(.map-watermark) {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: rgba(22, 22, 26, 0.85);
-		padding: 6px 12px;
-		border-radius: 6px;
-		border: 1px solid rgba(200, 163, 85, 0.3);
-		backdrop-filter: blur(4px);
-	}
-
-	:global(.map-watermark img) {
-		height: 20px;
-		width: auto;
-	}
-
-	:global(.map-watermark span) {
-		color: #c8a355;
-		font-weight: 600;
-		font-size: 0.85rem;
-	}
-
-	/* Regras de Responsividade para Telemóvel (Mobile) */
+	/* Media Query para Mobile */
 	@media (max-width: 768px) {
 		.mobile-toggle {
 			display: block;
