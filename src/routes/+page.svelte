@@ -16,32 +16,43 @@
 		const L = await import('leaflet');
 		import('leaflet/dist/leaflet.css');
 
+		const height = 8000;
+		const width = 8000;
 		const bounds = [
 			[0, 0],
-			[8000, 8000]
+			[height, width]
 		];
 
 		map = L.map(mapContainer, {
 			crs: L.CRS.Simple,
 			maxBounds: bounds,
-			maxBoundsViscosity: 1.0,
+			maxBoundsViscosity: 0.8,
 			attributionControl: false,
-			minZoom: -2,
-			maxZoom: 2
+			minZoom: -4,
+			maxZoom: 2,
+			zoomSnap: 0.25,
+			zoomControl: true
 		});
 
-		L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
-		map.fitBounds(bounds);
+		// Posiciona os botões + e - do Leaflet no canto superior direito para não chocarem com o botão do menu
+		map.zoomControl.setPosition('topright');
 
-		// Garantir ajuste correto em telemóvel
+		const imageOverlay = L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
+
+		imageOverlay.on('load', () => {
+			map.fitBounds(bounds);
+		});
+
+		map.fitBounds(bounds);
+		
 		setTimeout(() => {
-			map.invalidateSize();
-		}, 200);
+			if (map) map.invalidateSize();
+		}, 250);
 	});
 </script>
 
 <div class="app-container">
-	<!-- Header Superior -->
+	<!-- Header Superior Fixado -->
 	<header class="header">
 		<button class="mobile-toggle" on:click={toggleSidebar} aria-label="Abrir Menu">
 			{sidebarAberta ? '✕' : '☰'}
@@ -59,6 +70,7 @@
 
 	<div class="body-container">
 		{#if sidebarAberta}
+			<!-- Fundo escuro (Backdrop) com prioridade z-index -->
 			<div class="backdrop" on:click={toggleSidebar} role="presentation"></div>
 		{/if}
 
@@ -97,7 +109,7 @@
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
-		background-color: #0d0d0f;
+		background-color: #0b0b0e;
 		font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		color: #e0e0e0;
 	}
@@ -107,9 +119,10 @@
 		flex-direction: column;
 		height: 100vh;
 		width: 100vw;
+		position: relative;
 	}
 
-	/* Header */
+	/* Header - Garantido que fica SEMPRE por cima de tudo com z-index alto */
 	.header {
 		height: 56px;
 		background: #16161a;
@@ -118,7 +131,9 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 0 16px;
-		z-index: 1001;
+		position: relative;
+		z-index: 9999; /* Z-index máximo para nunca ser tapado pelo mapa ou zoom */
+		box-sizing: border-box;
 	}
 
 	.brand {
@@ -154,9 +169,11 @@
 		background: transparent;
 		border: none;
 		color: #c8a355;
-		font-size: 1.5rem;
+		font-size: 1.6rem;
 		cursor: pointer;
-		padding: 4px;
+		padding: 6px 10px;
+		z-index: 10000; /* Botão com prioridade máxima para cliques */
+		touch-action: manipulation;
 	}
 
 	/* Body & Sidebar */
@@ -174,7 +191,7 @@
 		display: flex;
 		flex-direction: column;
 		transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-		z-index: 1000;
+		z-index: 9990;
 	}
 
 	.sidebar-content {
@@ -223,13 +240,23 @@
 		height: 100%;
 		width: 100%;
 		position: relative;
-		background: #0d0d0f;
+		background: #0b0b0e;
+		z-index: 1;
 	}
 
 	.map-element {
-		height: 100%;
-		width: 100%;
-		background: #0d0d0f;
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		background: #0b0b0e;
+	}
+
+	/* Personalização dos botões de Zoom do Leaflet no telemóvel */
+	:global(.leaflet-top.leaflet-right) {
+		top: 10px;
+		right: 10px;
 	}
 
 	/* Media Query para Mobile */
@@ -257,7 +284,7 @@
 			inset: 0;
 			background: rgba(0, 0, 0, 0.6);
 			backdrop-filter: blur(2px);
-			z-index: 999;
+			z-index: 9980;
 		}
 	}
 </style>
