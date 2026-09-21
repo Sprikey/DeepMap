@@ -30,7 +30,7 @@
 			maxZoom: 2
 		});
 
-		L.imageOverlay('/mapa-elden-ring.png', bounds).addTo(map);
+		L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
 		map.fitBounds(bounds);
 
 		// Garantir ajuste correto em telemóvel
