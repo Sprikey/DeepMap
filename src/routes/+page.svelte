@@ -1,172 +1,296 @@
 <script>
-  import { onMount } from 'svelte';
-  import 'leaflet/dist/leaflet.css';
+	import { onMount } from 'svelte';
 
-  let map;
+	let mapContainer;
+	let map;
+	let sidebarAberta = false;
 
-  // Dimensões da tua imagem do Elden Ring (8000x8000)
-  const MAP_HEIGHT = 8000; 
-  const MAP_WIDTH = 8000;
+	// Alterna a abertura do menu em dispositivos móveis
+	function toggleSidebar() {
+		sidebarAberta = !sidebarAberta;
+		// Notifica o Leaflet para recalcular a área do mapa após a animação do menu
+		setTimeout(() => {
+			if (map) map.invalidateSize();
+		}, 300);
+	}
 
-  onMount(async () => {
-    const L = await import('leaflet');
+	onMount(async () => {
+		// Importação dinâmica do Leaflet para compatibilidade com SSR no SvelteKit
+		const L = await import('leaflet');
+		import('leaflet/dist/leaflet.css');
 
-    // Configuração do Leaflet
-    map = L.map('map', {
-      crs: L.CRS.Simple,
-      minZoom: -4,
-      maxZoom: 3,
-      zoomSnap: 0.5,
-      attributionControl: false // Remove o texto "Leaflet"
-    });
+		// Coordenadas para sistema de mapa baseado numa imagem plana (CRS.Simple)
+		const bounds = [
+			[0, 0],
+			[8000, 8000]
+		];
 
-    const bounds = [[0, 0], [MAP_HEIGHT, MAP_WIDTH]];
-    const imageUrl = '/mapa-elden-ring.jpg'; 
-    L.imageOverlay(imageUrl, bounds).addTo(map);
+		map = L.map(mapContainer, {
+			crs: L.CRS.Simple,
+			maxBounds: bounds,
+			maxBoundsViscosity: 1.0,
+			attributionControl: false // Remove atribuição padrão para limpar a UI
+		});
 
-    map.fitBounds(bounds);
-  });
+		// Adiciona a imagem de 8000x8000px como sobreposição do mapa
+		L.imageOverlay('/mapa-elden-ring.png', bounds).addTo(map);
+		map.fitBounds(bounds);
+		map.setZoom(-1);
+
+		// Marca d'água / Logo fixo no canto inferior esquerdo do mapa
+		const LogoWatermark = L.Control.extend({
+			options: { position: 'bottomleft' },
+			onAdd: function () {
+				const div = L.DomUtil.create('div', 'map-watermark');
+				div.innerHTML = `<img src="/logo.png" alt="DeepMap Logo" /> <span>DeepMap</span>`;
+				return div;
+			}
+		});
+		map.addControl(new LogoWatermark());
+	});
 </script>
 
 <div class="app-container">
-  <!-- Header -->
-  <header class="header">
-    <div class="logo-container">
-      <img src="/logo.png" alt="DeepMap Logo" class="logo-img" />
-      <span class="divider">|</span>
-      <span class="gold-text">ELDEN RING MAP</span>
-    </div>
-    <div class="user-actions">
-      <button class="btn-gold">Checklist (0%)</button>
-      <button class="btn-login">Login</button>
-    </div>
-  </header>
+	<!-- Header Superior -->
+	<header class="header">
+		<button class="mobile-toggle" on:click={toggleSidebar} aria-label="Abrir Menu">
+			{sidebarAberta ? '✕' : '☰'}
+		</button>
 
-  <div class="main-content">
-    <!-- Painel Lateral -->
-    <aside class="sidebar">
-      <h2>Filtros</h2>
-      <div class="filter-group">
-        <label><input type="checkbox" checked /> Sites of Grace</label>
-        <label><input type="checkbox" checked /> Bosses</label>
-        <label><input type="checkbox" checked /> Weapons / Armor</label>
-        <label><input type="checkbox" checked /> Dungeons & Caves</label>
-      </div>
-    </aside>
+		<div class="brand">
+			<img src="/logo.png" alt="DeepMap" class="logo-img" />
+			<span class="brand-title">DeepMap</span>
+		</div>
 
-    <!-- Contentor do Mapa com a Marca de Água -->
-    <div id="map">
-      <img src="/logo.png" alt="DeepMap Watermark" class="map-watermark-img" />
-    </div>
-  </div>
+		<div class="checklist-status">
+			Checklist <span>(0%)</span>
+		</div>
+	</header>
+
+	<div class="body-container">
+		<!-- Fundo escuro ao abrir menu no telemóvel -->
+		{#if sidebarAberta}
+			<div class="backdrop" on:click={toggleSidebar} role="presentation"></div>
+		{/if}
+
+		<!-- Barra Lateral (Sidebar) -->
+		<aside class="sidebar" class:open={sidebarAberta}>
+			<div class="sidebar-content">
+				<h2>Filtros</h2>
+				
+				<div class="filter-group">
+					<h3>Locais</h3>
+					<label><input type="checkbox" checked /> Sites of Grace</label>
+					<label><input type="checkbox" checked /> Dungeons & Cavernas</label>
+					<label><input type="checkbox" checked /> Bosses</label>
+				</div>
+
+				<div class="filter-group">
+					<h3>Colecionáveis</h3>
+					<label><input type="checkbox" checked /> Armas e Equipamentos</label>
+					<label><input type="checkbox" checked /> Stonesword Keys</label>
+					<label><input type="checkbox" checked /> Talismãs</label>
+				</div>
+			</div>
+		</aside>
+
+		<!-- Contentor do Mapa Leaflet -->
+		<main class="map-wrapper">
+			<div bind:this={mapContainer} class="map-element"></div>
+		</main>
+	</div>
 </div>
 
 <style>
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    background-color: #0f0f11;
-    color: #e0e0e0;
-    font-family: system-ui, -apple-system, sans-serif;
-  }
+	:global(body, html) {
+		margin: 0;
+		padding: 0;
+		height: 100%;
+		width: 100%;
+		overflow: hidden;
+		background-color: #0f0f12;
+		font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+		color: #e0e0e0;
+	}
 
-  .app-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-  }
+	.app-container {
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+		width: 100vw;
+	}
 
-  .header {
-    height: 60px;
-    background-color: #16161a;
-    border-bottom: 2px solid #c8a355;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 20px;
-  }
+	/* Header */
+	.header {
+		height: 56px;
+		background: #16161a;
+		border-bottom: 1px solid #2a2a30;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 16px;
+		z-index: 1001;
+	}
 
-  .logo-container {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
 
-  .logo-img {
-    height: 36px;
-    width: auto;
-    object-fit: contain;
-  }
+	.logo-img {
+		height: 32px;
+		width: auto;
+	}
 
-  .divider {
-    color: #3a3a42;
-    font-size: 1.2rem;
-  }
+	.brand-title {
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: #c8a355; /* Cor dourada Elden Ring */
+		letter-spacing: 1px;
+	}
 
-  .gold-text {
-    color: #c8a355;
-    font-weight: bold;
-    letter-spacing: 2px;
-    font-size: 1.1rem;
-  }
+	.checklist-status {
+		font-size: 0.9rem;
+		color: #a0a0a0;
+	}
 
-  .main-content {
-    display: flex;
-    flex: 1;
-    height: calc(100vh - 60px);
-  }
+	.checklist-status span {
+		color: #c8a355;
+		font-weight: 600;
+	}
 
-  .sidebar {
-    width: 280px;
-    background-color: #16161a;
-    border-right: 1px solid #2a2a30;
-    padding: 20px;
-    box-sizing: border-box;
-  }
+	.mobile-toggle {
+		display: none;
+		background: transparent;
+		border: none;
+		color: #c8a355;
+		font-size: 1.5rem;
+		cursor: pointer;
+		padding: 4px;
+	}
 
-  /* ESTILOS DO MAPA E DA MARCA DE ÁGUA */
-  #map {
-    position: relative; /* OBRIGATÓRIO: Mantém o logo dentro do mapa */
-    flex: 1;
-    height: 100%;
-    background-color: #0b0b0d;
-  }
+	/* Body & Sidebar */
+	.body-container {
+		display: flex;
+		flex: 1;
+		position: relative;
+		overflow: hidden;
+	}
 
-  .map-watermark-img {
-    position: absolute;   /* OBRIGATÓRIO: Fixa o logo sobre a imagem do mapa */
-    bottom: 15px;         /* Distância do fundo */
-    right: 15px;          /* Distância da direita */
-    z-index: 1000;        /* Fica por cima da imagem do mapa */
-    height: 28px;         /* Tamanho do logo no canto */
-    width: auto;
-    opacity: 0.35;        /* Transparência discreta */
-    pointer-events: none; /* Permite arrastar o mapa por trás do logo */
-  }
+	.sidebar {
+		width: 300px;
+		background: #16161a;
+		border-right: 1px solid #2a2a30;
+		display: flex;
+		flex-direction: column;
+		transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		z-index: 1000;
+	}
 
-  .filter-group label {
-    display: block;
-    margin: 12px 0;
-    cursor: pointer;
-    font-size: 14px;
-  }
+	.sidebar-content {
+		padding: 20px;
+		overflow-y: auto;
+	}
 
-  .btn-gold {
-    background: #c8a355;
-    color: #000;
-    border: none;
-    padding: 8px 16px;
-    font-weight: bold;
-    cursor: pointer;
-    border-radius: 4px;
-  }
+	.sidebar h2 {
+		font-size: 1.1rem;
+		color: #c8a355;
+		margin-top: 0;
+		border-bottom: 1px solid #2a2a30;
+		padding-bottom: 8px;
+	}
 
-  .btn-login {
-    background: transparent;
-    color: #c8a355;
-    border: 1px solid #c8a355;
-    padding: 8px 16px;
-    margin-left: 10px;
-    cursor: pointer;
-    border-radius: 4px;
-  }
+	.filter-group {
+		margin-bottom: 20px;
+	}
+
+	.filter-group h3 {
+		font-size: 0.9rem;
+		color: #888;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		margin-bottom: 10px;
+	}
+
+	.filter-group label {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 8px;
+		font-size: 0.95rem;
+		cursor: pointer;
+	}
+
+	.filter-group input[type='checkbox'] {
+		accent-color: #c8a355;
+		width: 16px;
+		height: 16px;
+	}
+
+	/* Layout do Mapa */
+	.map-wrapper {
+		flex: 1;
+		height: 100%;
+		width: 100%;
+		position: relative;
+	}
+
+	.map-element {
+		height: 100%;
+		width: 100%;
+		background: #0b0b0e;
+	}
+
+	/* Marca d'água no Leaflet */
+	:global(.map-watermark) {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: rgba(22, 22, 26, 0.85);
+		padding: 6px 12px;
+		border-radius: 6px;
+		border: 1px solid rgba(200, 163, 85, 0.3);
+		backdrop-filter: blur(4px);
+	}
+
+	:global(.map-watermark img) {
+		height: 20px;
+		width: auto;
+	}
+
+	:global(.map-watermark span) {
+		color: #c8a355;
+		font-weight: 600;
+		font-size: 0.85rem;
+	}
+
+	/* Regras de Responsividade para Telemóvel (Mobile) */
+	@media (max-width: 768px) {
+		.mobile-toggle {
+			display: block;
+		}
+
+		.sidebar {
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			width: 280px;
+			transform: translateX(-100%);
+			box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
+		}
+
+		.sidebar.open {
+			transform: translateX(0);
+		}
+
+		.backdrop {
+			position: absolute;
+			inset: 0;
+			background: rgba(0, 0, 0, 0.6);
+			backdrop-filter: blur(2px);
+			z-index: 999;
+		}
+	}
 </style>
