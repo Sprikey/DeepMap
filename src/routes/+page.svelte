@@ -130,15 +130,16 @@
 
 	/* Header */
 	.header {
-		height: 56px;
-		background: #16161a;
-		border-bottom: 1px solid #2a2a30;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0 16px;
-		z-index: 1001;
-	}
+	height: 56px;
+	background: #16161a;
+	border-bottom: 1px solid #2a2a30;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 16px;
+	z-index: 2000; /* MUDADO: De 1001 para 2000 para ficar sempre no topo */
+	position: relative; /* ADICIONADO: Garante que o z-index funciona */
+}
 
 	.brand {
 		display: flex;
@@ -169,14 +170,15 @@
 	}
 
 	.mobile-toggle {
-		display: none;
-		background: transparent;
-		border: none;
-		color: #c8a355;
-		font-size: 1.5rem;
-		cursor: pointer;
-		padding: 4px;
-	}
+	display: none;
+	background: transparent;
+	border: none;
+	color: #c8a355;
+	font-size: 1.6rem;
+	cursor: pointer;
+	padding: 6px;
+	touch-action: manipulation; /* ADICIONADO: Melhora o clique em telemóveis */
+}
 
 	/* Body & Sidebar */
 	.body-container {
@@ -278,30 +280,31 @@
 
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
-		.mobile-toggle {
-			display: block;
-		}
-
-		.sidebar {
-			position: absolute;
-			top: 0;
-			bottom: 0;
-			left: 0;
-			width: 280px;
-			transform: translateX(-100%);
-			box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
-		}
-
-		.sidebar.open {
-			transform: translateX(0);
-		}
-
-		.backdrop {
-			position: absolute;
-			inset: 0;
-			background: rgba(0, 0, 0, 0.6);
-			backdrop-filter: blur(2px);
-			z-index: 999;
-		}
+	.mobile-toggle {
+		display: block;
 	}
+
+	.sidebar {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		width: 280px;
+		transform: translateX(-100%);
+		box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
+		z-index: 1500; /* MUDADO: Aumentado para 1500 para ficar acima do mapa */
+	}
+
+	.sidebar.open {
+		transform: translateX(0);
+	}
+
+	.backdrop {
+		position: absolute;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(2px);
+		z-index: 1400; /* MUDADO: Aumentado para 1400 para cobrir o mapa */
+	}
+}
 </style>
