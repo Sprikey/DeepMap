@@ -83,8 +83,8 @@
 			class="mobile-toggle"
 			aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
 			onclick={() => {
-			alert('FUNCIONA NO TELEMÓVEL');
-		} }
+				sidebarAberta = !sidebarAberta;
+			}}
 		>
 			{sidebarAberta ? '✕' : '☰'}
 		</button>
@@ -97,7 +97,7 @@
 			</span>
 
 			<span class="version-tag">
-				v1.0.18
+				v1.0.19
 			</span>
 		</div>
 
@@ -171,7 +171,10 @@
 	<!-- É completamente independente do mapa/Leaflet -->
 	<!-- ================================================= -->
 
-	{#if sidebarAberta}
+	<div
+		class:aberto={sidebarAberta}
+		class="mobile-menu-layer"
+	>
 
 		<div
 			class="mobile-backdrop"
@@ -240,7 +243,7 @@
 
 		</aside>
 
-	{/if}
+	</div>
 
 </div>
 
@@ -407,11 +410,8 @@
 	.desktop-sidebar h2 {
 		font-size: 1.1rem;
 		color: #c8a355;
-
 		margin-top: 0;
-
 		border-bottom: 1px solid #2a2a30;
-
 		padding-bottom: 8px;
 	}
 
@@ -422,30 +422,22 @@
 	.filter-group h3 {
 		font-size: 0.9rem;
 		color: #888;
-
 		text-transform: uppercase;
-
 		letter-spacing: 0.5px;
-
 		margin-bottom: 10px;
 	}
 
 	.filter-group label {
 		display: flex;
 		align-items: center;
-
 		gap: 10px;
-
 		margin-bottom: 8px;
-
 		font-size: 0.95rem;
-
 		cursor: pointer;
 	}
 
 	.filter-group input[type='checkbox'] {
 		accent-color: #c8a355;
-
 		width: 16px;
 		height: 16px;
 	}
@@ -480,25 +472,16 @@
 
 	:global(.map-watermark) {
 		display: flex;
-
 		align-items: center;
 		justify-content: center;
-
 		background: rgba(22, 22, 26, 0.5);
-
 		padding: 6px;
-
 		border-radius: 8px;
-
 		border: 1px solid rgba(200, 163, 85, 0.2);
-
 		backdrop-filter: blur(4px);
-
 		margin-bottom: 12px;
 		margin-right: 12px;
-
 		opacity: 0.6; /* Transparência suave */
-
 		pointer-events: none;
 	}
 
@@ -512,8 +495,7 @@
 	   MENU MOBILE
 	   ========================================== */
 
-	.mobile-sidebar,
-	.mobile-backdrop {
+	.mobile-menu-layer {
 		display: none;
 	}
 
@@ -572,86 +554,75 @@
 		   MENU MOBILE INDEPENDENTE
 		   ========================================== */
 
-		.mobile-backdrop {
-			display: block;
-
+		.mobile-menu-layer {
+			display: none;
 			position: fixed;
-
 			top: 56px;
 			left: 0;
 			right: 0;
 			bottom: 0;
-
-			background: rgba(0, 0, 0, 0.65);
-
 			z-index: 20000;
+			pointer-events: none;
+		}
+
+		.mobile-menu-layer.aberto {
+			display: block;
+			pointer-events: auto;
+		}
+
+		.mobile-backdrop {
+			display: block;
+			position: absolute;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background: rgba(0, 0, 0, 0.65);
 		}
 
 		.mobile-sidebar {
 			display: block;
-
-			position: fixed;
-
-			top: 56px;
+			position: absolute;
+			top: 0;
 			left: 0;
 			bottom: 0;
-
 			width: min(300px, 85vw);
-
 			background: #16161a;
-
 			border-right: 1px solid #2a2a30;
-
 			box-shadow: 8px 0 30px rgba(0, 0, 0, 0.6);
-
 			box-sizing: border-box;
-
-			z-index: 20001;
-
+			z-index: 1;
 			overflow-y: auto;
 		}
 
 		.mobile-sidebar-header {
 			height: 56px;
-
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-
 			padding: 0 12px 0 20px;
-
 			border-bottom: 1px solid #2a2a30;
-
 			box-sizing: border-box;
 		}
 
 		.mobile-sidebar-header h2 {
 			margin: 0;
-
 			font-size: 1.1rem;
-
 			color: #c8a355;
 		}
 
 		.mobile-close {
 			width: 40px;
 			height: 40px;
-
 			display: flex;
 			align-items: center;
 			justify-content: center;
-
 			padding: 0;
-
 			background: transparent;
 			border: 0;
-
 			color: #c8a355;
-
 			font-size: 24px;
-
 			cursor: pointer;
-
 			touch-action: manipulation;
 		}
 
