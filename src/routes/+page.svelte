@@ -103,7 +103,11 @@
 		{/if}
 
 		<!-- Barra Lateral -->
-		<aside class="sidebar" class:open={sidebarAberta}>
+		<aside
+	class="sidebar"
+	class:open={sidebarAberta}
+	style:transform={sidebarAberta ? 'translateX(0)' : 'translateX(-100%)'}
+>
 			<div class="sidebar-content">
 				<h2>Filtros</h2>
 				
