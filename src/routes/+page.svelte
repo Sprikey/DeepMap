@@ -1,4 +1,3 @@
-```svelte
 <script>
 	import { onMount } from 'svelte';
 
@@ -86,7 +85,7 @@
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
 			<!-- Adiciona esta linha temporária: -->
-			<span class="version-tag">v1.0.15</span>
+			<span class="version-tag">v1.0.16</span>
 		</div>
 
 		<div class="checklist-status">
@@ -95,6 +94,7 @@
 	</header>
 
 	<div class="body-container">
+
 		{#if sidebarAberta}
 			<div class="backdrop" onclick={toggleSidebar} role="presentation"></div>
 		{/if}
@@ -164,6 +164,7 @@
 		left: 0;
 		right: 0;
 		cursor: default;
+		box-sizing: border-box;
 	}
 
 	.brand {
@@ -220,15 +221,19 @@
 
 	/* Body & Sidebar */
 	.body-container {
-		display: flex;
-		flex: 1;
 		position: relative;
 		overflow: hidden;
 		margin-top: 56px; /* Compensa a altura do header fixo */
 		height: calc(100vh - 56px);
+		height: calc(100dvh - 56px);
+		width: 100%;
 	}
 
 	.sidebar {
+		position: fixed;
+		top: 56px;
+		left: 0;
+		bottom: 0;
 		width: 300px;
 		background: #16161a;
 		border-right: 1px solid #2a2a30;
@@ -236,6 +241,7 @@
 		flex-direction: column;
 		transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		z-index: 1000;
+		box-sizing: border-box;
 	}
 
 	.sidebar-content {
@@ -280,10 +286,11 @@
 
 	/* Mapa */
 	.map-wrapper {
-		flex: 1;
-		height: 100%;
-		width: 100%;
-		position: relative;
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		left: 300px;
 		background: #0b0b0e;
 	}
 
@@ -359,6 +366,14 @@
 
 		.sidebar.open {
 			transform: translateX(0) !important;
+		}
+
+		.map-wrapper {
+			position: absolute;
+			top: 0;
+			right: 0;
+			bottom: 0;
+			left: 0;
 		}
 
 		.backdrop {
