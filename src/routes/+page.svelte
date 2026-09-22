@@ -4,24 +4,24 @@
 	let mapContainer;
 	let map;
 	let sidebarAberta = false;
- 
 
 	function toggleSidebar() {
-	sidebarAberta = !sidebarAberta;
+		sidebarAberta = !sidebarAberta;
 
-	setTimeout(() => {
-		if (map) map.invalidateSize();
-	}, 300);
-}
-
+		setTimeout(() => {
+			if (map) {
+				map.invalidateSize();
+			}
+		}, 300);
+	}
 
 	onMount(async () => {
 		const L = await import('leaflet');
-		import('leaflet/dist/leaflet.css');
+		await import('leaflet/dist/leaflet.css');
 
-    
 		const height = 8000;
 		const width = 8000;
+
 		const bounds = [
 			[0, 0],
 			[height, width]
@@ -36,19 +36,28 @@
 			maxZoom: 2,
 			zoomSnap: 0.25
 		});
-		
-  // Carrega a imagem do mapa (.jpg)
-		const imageOverlay = L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
 
-		// Apenas a imagem do logo no canto inferior direito, mais transparente
+		const imageOverlay = L.imageOverlay(
+			'/mapa-elden-ring.jpg',
+			bounds
+		).addTo(map);
+
 		const LogoWatermark = L.Control.extend({
-			options: { position: 'bottomright' },
+			options: {
+				position: 'bottomright'
+			},
+
 			onAdd: function () {
 				const div = L.DomUtil.create('div', 'map-watermark');
-				div.innerHTML = `<img src="/logo.png" alt="DeepMap Logo" />`;
+
+				div.innerHTML = `
+					<img src="/logo.png" alt="DeepMap Logo" />
+				`;
+
 				return div;
 			}
 		});
+
 		map.addControl(new LogoWatermark());
 
 		imageOverlay.on('load', () => {
@@ -56,9 +65,11 @@
 		});
 
 		map.fitBounds(bounds);
-		
+
 		setTimeout(() => {
-			if (map) map.invalidateSize();
+			if (map) {
+				map.invalidateSize();
+			}
 		}, 250);
 	});
 </script>
@@ -67,20 +78,19 @@
 	<!-- Header Superior -->
 	<header class="header">
 
- <button
-	type="button"
-	class="mobile-toggle"
-	aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
-	onclick={toggleSidebar}
->
-	{sidebarAberta ? '✕' : '☰'}
-</button>
+ 	<button
+		type="button"
+		class="mobile-toggle"
+		aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
+	>
+		{sidebarAberta ? '✕' : '☰'}
+	</button>
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
       <!-- Adiciona esta linha temporária: -->
-      <span class="version-tag">v1.0.7</span>
+      <span class="version-tag">v1.0.8</span>
 		</div>
 
 		<div class="checklist-status">
@@ -157,6 +167,7 @@
   top: 0;
   left: 0;
   right: 0;
+  cursor: default;
 }
 
 	.brand {
@@ -315,33 +326,27 @@
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
 	.header {
-		z-index: 999999;
-		pointer-events: auto;
+		z-index: 999999 !important;
 	}
 
 	.mobile-toggle {
 		display: flex !important;
 		align-items: center;
 		justify-content: center;
-		position: absolute !important;
-		left: 4px;
-		top: 4px;
 		width: 48px;
 		height: 48px;
+		padding: 0;
+		background: transparent;
+		border: 0;
+		color: #c8a355;
+		font-size: 28px;
 		z-index: 9999999 !important;
-		pointer-events: auto !important;
-		touch-action: manipulation;
+		position: relative;
+		flex-shrink: 0;
 	}
 
 	.brand {
-		margin-left: 48px;
-		min-width: 0;
-	}
-
-	.game-title {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		margin-left: 4px;
 	}
 
 	.checklist-status {
@@ -356,7 +361,7 @@
 		width: 280px;
 		transform: translateX(-100%);
 		box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
-		z-index: 9998;
+		z-index: 99998;
 	}
 
 	.sidebar.open {
@@ -368,7 +373,7 @@
 		inset: 56px 0 0 0;
 		background: rgba(0, 0, 0, 0.6);
 		backdrop-filter: blur(2px);
-		z-index: 9997;
+		z-index: 99997;
 	}
 }
 </style>
