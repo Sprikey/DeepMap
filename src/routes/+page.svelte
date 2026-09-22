@@ -34,10 +34,6 @@
 			maxZoom: 2,
 			zoomSnap: 0.25
 		});
-
-  // ADICIONAR ESTA LINHA: impede o Leaflet de capturar toques no cabeçalho
-  L.DomEvent.disableClickPropagation(document.querySelector('.header'));
-  L.DomEvent.disableScrollPropagation(document.querySelector('.header'));
 		
   // Carrega a imagem do mapa (.jpg)
 		const imageOverlay = L.imageOverlay('/mapa-elden-ring.jpg', bounds).addTo(map);
@@ -70,19 +66,19 @@
 	<header class="header">
 
  <button
-  type="button"
-  class="mobile-toggle"
-  aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
-  on:click={toggleSidebar}
+	type="button"
+	class="mobile-toggle"
+	aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
+	onclick={toggleSidebar}
 >
-  {sidebarAberta ? '✕' : '☰'}
+	{sidebarAberta ? '✕' : '☰'}
 </button>
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
       <!-- Adiciona esta linha temporária: -->
-      <span class="version-tag">v1.0.5</span>
+      <span class="version-tag">v1.0.6</span>
 		</div>
 
 		<div class="checklist-status">
@@ -207,7 +203,7 @@
   cursor: pointer;
   padding: 8px 12px;
   position: relative;
-  z-index: 10001;
+  z-index: 100000;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   pointer-events: auto;
@@ -319,7 +315,7 @@
   .mobile-toggle {
     display: block !important;
     position: relative;
-    z-index: 10001;
+    z-index: 100000;
     flex-shrink: 0;
   }
 
