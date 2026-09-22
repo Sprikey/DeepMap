@@ -74,12 +74,13 @@
 	<header class="header">
 
  	<button
-		type="button"
-		class="mobile-toggle"
-		aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
-	>
-		{sidebarAberta ? '✕' : '☰'}
-	</button>
+	type="button"
+	class="mobile-toggle"
+	aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
+	onclick={() => alert('BOTAO CLICADO')}
+>
+	{sidebarAberta ? '✕' : '☰'}
+</button>
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
