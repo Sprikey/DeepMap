@@ -6,14 +6,9 @@
 	let sidebarAberta = false;
 
 	function toggleSidebar() {
-		sidebarAberta = !sidebarAberta;
-
-		setTimeout(() => {
-			if (map) {
-				map.invalidateSize();
-			}
-		}, 300);
-	}
+	alert('BOTAO CLICADO');
+	sidebarAberta = !sidebarAberta;
+}
 
 	onMount(async () => {
 		const L = await import('leaflet');
