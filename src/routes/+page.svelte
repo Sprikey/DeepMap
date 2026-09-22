@@ -204,17 +204,18 @@
 
 	.mobile-toggle {
 	display: none;
-	background: transparent;
-	border: none;
+	background: #16161a;
+	border: 1px solid #c8a355;
 	color: #c8a355;
 	font-size: 1.8rem;
 	cursor: pointer;
-	padding: 8px 12px;
-	position: relative;
-	z-index: 100000;
-	-webkit-tap-highlight-color: transparent;
-	touch-action: manipulation;
+	padding: 6px 12px;
+	position: fixed;
+	top: 8px;
+	left: 8px;
+	z-index: 999999;
 	pointer-events: auto;
+	touch-action: manipulation;
 }
 
 
@@ -320,8 +321,8 @@
 
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
-	.header {
-		z-index: 999999 !important;
+	.mobile-toggle {
+		display: block !important;
 	}
 
 	.mobile-toggle {
