@@ -82,7 +82,9 @@
 			type="button"
 			class="mobile-toggle"
 			aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
-			onclick={toggleSidebar}
+			onclick={() => {
+			alert('FUNCIONA NO TELEMÓVEL');
+		} }
 		>
 			{sidebarAberta ? '✕' : '☰'}
 		</button>
