@@ -7,10 +7,8 @@
  
 
 	function toggleSidebar() {
-  sidebarAberta = !sidebarAberta;
-  setTimeout(() => {
-    if (map) map.invalidateSize();
-  }, 300);
+	console.log('BOTAO CLICADO');
+	sidebarAberta = !sidebarAberta;
 }
 
 	onMount(async () => {
@@ -88,7 +86,7 @@
 
 	<div class="body-container">
 		{#if sidebarAberta}
-			<div class="backdrop" on:click={toggleSidebar} role="presentation"></div>
+			<div class="backdrop" onclick={toggleSidebar} role="presentation"></div>
 		{/if}
 
 		<!-- Barra Lateral -->
