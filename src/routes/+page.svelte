@@ -1,9 +1,14 @@
+```svelte
 <script>
 	import { onMount } from 'svelte';
 
 	let mapContainer;
 	let map;
 	let sidebarAberta = false;
+
+	function toggleSidebar() {
+		sidebarAberta = !sidebarAberta;
+	}
 
 	onMount(async () => {
 		const L = await import('leaflet');
@@ -73,9 +78,7 @@
 			type="button"
 			class="mobile-toggle"
 			aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
-			onclick={() => {
-				sidebarAberta = !sidebarAberta;
-			}}
+			onclick={toggleSidebar}
 		>
 			{sidebarAberta ? '✕' : '☰'}
 		</button>
@@ -89,7 +92,7 @@
 
 			<!-- Adiciona esta linha temporária: -->
 			<span class="version-tag">
-				v1.0.17
+				v1.0.18
 			</span>
 		</div>
 
@@ -101,22 +104,8 @@
 
 	<div class="body-container">
 
-		<!-- Backdrop do menu mobile -->
-		{#if sidebarAberta}
-			<div
-				class="backdrop"
-				onclick={() => {
-					sidebarAberta = false;
-				}}
-				role="presentation"
-			></div>
-		{/if}
-
-		<!-- Barra Lateral -->
-		<aside
-			class="sidebar"
-			style:left={sidebarAberta ? '0px' : '-280px'}
-		>
+		<!-- Barra Lateral Desktop -->
+		<aside class="sidebar-desktop">
 
 			<div class="sidebar-content">
 
@@ -172,6 +161,82 @@
 		</main>
 
 	</div>
+
+	<!-- Menu Mobile INDEPENDENTE do mapa e da sidebar desktop -->
+	{#if sidebarAberta}
+
+		<div
+			class="mobile-menu-backdrop"
+			onclick={() => {
+				sidebarAberta = false;
+			}}
+			role="presentation"
+		></div>
+
+		<aside class="mobile-menu">
+
+			<div class="mobile-menu-header">
+				<h2>Filtros</h2>
+
+				<button
+					type="button"
+					class="mobile-close"
+					aria-label="Fechar Menu"
+					onclick={() => {
+						sidebarAberta = false;
+					}}
+				>
+					✕
+				</button>
+			</div>
+
+			<div class="sidebar-content">
+
+				<div class="filter-group">
+					<h3>Locais</h3>
+
+					<label>
+						<input type="checkbox" checked />
+						Sites of Grace
+					</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Dungeons & Cavernas
+					</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Bosses
+					</label>
+				</div>
+
+				<div class="filter-group">
+
+					<h3>Colecionáveis</h3>
+
+					<label>
+						<input type="checkbox" checked />
+						Armas e Equipamentos
+					</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Stonesword Keys
+					</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Talismãs
+					</label>
+
+				</div>
+
+			</div>
+
+		</aside>
+
+	{/if}
 
 </div>
 
@@ -278,8 +343,10 @@
 		height: calc(100dvh - 56px);
 	}
 
-	.sidebar {
+	/* Sidebar Desktop */
+	.sidebar-desktop {
 		width: 300px;
+		flex-shrink: 0;
 		background: #16161a;
 		border-right: 1px solid #2a2a30;
 		display: flex;
@@ -293,7 +360,7 @@
 		overflow-y: auto;
 	}
 
-	.sidebar h2 {
+	.sidebar-content h2 {
 		font-size: 1.1rem;
 		color: #c8a355;
 		margin-top: 0;
@@ -331,8 +398,8 @@
 	/* Mapa */
 	.map-wrapper {
 		flex: 1;
+		min-width: 0;
 		height: 100%;
-		width: 100%;
 		position: relative;
 		background: #0b0b0e;
 	}
@@ -368,6 +435,15 @@
 		display: block;
 	}
 
+	/* Menu Mobile */
+	.mobile-menu-backdrop {
+		display: none;
+	}
+
+	.mobile-menu {
+		display: none;
+	}
+
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
 
@@ -395,24 +471,76 @@
 			display: none;
 		}
 
-		.sidebar {
-			position: fixed !important;
-			top: 56px !important;
+		/* No mobile, a sidebar desktop desaparece completamente */
+		.sidebar-desktop {
+			display: none;
+		}
+
+		.map-wrapper {
+			width: 100%;
+			height: 100%;
+		}
+
+		/* Menu Mobile completamente independente do Leaflet */
+		.mobile-menu-backdrop {
+			display: block;
+			position: fixed;
+			top: 56px;
 			left: 0;
-			bottom: 0 !important;
-			width: 280px !important;
-			background: #16161a !important;
-			transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-			z-index: 999998 !important;
+			right: 0;
+			bottom: 0;
+			background: rgba(0, 0, 0, 0.65);
+			backdrop-filter: blur(2px);
+			z-index: 99998;
+		}
+
+		.mobile-menu {
+			display: block;
+			position: fixed;
+			top: 56px;
+			left: 0;
+			bottom: 0;
+			width: 280px;
+			background: #16161a;
+			border-right: 1px solid #2a2a30;
+			box-shadow: 8px 0 25px rgba(0, 0, 0, 0.5);
+			z-index: 99999;
+			overflow-y: auto;
 			box-sizing: border-box;
 		}
 
-		.backdrop {
-			position: fixed;
-			inset: 56px 0 0 0;
-			background: rgba(0, 0, 0, 0.6);
-			backdrop-filter: blur(2px);
-			z-index: 99997;
+		.mobile-menu-header {
+			height: 56px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0 16px 0 20px;
+			border-bottom: 1px solid #2a2a30;
+			box-sizing: border-box;
+		}
+
+		.mobile-menu-header h2 {
+			font-size: 1.1rem;
+			color: #c8a355;
+			margin: 0;
+		}
+
+		.mobile-close {
+			width: 40px;
+			height: 40px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			background: transparent;
+			border: 0;
+			color: #c8a355;
+			font-size: 24px;
+			cursor: pointer;
+			touch-action: manipulation;
+		}
+
+		.mobile-menu .sidebar-content {
+			padding: 20px;
 		}
 	}
 
