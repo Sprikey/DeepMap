@@ -78,8 +78,9 @@
 	class="mobile-toggle"
 	aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
 	onclick={() => {
-		sidebarAberta = !sidebarAberta;
-	}}
+	sidebarAberta = !sidebarAberta;
+	alert(sidebarAberta ? 'ABRIU' : 'FECHOU');
+}}
 >
 	{sidebarAberta ? '✕' : '☰'}
 </button>
