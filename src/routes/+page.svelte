@@ -1,3 +1,4 @@
+```svelte
 <script>
 	import { onMount } from 'svelte';
 
@@ -6,9 +7,8 @@
 	let sidebarAberta = false;
 
 	function toggleSidebar() {
-	alert('BOTAO CLICADO');
-	sidebarAberta = !sidebarAberta;
-}
+		sidebarAberta = !sidebarAberta;
+	}
 
 	onMount(async () => {
 		const L = await import('leaflet');
@@ -73,23 +73,20 @@
 	<!-- Header Superior -->
 	<header class="header">
 
- 	<button
-	type="button"
-	class="mobile-toggle"
-	aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
-	onclick={() => {
-	sidebarAberta = !sidebarAberta;
-	alert(sidebarAberta ? 'ABRIU' : 'FECHOU');
-}}
->
-	{sidebarAberta ? '✕' : '☰'}
-</button>
+		<button
+			type="button"
+			class="mobile-toggle"
+			aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
+			onclick={toggleSidebar}
+		>
+			{sidebarAberta ? '✕' : '☰'}
+		</button>
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
-      <!-- Adiciona esta linha temporária: -->
-      <span class="version-tag">v1.0.8</span>
+			<!-- Adiciona esta linha temporária: -->
+			<span class="version-tag">v1.0.15</span>
 		</div>
 
 		<div class="checklist-status">
@@ -103,11 +100,7 @@
 		{/if}
 
 		<!-- Barra Lateral -->
-		<aside
-	class="sidebar"
-	class:open={sidebarAberta}
-	style:transform={sidebarAberta ? 'translateX(0)' : 'translateX(-100%)'}
->
+		<aside class="sidebar" class:open={sidebarAberta}>
 			<div class="sidebar-content">
 				<h2>Filtros</h2>
 				
@@ -141,37 +134,37 @@
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
-    position: fixed; /* ADICIONAR ESTA LINHA para travar o scroll da página no telemóvel */
+		position: fixed; /* ADICIONAR ESTA LINHA para travar o scroll da página no telemóvel */
 		background-color: #0b0b0e;
 		font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		color: #e0e0e0;
 	}
 
 	.app-container {
-	display: flex;
-	flex-direction: column;
-	height: 100vh;
-	height: 100dvh; /* ADICIONAR ESTA LINHA: 100dvh ajusta à altura exata nos navegadores mobile */
-	width: 100vw;
-	overflow: hidden;
-}
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+		height: 100dvh; /* ADICIONAR ESTA LINHA: 100dvh ajusta à altura exata nos navegadores mobile */
+		width: 100vw;
+		overflow: hidden;
+	}
 
 	/* Header */
 	.header {
-	height: 56px;
-	background: #16161a;
-	border-bottom: 1px solid #2a2a30;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 0 16px;
-  z-index: 9999; /* Valor muito elevado para garantir prioridade total */
-  position: fixed; /* Posicionamento fixo sobre a janela */
-  top: 0;
-  left: 0;
-  right: 0;
-  cursor: default;
-}
+		height: 56px;
+		background: #16161a;
+		border-bottom: 1px solid #2a2a30;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 16px;
+		z-index: 9999; /* Valor muito elevado para garantir prioridade total */
+		position: fixed; /* Posicionamento fixo sobre a janela */
+		top: 0;
+		left: 0;
+		right: 0;
+		cursor: default;
+	}
 
 	.brand {
 		display: flex;
@@ -191,14 +184,14 @@
 		letter-spacing: 1px;
 	}
 
-  .version-tag {
-    font-size: 0.75rem;
-    color: #888899;
-    background: #22222a;
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid #333340;
-}
+	.version-tag {
+		font-size: 0.75rem;
+		color: #888899;
+		background: #22222a;
+		padding: 2px 6px;
+		border-radius: 4px;
+		border: 1px solid #333340;
+	}
 
 	.checklist-status {
 		font-size: 0.9rem;
@@ -211,20 +204,18 @@
 	}
 
 	.mobile-toggle {
-	display: none;
-	background: #16161a;
-	border: 1px solid #c8a355;
-	color: #c8a355;
-	font-size: 1.8rem;
-	cursor: pointer;
-	padding: 6px 12px;
-	position: fixed;
-	top: 8px;
-	left: 8px;
-	z-index: 999999;
-	pointer-events: auto;
-	touch-action: manipulation;
-}
+		display: none;
+		background: transparent;
+		border: none;
+		color: #c8a355;
+		font-size: 1.8rem;
+		cursor: pointer;
+		padding: 8px 12px;
+		position: relative;
+		z-index: 100000;
+		pointer-events: auto;
+		touch-action: manipulation;
+	}
 
 
 	/* Body & Sidebar */
@@ -233,8 +224,8 @@
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-    margin-top: 56px; /* Compensa a altura do header fixo */
-    height: calc(100vh - 56px);
+		margin-top: 56px; /* Compensa a altura do header fixo */
+		height: calc(100vh - 56px);
 	}
 
 	.sidebar {
@@ -329,56 +320,53 @@
 
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
-	.mobile-toggle {
-		display: block !important;
+
+		.mobile-toggle {
+			display: flex !important;
+			align-items: center;
+			justify-content: center;
+			width: 48px;
+			height: 48px;
+			padding: 0;
+			background: transparent;
+			border: 0;
+			color: #c8a355;
+			font-size: 28px;
+			z-index: 9999999 !important;
+			position: relative;
+			flex-shrink: 0;
+		}
+
+		.brand {
+			margin-left: 4px;
+		}
+
+		.checklist-status {
+			display: none;
+		}
+
+		.sidebar {
+			position: fixed !important;
+			top: 56px !important;
+			left: 0 !important;
+			bottom: 0 !important;
+			width: 280px !important;
+			background: #16161a !important;
+			transform: translateX(-100%) !important;
+			transition: transform 0.3s ease !important;
+			z-index: 999998 !important;
+		}
+
+		.sidebar.open {
+			transform: translateX(0) !important;
+		}
+
+		.backdrop {
+			position: fixed;
+			inset: 56px 0 0 0;
+			background: rgba(0, 0, 0, 0.6);
+			backdrop-filter: blur(2px);
+			z-index: 99997;
+		}
 	}
-
-	.mobile-toggle {
-		display: flex !important;
-		align-items: center;
-		justify-content: center;
-		width: 48px;
-		height: 48px;
-		padding: 0;
-		background: transparent;
-		border: 0;
-		color: #c8a355;
-		font-size: 28px;
-		z-index: 9999999 !important;
-		position: relative;
-		flex-shrink: 0;
-	}
-
-	.brand {
-		margin-left: 4px;
-	}
-
-	.checklist-status {
-		display: none;
-	}
-
-.sidebar {
-	position: fixed !important;
-	top: 56px !important;
-	left: 0 !important;
-	bottom: 0 !important;
-	width: 280px !important;
-	background: #16161a !important;
-	transform: translateX(-110%) !important;
-	transition: transform 0.3s ease !important;
-	z-index: 999998 !important;
-}
-
-.sidebar.open {
-	transform: translateX(0) !important;
-}
-
-	.backdrop {
-		position: fixed;
-		inset: 56px 0 0 0;
-		background: rgba(0, 0, 0, 0.6);
-		backdrop-filter: blur(2px);
-		z-index: 99997;
-	}
-}
 </style>
