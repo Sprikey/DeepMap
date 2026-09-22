@@ -7,9 +7,13 @@
  
 
 	function toggleSidebar() {
-	console.log('BOTAO CLICADO');
 	sidebarAberta = !sidebarAberta;
+
+	setTimeout(() => {
+		if (map) map.invalidateSize();
+	}, 300);
 }
+
 
 	onMount(async () => {
 		const L = await import('leaflet');
@@ -76,7 +80,7 @@
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
       <!-- Adiciona esta linha temporária: -->
-      <span class="version-tag">v1.0.6</span>
+      <span class="version-tag">v1.0.7</span>
 		</div>
 
 		<div class="checklist-status">
@@ -193,18 +197,18 @@
 	}
 
 	.mobile-toggle {
-  display: none;
-  background: transparent;
-  border: none;
-  color: #c8a355;
-  font-size: 1.8rem;
-  cursor: pointer;
-  padding: 8px 12px;
-  position: relative;
-  z-index: 100000;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  pointer-events: auto;
+	display: none;
+	background: transparent;
+	border: none;
+	color: #c8a355;
+	font-size: 1.8rem;
+	cursor: pointer;
+	padding: 8px 12px;
+	position: relative;
+	z-index: 100000;
+	-webkit-tap-highlight-color: transparent;
+	touch-action: manipulation;
+	pointer-events: auto;
 }
 
 
@@ -310,34 +314,61 @@
 
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
-  .mobile-toggle {
-    display: block !important;
-    position: relative;
-    z-index: 100000;
-    flex-shrink: 0;
-  }
+	.header {
+		z-index: 999999;
+		pointer-events: auto;
+	}
 
-  .sidebar {
-    position: fixed;
-    top: 56px;
-    bottom: 0;
-    left: 0;
-    width: 280px;
-    transform: translateX(-100%);
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
-    z-index: 9998;
-  }
+	.mobile-toggle {
+		display: flex !important;
+		align-items: center;
+		justify-content: center;
+		position: absolute !important;
+		left: 4px;
+		top: 4px;
+		width: 48px;
+		height: 48px;
+		z-index: 9999999 !important;
+		pointer-events: auto !important;
+		touch-action: manipulation;
+	}
 
-  .sidebar.open {
-    transform: translateX(0);
-  }
+	.brand {
+		margin-left: 48px;
+		min-width: 0;
+	}
 
-  .backdrop {
-    position: fixed;
-    inset: 56px 0 0 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(2px);
-    z-index: 9997;
-  }
+	.game-title {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.checklist-status {
+		display: none;
+	}
+
+	.sidebar {
+		position: fixed;
+		top: 56px;
+		bottom: 0;
+		left: 0;
+		width: 280px;
+		transform: translateX(-100%);
+		box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
+		z-index: 9998;
+	}
+
+	.sidebar.open {
+		transform: translateX(0);
+	}
+
+	.backdrop {
+		position: fixed;
+		inset: 56px 0 0 0;
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(2px);
+		z-index: 9997;
+	}
 }
 </style>
