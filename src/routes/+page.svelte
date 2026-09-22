@@ -5,10 +5,6 @@
 	let map;
 	let sidebarAberta = false;
 
-	function toggleSidebar() {
-		sidebarAberta = !sidebarAberta;
-	}
-
 	onMount(async () => {
 		const L = await import('leaflet');
 		await import('leaflet/dist/leaflet.css');
@@ -69,6 +65,7 @@
 </script>
 
 <div class="app-container">
+
 	<!-- Header Superior -->
 	<header class="header">
 
@@ -76,58 +73,110 @@
 			type="button"
 			class="mobile-toggle"
 			aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
-			onclick={toggleSidebar}
+			onclick={() => {
+				sidebarAberta = !sidebarAberta;
+			}}
 		>
 			{sidebarAberta ? '✕' : '☰'}
 		</button>
 
 		<div class="brand">
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
-			<span class="game-title">Elden Ring</span>
+
+			<span class="game-title">
+				Elden Ring
+			</span>
+
 			<!-- Adiciona esta linha temporária: -->
-			<span class="version-tag">v1.0.16</span>
+			<span class="version-tag">
+				v1.0.17
+			</span>
 		</div>
 
 		<div class="checklist-status">
 			Checklist <span>(0%)</span>
 		</div>
+
 	</header>
 
 	<div class="body-container">
 
+		<!-- Backdrop do menu mobile -->
 		{#if sidebarAberta}
-			<div class="backdrop" onclick={toggleSidebar} role="presentation"></div>
+			<div
+				class="backdrop"
+				onclick={() => {
+					sidebarAberta = false;
+				}}
+				role="presentation"
+			></div>
 		{/if}
 
 		<!-- Barra Lateral -->
-		<aside class="sidebar" class:open={sidebarAberta}>
+		<aside
+			class="sidebar"
+			style:left={sidebarAberta ? '0px' : '-280px'}
+		>
+
 			<div class="sidebar-content">
+
 				<h2>Filtros</h2>
-				
+
 				<div class="filter-group">
 					<h3>Locais</h3>
-					<label><input type="checkbox" checked /> Sites of Grace</label>
-					<label><input type="checkbox" checked /> Dungeons & Cavernas</label>
-					<label><input type="checkbox" checked /> Bosses</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Sites of Grace
+					</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Dungeons & Cavernas
+					</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Bosses
+					</label>
 				</div>
 
 				<div class="filter-group">
+
 					<h3>Colecionáveis</h3>
-					<label><input type="checkbox" checked /> Armas e Equipamentos</label>
-					<label><input type="checkbox" checked /> Stonesword Keys</label>
-					<label><input type="checkbox" checked /> Talismãs</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Armas e Equipamentos
+					</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Stonesword Keys
+					</label>
+
+					<label>
+						<input type="checkbox" checked />
+						Talismãs
+					</label>
+
 				</div>
+
 			</div>
+
 		</aside>
 
 		<!-- Contentor do Mapa Leaflet -->
 		<main class="map-wrapper">
 			<div bind:this={mapContainer} class="map-element"></div>
 		</main>
+
 	</div>
+
 </div>
 
 <style>
+
 	:global(body, html) {
 		margin: 0;
 		padding: 0;
@@ -204,42 +253,37 @@
 		font-weight: 600;
 	}
 
+	/* Botão Mobile */
 	.mobile-toggle {
 		display: none;
-		background: transparent;
-		border: none;
+		background: #16161a;
+		border: 1px solid #c8a355;
 		color: #c8a355;
 		font-size: 1.8rem;
 		cursor: pointer;
-		padding: 8px 12px;
-		position: relative;
-		z-index: 100000;
+		padding: 6px 12px;
+		z-index: 9999999;
 		pointer-events: auto;
 		touch-action: manipulation;
 	}
 
-
 	/* Body & Sidebar */
 	.body-container {
+		display: flex;
+		flex: 1;
 		position: relative;
 		overflow: hidden;
 		margin-top: 56px; /* Compensa a altura do header fixo */
 		height: calc(100vh - 56px);
 		height: calc(100dvh - 56px);
-		width: 100%;
 	}
 
 	.sidebar {
-		position: fixed;
-		top: 56px;
-		left: 0;
-		bottom: 0;
 		width: 300px;
 		background: #16161a;
 		border-right: 1px solid #2a2a30;
 		display: flex;
 		flex-direction: column;
-		transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		z-index: 1000;
 		box-sizing: border-box;
 	}
@@ -286,11 +330,10 @@
 
 	/* Mapa */
 	.map-wrapper {
-		position: absolute;
-		top: 0;
-		right: 0;
-		bottom: 0;
-		left: 300px;
+		flex: 1;
+		height: 100%;
+		width: 100%;
+		position: relative;
 		background: #0b0b0e;
 	}
 
@@ -355,25 +398,13 @@
 		.sidebar {
 			position: fixed !important;
 			top: 56px !important;
-			left: 0 !important;
+			left: 0;
 			bottom: 0 !important;
 			width: 280px !important;
 			background: #16161a !important;
-			transform: translateX(-100%) !important;
-			transition: transform 0.3s ease !important;
+			transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 			z-index: 999998 !important;
-		}
-
-		.sidebar.open {
-			transform: translateX(0) !important;
-		}
-
-		.map-wrapper {
-			position: absolute;
-			top: 0;
-			right: 0;
-			bottom: 0;
-			left: 0;
+			box-sizing: border-box;
 		}
 
 		.backdrop {
@@ -384,4 +415,5 @@
 			z-index: 99997;
 		}
 	}
+
 </style>
