@@ -4,7 +4,7 @@
 	let mapContainer;
 	let map;
 	let sidebarAberta = false;
-  let btnMobile; // ADICIONADO
+ 
 
 	function toggleSidebar() {
   sidebarAberta = !sidebarAberta;
@@ -17,15 +17,7 @@
 		const L = await import('leaflet');
 		import('leaflet/dist/leaflet.css');
 
-    // Adicionar ouvinte de clique/toque nativo no botão
-  if (btnMobile) {
-    const handleNativeTouch = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      toggleSidebar();
-    };
-    btnMobile.addEventListener('pointerdown', handleNativeTouch);
-  }
+    
 		const height = 8000;
 		const width = 8000;
 		const bounds = [
@@ -77,7 +69,12 @@
 	<!-- Header Superior -->
 	<header class="header">
 
-  <button class="mobile-toggle" bind:this={btnMobile} aria-label="Abrir Menu">
+ <button
+  type="button"
+  class="mobile-toggle"
+  aria-label={sidebarAberta ? 'Fechar Menu' : 'Abrir Menu'}
+  on:click={toggleSidebar}
+>
   {sidebarAberta ? '✕' : '☰'}
 </button>
 
@@ -85,7 +82,7 @@
 			<img src="/logo.png" alt="DeepMap" class="logo-img" />
 			<span class="game-title">Elden Ring</span>
       <!-- Adiciona esta linha temporária: -->
-      <span class="version-tag">v1.0.4</span>
+      <span class="version-tag">v1.0.5</span>
 		</div>
 
 		<div class="checklist-status">
@@ -202,17 +199,20 @@
 	}
 
 	.mobile-toggle {
-	display: none;
-	background: transparent;
-	border: none;
-	color: #c8a355;
-	font-size: 1.8rem;
-	cursor: pointer;
+  display: none;
+  background: transparent;
+  border: none;
+  color: #c8a355;
+  font-size: 1.8rem;
+  cursor: pointer;
   padding: 8px 12px;
   position: relative;
-  z-index: 99999 !important;
+  z-index: 10001;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  pointer-events: auto;
 }
+
 
 	/* Body & Sidebar */
 	.body-container {
@@ -317,9 +317,12 @@
 	/* Media Query para Mobile */
 	@media (max-width: 768px) {
   .mobile-toggle {
-    display: inline-block !important;
+    display: block !important;
+    position: relative;
+    z-index: 10001;
+    flex-shrink: 0;
   }
-  
+
   .sidebar {
     position: fixed;
     top: 56px;
@@ -337,7 +340,6 @@
 
   .backdrop {
     position: fixed;
-    top: 56px;
     inset: 56px 0 0 0;
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(2px);
