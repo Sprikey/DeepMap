@@ -357,20 +357,21 @@
 		display: none;
 	}
 
-	.sidebar {
-		position: fixed;
-		top: 56px;
-		bottom: 0;
-		left: 0;
-		width: 280px;
-		transform: translateX(-100%);
-		box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
-		z-index: 99998;
-	}
+.sidebar {
+	position: fixed !important;
+	top: 56px !important;
+	left: 0 !important;
+	bottom: 0 !important;
+	width: 280px !important;
+	background: #16161a !important;
+	transform: translateX(-110%) !important;
+	transition: transform 0.3s ease !important;
+	z-index: 999998 !important;
+}
 
-	.sidebar.open {
-		transform: translateX(0);
-	}
+.sidebar.open {
+	transform: translateX(0) !important;
+}
 
 	.backdrop {
 		position: fixed;
