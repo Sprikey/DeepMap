@@ -12,7 +12,12 @@
 	// de administração do DeepMap.
 	let editorMode = false;
 	let editorMarker = null;
-	let editorCoords = null;
+
+	// Guardamos X e Y separadamente para tornar a actualização
+	// da janela de coordenadas mais simples e previsível.
+	let editorX = null;
+	let editorY = null;
+
 	let copyStatus = '';
 
 	onMount(async () => {
@@ -74,10 +79,11 @@
 			const x = Math.round(e.latlng.lng);
 			const y = Math.round(e.latlng.lat);
 
-			editorCoords = {
-				x,
-				y
-			};
+			// Guardamos as coordenadas do ponto clicado.
+			editorX = x;
+			editorY = y;
+
+			copyStatus = '';
 
 			// Se já existir um marcador temporário,
 			// removemo-lo antes de criar o novo.
@@ -85,8 +91,8 @@
 				map.removeLayer(editorMarker);
 			}
 
-			// Usamos um círculo em vez do marcador normal
-			// do Leaflet para evitar dependências de ícones.
+			// Marcador temporário que mostra exactamente
+			// o ponto que seleccionámos no mapa.
 			editorMarker = L.circleMarker([y, x], {
 				radius: 8,
 				color: '#c8a355',
@@ -94,8 +100,6 @@
 				fillOpacity: 0.8,
 				weight: 2
 			}).addTo(map);
-
-			copyStatus = '';
 		});
 
 		imageOverlay.on('load', () => {
@@ -119,14 +123,15 @@
 		copyStatus = '';
 
 		// Ao desligar o editor, removemos o marcador
-		// temporário para deixar o mapa completamente limpo.
+		// temporário e limpamos as coordenadas.
 		if (!editorMode) {
 			if (editorMarker && map) {
 				map.removeLayer(editorMarker);
 				editorMarker = null;
 			}
 
-			editorCoords = null;
+			editorX = null;
+			editorY = null;
 		}
 	}
 
@@ -134,9 +139,12 @@
 	// COPIAR COORDENADAS
 	// =================================================
 	async function copyCoordinates() {
-		if (!editorCoords) return;
+		// Não há nada para copiar se ainda não clicámos no mapa.
+		if (editorX === null || editorY === null) return;
 
-		const coordinates = `[${editorCoords.y}, ${editorCoords.x}]`;
+		// Este é o formato que vamos poder colar directamente
+		// mais tarde no código dos marcadores Leaflet.
+		const coordinates = `[${editorY}, ${editorX}]`;
 
 		try {
 			await navigator.clipboard.writeText(coordinates);
@@ -204,7 +212,7 @@
 			</span>
 
 			<span class="version-tag">
-				v1.0.21
+				v1.0.22
 			</span>
 		</div>
 
@@ -221,46 +229,66 @@
 
 	<div class="coordinate-editor">
 
+		<!-- Botão que activa/desactiva o modo de edição -->
 		<button
 			class:active={editorMode}
 			class="editor-toggle"
 			onclick={toggleEditor}
 		>
-			⚙️ {editorMode ? 'EDITOR ON' : 'EDITOR'}
+			⚙️ {editorMode ? 'EDITOR ATIVO' : 'EDITOR'}
 		</button>
 
-		{#if editorMode && editorCoords}
+		<!--
+			A janela aparece assim que o Editor é activado.
+			Antes de clicar no mapa mostra uma instrução.
+			Depois do clique mostra as coordenadas.
+		-->
+		{#if editorMode}
 
 			<div class="coordinate-panel">
 
 				<div class="coordinate-title">
-					COORDENADAS
+					⚙️ MODO EDITOR ATIVO
 				</div>
 
-				<div class="coordinate-values">
+				{#if editorX === null || editorY === null}
 
-					<div>
-						<span>X</span>
-						<strong>{editorCoords.x}</strong>
+					<div class="coordinate-instruction">
+						Clica no mapa para obter as coordenadas.
 					</div>
 
-					<div>
-						<span>Y</span>
-						<strong>{editorCoords.y}</strong>
+				{:else}
+
+					<div class="coordinate-title coordinate-result-title">
+						COORDENADAS
 					</div>
 
-				</div>
+					<div class="coordinate-values">
 
-				<div class="coordinate-array">
-					[{editorCoords.y}, {editorCoords.x}]
-				</div>
+						<div>
+							<span>X</span>
+							<strong>{editorX}</strong>
+						</div>
 
-				<button
-					class="copy-button"
-					onclick={copyCoordinates}
-				>
-					{copyStatus || 'COPIAR'}
-				</button>
+						<div>
+							<span>Y</span>
+							<strong>{editorY}</strong>
+						</div>
+
+					</div>
+
+					<div class="coordinate-array">
+						[{editorY}, {editorX}]
+					</div>
+
+					<button
+						class="copy-button"
+						onclick={copyCoordinates}
+					>
+						{copyStatus || 'COPIAR COORDENADAS'}
+					</button>
+
+				{/if}
 
 			</div>
 
@@ -669,6 +697,7 @@
 
 	.coordinate-editor {
 		position: fixed;
+
 		top: 68px;
 		right: 16px;
 
@@ -707,32 +736,56 @@
 		border-color: #c8a355;
 	}
 
+	/* Janela que mostra o estado do Editor e as coordenadas */
+
 	.coordinate-panel {
-		width: 190px;
+		width: 230px;
 
 		padding: 14px;
 
-		background: rgba(22, 22, 26, 0.96);
-		border: 1px solid #333340;
+		background: rgba(22, 22, 26, 0.97);
+		border: 1px solid #c8a355;
 		border-radius: 8px;
 
-		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
 
 		box-sizing: border-box;
 	}
 
 	.coordinate-title {
 		color: #c8a355;
+
 		font-size: 0.75rem;
 		font-weight: 700;
+
 		letter-spacing: 1px;
 
 		margin-bottom: 10px;
 	}
 
+	.coordinate-result-title {
+		margin-top: 14px;
+		padding-top: 12px;
+
+		border-top: 1px solid #2a2a30;
+	}
+
+	/* Mensagem apresentada antes de existir um ponto seleccionado */
+
+	.coordinate-instruction {
+		color: #a0a0a0;
+
+		font-size: 0.8rem;
+		line-height: 1.4;
+
+		padding: 10px 0 2px;
+	}
+
 	.coordinate-values {
 		display: flex;
-		gap: 20px;
+
+		gap: 30px;
+
 		margin-bottom: 10px;
 	}
 
@@ -744,12 +797,15 @@
 
 	.coordinate-values span {
 		color: #888;
+
 		font-size: 0.7rem;
+
 		text-transform: uppercase;
 	}
 
 	.coordinate-values strong {
 		color: #e0e0e0;
+
 		font-size: 1rem;
 	}
 
@@ -773,7 +829,7 @@
 	.copy-button {
 		width: 100%;
 
-		padding: 8px;
+		padding: 9px;
 
 		background: #22222a;
 		color: #c8a355;
