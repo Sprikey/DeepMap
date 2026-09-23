@@ -305,7 +305,7 @@
 			regionKey: 'limgrave',
 
 			/* Coordenadas Leaflet = [Y, X] */
-			coordinates: [2303, 3207],
+			coordinates: [2300, 3204],
 
 			/* Ícone mostrado no mapa */
 			icon:
