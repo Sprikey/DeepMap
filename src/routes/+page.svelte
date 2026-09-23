@@ -1,9 +1,19 @@
-```svelte
 <script>
 	import { onMount } from 'svelte';
 
 	let mapContainer;
 	let map;
+
+	// =================================================
+	// ESTADO DO EDITOR DE COORDENADAS
+	// =================================================
+	// Estas variáveis controlam apenas a ferramenta de
+	// edição. Mais tarde isto pode evoluir para o painel
+	// de administração do DeepMap.
+	let editorMode = false;
+	let editorMarker = null;
+	let editorCoords = null;
+	let copyStatus = '';
 
 	onMount(async () => {
 		const L = await import('leaflet');
@@ -50,6 +60,44 @@
 
 		map.addControl(new LogoWatermark());
 
+		// =================================================
+		// CLIQUE DO EDITOR DE COORDENADAS
+		// =================================================
+		// O Leaflet trabalha com coordenadas [Y, X].
+		// Como o nosso mapa usa CRS.Simple, o ponto clicado
+		// corresponde directamente à posição na imagem.
+		map.on('click', (e) => {
+			// Se o editor estiver desligado, o clique
+			// funciona normalmente e não fazemos nada.
+			if (!editorMode) return;
+
+			const x = Math.round(e.latlng.lng);
+			const y = Math.round(e.latlng.lat);
+
+			editorCoords = {
+				x,
+				y
+			};
+
+			// Se já existir um marcador temporário,
+			// removemo-lo antes de criar o novo.
+			if (editorMarker) {
+				map.removeLayer(editorMarker);
+			}
+
+			// Usamos um círculo em vez do marcador normal
+			// do Leaflet para evitar dependências de ícones.
+			editorMarker = L.circleMarker([y, x], {
+				radius: 8,
+				color: '#c8a355',
+				fillColor: '#c8a355',
+				fillOpacity: 0.8,
+				weight: 2
+			}).addTo(map);
+
+			copyStatus = '';
+		});
+
 		imageOverlay.on('load', () => {
 			map.fitBounds(bounds);
 		});
@@ -62,6 +110,64 @@
 			}
 		}, 250);
 	});
+
+	// =================================================
+	// LIGAR / DESLIGAR O EDITOR
+	// =================================================
+	function toggleEditor() {
+		editorMode = !editorMode;
+		copyStatus = '';
+
+		// Ao desligar o editor, removemos o marcador
+		// temporário para deixar o mapa completamente limpo.
+		if (!editorMode) {
+			if (editorMarker && map) {
+				map.removeLayer(editorMarker);
+				editorMarker = null;
+			}
+
+			editorCoords = null;
+		}
+	}
+
+	// =================================================
+	// COPIAR COORDENADAS
+	// =================================================
+	async function copyCoordinates() {
+		if (!editorCoords) return;
+
+		const coordinates = `[${editorCoords.y}, ${editorCoords.x}]`;
+
+		try {
+			await navigator.clipboard.writeText(coordinates);
+			copyStatus = 'COPIADO!';
+		} catch (error) {
+			// Fallback para ambientes onde o Clipboard API
+			// não esteja disponível.
+			const textArea = document.createElement('textarea');
+
+			textArea.value = coordinates;
+			textArea.style.position = 'fixed';
+			textArea.style.opacity = '0';
+
+			document.body.appendChild(textArea);
+			textArea.select();
+
+			try {
+				document.execCommand('copy');
+				copyStatus = 'COPIADO!';
+			} catch (copyError) {
+				copyStatus = 'ERRO';
+			}
+
+			document.body.removeChild(textArea);
+		}
+
+		// Depois de alguns segundos removemos a mensagem.
+		setTimeout(() => {
+			copyStatus = '';
+		}, 2000);
+	}
 </script>
 
 <div class="app-container">
@@ -98,7 +204,7 @@
 			</span>
 
 			<span class="version-tag">
-				v1.0.20
+				v1.0.21
 			</span>
 		</div>
 
@@ -107,6 +213,60 @@
 		</div>
 
 	</header>
+
+	<!-- ================================================= -->
+	<!-- FERRAMENTA DE COORDENADAS -->
+	<!-- Apenas aparece no PC -->
+	<!-- ================================================= -->
+
+	<div class="coordinate-editor">
+
+		<button
+			class:active={editorMode}
+			class="editor-toggle"
+			onclick={toggleEditor}
+		>
+			⚙️ {editorMode ? 'EDITOR ON' : 'EDITOR'}
+		</button>
+
+		{#if editorMode && editorCoords}
+
+			<div class="coordinate-panel">
+
+				<div class="coordinate-title">
+					COORDENADAS
+				</div>
+
+				<div class="coordinate-values">
+
+					<div>
+						<span>X</span>
+						<strong>{editorCoords.x}</strong>
+					</div>
+
+					<div>
+						<span>Y</span>
+						<strong>{editorCoords.y}</strong>
+					</div>
+
+				</div>
+
+				<div class="coordinate-array">
+					[{editorCoords.y}, {editorCoords.x}]
+				</div>
+
+				<button
+					class="copy-button"
+					onclick={copyCoordinates}
+				>
+					{copyStatus || 'COPIAR'}
+				</button>
+
+			</div>
+
+		{/if}
+
+	</div>
 
 	<!-- Conteúdo principal -->
 	<div class="body-container">
@@ -503,6 +663,136 @@
 	}
 
 	/* ==========================================
+	   EDITOR DE COORDENADAS
+	   Apenas visível no PC.
+	   ========================================== */
+
+	.coordinate-editor {
+		position: fixed;
+		top: 68px;
+		right: 16px;
+
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 8px;
+
+		z-index: 11000;
+	}
+
+	.editor-toggle {
+		padding: 8px 12px;
+
+		background: #16161a;
+		color: #c8a355;
+
+		border: 1px solid #333340;
+		border-radius: 6px;
+
+		font-size: 0.8rem;
+		font-weight: 700;
+
+		cursor: pointer;
+
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+	}
+
+	.editor-toggle:hover {
+		border-color: #c8a355;
+	}
+
+	.editor-toggle.active {
+		background: #c8a355;
+		color: #16161a;
+		border-color: #c8a355;
+	}
+
+	.coordinate-panel {
+		width: 190px;
+
+		padding: 14px;
+
+		background: rgba(22, 22, 26, 0.96);
+		border: 1px solid #333340;
+		border-radius: 8px;
+
+		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+
+		box-sizing: border-box;
+	}
+
+	.coordinate-title {
+		color: #c8a355;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 1px;
+
+		margin-bottom: 10px;
+	}
+
+	.coordinate-values {
+		display: flex;
+		gap: 20px;
+		margin-bottom: 10px;
+	}
+
+	.coordinate-values div {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.coordinate-values span {
+		color: #888;
+		font-size: 0.7rem;
+		text-transform: uppercase;
+	}
+
+	.coordinate-values strong {
+		color: #e0e0e0;
+		font-size: 1rem;
+	}
+
+	.coordinate-array {
+		padding: 8px;
+
+		background: #0b0b0e;
+		border: 1px solid #2a2a30;
+		border-radius: 4px;
+
+		color: #e0e0e0;
+
+		font-family: monospace;
+		font-size: 0.85rem;
+
+		text-align: center;
+
+		margin-bottom: 10px;
+	}
+
+	.copy-button {
+		width: 100%;
+
+		padding: 8px;
+
+		background: #22222a;
+		color: #c8a355;
+
+		border: 1px solid #333340;
+		border-radius: 4px;
+
+		font-size: 0.75rem;
+		font-weight: 700;
+
+		cursor: pointer;
+	}
+
+	.copy-button:hover {
+		background: #2a2a30;
+		border-color: #c8a355;
+	}
+
+	/* ==========================================
 	   MENU MOBILE
 	   ========================================== */
 
@@ -559,6 +849,15 @@
 		.map-wrapper {
 			left: 0;
 			width: 100%;
+		}
+
+		/* ==========================================
+		   EDITOR DE COORDENADAS
+		   Escondido no telemóvel por enquanto.
+		   ========================================== */
+
+		.coordinate-editor {
+			display: none;
 		}
 
 		/* ==========================================
