@@ -10,9 +10,10 @@
 
 	/* ==========================================
 	   IDIOMAS / TRADUÇÕES
+	   SVELTE 5 RUNES
 	   ========================================== */
 
-	let currentLanguage = 'en';
+	let currentLanguage = $state('en');
 
 
 	const translations = {
@@ -190,30 +191,22 @@
 	};
 
 
-	/* ==========================================
-	   TEXTOS ATUAIS DA INTERFACE
-	   ========================================== */
-
 	/*
-		Este objeto contém os textos da língua
-		que está atualmente selecionada.
+		Svelte 5:
 
-		Não usamos $: porque o teu projeto está
-		a compilar num modo em que essa sintaxe
-		estava a dar erro.
-
-		Sempre que mudamos de idioma, atribuímos
-		um novo objeto a currentTexts.
+		currentTexts é recalculado automaticamente
+		sempre que currentLanguage muda.
 	*/
 
-	let currentTexts =
-		translations.en;
+	let currentTexts = $derived(
+		translations[currentLanguage] ??
+		translations.en
+	);
 
 
 	/*
-		Função utilizada principalmente nos elementos
-		criados manualmente pelo Leaflet:
-		popups, tooltips, etc.
+		Utilizado principalmente pelo Leaflet,
+		porque os popups são criados manualmente.
 	*/
 
 	function t(key) {
@@ -235,24 +228,19 @@
 
 
 		/*
-			Atualiza os textos da interface Svelte.
-		*/
+			O HTML Svelte atualiza automaticamente
+			através de currentTexts.
 
-		currentTexts =
-			translations[currentLanguage] ??
-			translations.en;
-
-
-		/*
-			Os marcadores e popups Leaflet
-			precisam de ser reconstruídos.
+			Leaflet precisa de reconstruir
+			marcadores, tooltips e popups.
 		*/
 
 		renderLocationMarkers();
 
 
 		/*
-			Atualiza também o editor.
+			Alguns elementos do editor são
+			controlados diretamente por JavaScript.
 		*/
 
 		updateEditorInterface();
@@ -265,13 +253,11 @@
 	   ========================================== */
 
 	/*
-		Estado central dos filtros.
-
-		Desktop e mobile utilizam exatamente
-		os mesmos valores.
+		$state permite que desktop e mobile
+		fiquem sincronizados automaticamente.
 	*/
 
-	let categoryVisibility = {
+	let categoryVisibility = $state({
 
 		site_of_grace: true,
 
@@ -284,7 +270,7 @@
 		stonesword_key: true,
 
 		talisman: true
-	};
+	});
 
 
 	/*
@@ -296,12 +282,8 @@
 		visible
 	) {
 
-		categoryVisibility = {
-
-			...categoryVisibility,
-
-			[categoryId]: visible
-		};
+		categoryVisibility[categoryId] =
+			visible;
 
 
 		renderLocationMarkers();
@@ -319,10 +301,11 @@
 		Hoje usamos apenas "surface".
 
 		Mais tarde podemos acrescentar:
+
 		- underground
 		- DLC
 		- interiores
-		- etc.
+		- outros mapas
 	*/
 
 	const mapDefinitions = {
@@ -418,10 +401,8 @@
 
 
 	/*
-		Cria os grupos Leaflet.
-
-		Cada layer tem o seu próprio
-		grupo de marcadores.
+		Cria grupos Leaflet separados
+		para cada layer.
 	*/
 
 	function setupMarkerLayers() {
@@ -449,10 +430,11 @@
 
 
 	/*
-		Função preparada para trocar
-		de mapa/camada.
+		Função já preparada para trocar
+		de superfície para subterrâneo,
+		DLC, etc.
 
-		Mais tarde podemos chamar:
+		Exemplo futuro:
 
 		setActiveMapLayer('underground');
 	*/
@@ -491,7 +473,7 @@
 			layerId;
 
 
-		/* Liga apenas os marcadores da layer selecionada */
+		/* Liga apenas os marcadores da nova layer */
 
 		const activeGroup =
 			markerLayerGroups[
@@ -507,7 +489,7 @@
 
 		/*
 			Se a layer tiver uma imagem própria,
-			trocamos também o mapa visual.
+			trocamos também a imagem do mapa.
 		*/
 
 		if (definition.image) {
@@ -554,12 +536,11 @@
 	   ========================================== */
 
 	/*
-		IMPORTANTE:
+		Os dados estruturais não dependem
+		do idioma.
 
-		IDs, categorias, coordenadas e layers
-		não dependem do idioma.
-
-		Apenas os textos são traduzidos.
+		IDs, coordenadas, categorias e layers
+		permanecem sempre iguais.
 	*/
 
 	const locations = [
@@ -570,16 +551,13 @@
 				'church-of-elleh',
 
 
-			/* Layer a que pertence este marcador */
+			/* Layer */
 
 			mapLayer:
 				'surface',
 
 
-			/*
-				Categoria interna utilizada
-				pelos filtros.
-			*/
+			/* Categoria utilizada pelos filtros */
 
 			categoryId:
 				'site_of_grace',
@@ -606,13 +584,13 @@
 				[2300, 3204],
 
 
-			/* Ícone mostrado no mapa */
+			/* Ícone do marcador */
 
 			icon:
 				'/icons/site-of-grace.png',
 
 
-			/* Imagem mostrada no popup */
+			/* Imagem do popup */
 
 			image:
 				'/locations/church-of-elleh.jpg',
@@ -623,7 +601,7 @@
 			   CAMPOS OPCIONAIS
 			   =====================================
 
-			   Se estiverem vazios ou não existirem,
+			   Se estiverem vazios,
 			   não aparecem no popup.
 			*/
 
@@ -645,14 +623,12 @@
 			   PREMIUM — PREPARADO PARA SUPABASE
 			   =====================================
 
-			   Isto NÃO contém os dados premium.
+			   Aqui não guardamos o conteúdo
+			   premium propriamente dito.
 
-			   Apenas indica que no futuro este local
-			   poderá ter estas secções premium.
-
-			   O conteúdo real será carregado através
-			   do Supabase depois de confirmar que
-			   o utilizador tem acesso premium.
+			   Mais tarde o Supabase verifica
+			   se o utilizador tem acesso e só
+			   então envia esses dados.
 			*/
 
 			premium: {
@@ -679,11 +655,6 @@
 	/* ==========================================
 	   POPUPS
 	   ========================================== */
-
-	/*
-		Evita que texto introduzido futuramente
-		possa inserir HTML inesperado no popup.
-	*/
 
 	function escapeHtml(value) {
 
@@ -784,7 +755,7 @@
 
 
 	/*
-		Constrói todo o popup
+		Constrói o popup completo
 		de uma localização.
 	*/
 
@@ -1012,8 +983,9 @@
 
 
 			/*
-				O ícone é guardado maior,
-				mas mostrado mais pequeno no mapa.
+				O ficheiro original pode ser maior,
+				mas no mapa mostramos o ícone
+				neste tamanho.
 			*/
 
 			iconSize:
@@ -1035,9 +1007,10 @@
 	/*
 		Cria/recria os marcadores.
 
-		É utilizado quando:
-		- mudamos o idioma
-		- ativamos/desativamos filtros
+		Utilizado quando:
+
+		- mudamos idioma
+		- alteramos filtros
 	*/
 
 	function renderLocationMarkers() {
@@ -1069,7 +1042,7 @@
 
 
 
-		/* Cria os marcadores */
+		/* Cria marcadores */
 
 		for (
 			const location of
@@ -1078,8 +1051,8 @@
 
 
 			/*
-				Se a categoria estiver desligada
-				no filtro, não criamos o marcador.
+				Se a categoria estiver OFF,
+				o marcador não é criado.
 			*/
 
 			if (
@@ -1147,10 +1120,7 @@
 
 
 
-			/*
-				Tooltip ao passar o rato
-				por cima do marcador.
-			*/
+			/* Tooltip */
 
 			marker.bindTooltip(
 
@@ -1200,11 +1170,8 @@
 
 
 	/*
-		Atualiza visualmente toda
-		a interface do editor.
-
-		A interface fica sempre
-		presente no HTML.
+		Atualiza visualmente a interface
+		do editor.
 	*/
 
 	function updateEditorInterface() {
@@ -3792,7 +3759,7 @@
 
 
 
-		/* Quando o checkbox está activo, mostra o menu */
+		/* Quando o checkbox está ativo, mostra o menu */
 
 		.mobile-menu-checkbox:checked ~ .mobile-menu-layer {
 
