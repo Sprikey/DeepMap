@@ -7,83 +7,242 @@
 
 	let mapImageOverlay = null;
 
+
 	/* ==========================================
 	   IDIOMAS / TRADUÇÕES
 	   ========================================== */
 
 	let currentLanguage = 'en';
 
+
 	const translations = {
 
 		en: {
+
 			/* Interface */
+
 			filters: 'Filters',
+
 			locations: 'Locations',
+
 			collectibles: 'Collectibles',
+
 			sites_of_grace: 'Sites of Grace',
-			dungeons_caverns: 'Dungeons & Caverns',
+
+			dungeons_caverns:
+				'Dungeons & Caverns',
+
 			bosses: 'Bosses',
-			weapons_equipment: 'Weapons & Equipment',
-			stonesword_keys: 'Stonesword Keys',
-			talismans: 'Talismans',
-			checklist: 'Checklist',
+
+			weapons_equipment:
+				'Weapons & Equipment',
+
+			stonesword_keys:
+				'Stonesword Keys',
+
+			talismans:
+				'Talismans',
+
+			checklist:
+				'Checklist',
+
 
 			/* Categorias */
-			site_of_grace: 'Site of Grace',
+
+			site_of_grace:
+				'Site of Grace',
+
 
 			/* Regiões */
-			limgrave: 'Limgrave',
+
+			limgrave:
+				'Limgrave',
+
 
 			/* Locais */
-			church_of_elleh: 'Church of Elleh',
+
+			church_of_elleh:
+				'Church of Elleh',
 
 			church_of_elleh_description:
 				'A ruined church located in Limgrave. It contains a Site of Grace and is one of the first notable locations encountered when exploring the region.',
 
+
 			/* Labels opcionais do popup */
-			region: 'Region',
-			npcs: 'NPCs',
-			items: 'Items',
-			quests: 'Quests',
-			notes: 'Notes'
+
+			region:
+				'Region',
+
+			npcs:
+				'NPCs',
+
+			items:
+				'Items',
+
+			quests:
+				'Quests',
+
+			notes:
+				'Notes',
+
+
+			/* Editor */
+
+			editor:
+				'⚙️ EDITOR',
+
+			editor_active:
+				'🛠️ EDITOR ACTIVE',
+
+			coordinate_editor:
+				'🛠️ COORDINATE EDITOR',
+
+			editor_instruction:
+				'Click a point on the map to get its coordinates.',
+
+			editor_status:
+				'EDITOR MODE ACTIVE — Click on the map',
+
+			ready_for_leaflet:
+				'Ready for Leaflet:',
+
+			copy:
+				'📋 COPY',
+
+			copied:
+				'✓ Copied!',
+
+
+			/* Acessibilidade */
+
+			open_menu:
+				'Open Menu',
+
+			close_menu:
+				'Close Menu',
+
+			language:
+				'Language'
 		},
 
+
 		pt: {
+
 			/* Interface */
-			filters: 'Filtros',
-			locations: 'Locais',
-			collectibles: 'Colecionáveis',
-			sites_of_grace: 'Locais de Graça',
-			dungeons_caverns: 'Masmorras e Cavernas',
-			bosses: 'Bosses',
-			weapons_equipment: 'Armas e Equipamentos',
-			stonesword_keys: 'Chaves de Espada de Pedra',
-			talismans: 'Talismãs',
-			checklist: 'Checklist',
+
+			filters:
+				'Filtros',
+
+			locations:
+				'Locais',
+
+			collectibles:
+				'Colecionáveis',
+
+			sites_of_grace:
+				'Locais de Graça',
+
+			dungeons_caverns:
+				'Masmorras e Cavernas',
+
+			bosses:
+				'Chefes',
+
+			weapons_equipment:
+				'Armas e Equipamento',
+
+			stonesword_keys:
+				'Chaves de Espada de Pedra',
+
+			talismans:
+				'Talismãs',
+
+			checklist:
+				'Progresso',
+
 
 			/* Categorias */
-			site_of_grace: 'Local de Graça',
+
+			site_of_grace:
+				'Local de Graça',
+
 
 			/* Regiões */
-			limgrave: 'Limgrave',
+
+			limgrave:
+				'Limgrave',
+
 
 			/* Locais */
-			church_of_elleh: 'Igreja de Elleh',
+
+			church_of_elleh:
+				'Igreja de Elleh',
 
 			church_of_elleh_description:
 				'Uma igreja em ruínas situada em Limgrave. Contém um Local de Graça e é um dos primeiros locais importantes encontrados ao explorar a região.',
 
+
 			/* Labels opcionais do popup */
-			region: 'Região',
-			npcs: 'NPCs',
-			items: 'Itens',
-			quests: 'Missões',
-			notes: 'Notas'
+
+			region:
+				'Região',
+
+			npcs:
+				'NPCs',
+
+			items:
+				'Itens',
+
+			quests:
+				'Missões',
+
+			notes:
+				'Notas',
+
+
+			/* Editor */
+
+			editor:
+				'⚙️ EDITOR',
+
+			editor_active:
+				'🛠️ EDITOR ATIVO',
+
+			coordinate_editor:
+				'🛠️ EDITOR DE COORDENADAS',
+
+			editor_instruction:
+				'Clica num ponto do mapa para obter as coordenadas.',
+
+			editor_status:
+				'MODO EDITOR ATIVO — Clica no mapa',
+
+			ready_for_leaflet:
+				'Pronto para Leaflet:',
+
+			copy:
+				'📋 COPIAR',
+
+			copied:
+				'✓ Copiado!',
+
+
+			/* Acessibilidade */
+
+			open_menu:
+				'Abrir Menu',
+
+			close_menu:
+				'Fechar Menu',
+
+			language:
+				'Idioma'
 		}
 	};
 
 
 	/* Obtém uma tradução */
+
 	function t(key) {
 
 		return (
@@ -95,19 +254,89 @@
 
 
 	/* Troca o idioma */
+
 	function changeLanguage(event) {
 
-		currentLanguage = event.currentTarget.value;
+		currentLanguage =
+			event.currentTarget.value;
+
 
 		/*
-			Os textos normais da interface são atualizados
-			automaticamente pelo Svelte.
+			Os textos normais da interface são
+			atualizados automaticamente pelo Svelte.
 
-			Os popups Leaflet precisam de ser reconstruídos.
+			Os marcadores e popups Leaflet precisam
+			de ser reconstruídos.
+		*/
+
+		renderLocationMarkers();
+
+
+		/*
+			O editor utiliza alguns elementos
+			controlados diretamente por JavaScript.
+		*/
+
+		updateEditorInterface();
+	}
+
+
+
+	/* ==========================================
+	   FILTROS
+	   ========================================== */
+
+	/*
+		Estado central dos filtros.
+
+		Desktop e mobile utilizam exatamente
+		estes mesmos valores.
+
+		Por isso, alterar um checkbox num lado
+		atualiza automaticamente o outro.
+	*/
+
+	let categoryVisibility = {
+
+		site_of_grace: true,
+
+		dungeon: true,
+
+		boss: true,
+
+		weapon_equipment: true,
+
+		stonesword_key: true,
+
+		talisman: true
+	};
+
+
+	/*
+		Ativa ou desativa uma categoria.
+	*/
+
+	function setCategoryVisibility(
+		categoryId,
+		visible
+	) {
+
+		categoryVisibility = {
+
+			...categoryVisibility,
+
+			[categoryId]: visible
+		};
+
+
+		/*
+			Recriamos os marcadores respeitando
+			os filtros atuais.
 		*/
 
 		renderLocationMarkers();
 	}
+
 
 
 	/* ==========================================
@@ -119,60 +348,99 @@
 
 		Hoje usamos apenas "surface".
 
-		Mais tarde podemos acrescentar uma imagem própria
-		para underground, DLC, interiores, etc.
+		Mais tarde podemos acrescentar:
+		- underground
+		- DLC
+		- interiores
+		- etc.
 
-		As coordenadas dos marcadores pertencem sempre
-		à layer definida em "mapLayer".
+		As coordenadas dos marcadores pertencem
+		sempre à layer definida em "mapLayer".
 	*/
 
 	const mapDefinitions = {
 
 		surface: {
-			id: 'surface',
-			image: '/mapa-elden-ring.jpg',
-			width: 8000,
-			height: 8000
+
+			id:
+				'surface',
+
+			image:
+				'/mapa-elden-ring.jpg',
+
+			width:
+				8000,
+
+			height:
+				8000
 		},
+
 
 		underground: {
-			id: 'underground',
+
+			id:
+				'underground',
 
 			/*
-				Quando tivermos o mapa subterrâneo:
+				Quando tivermos o mapa
+				subterrâneo:
 
-				image: '/maps/elden-ring-underground.jpg'
+				image:
+				'/maps/elden-ring-underground.jpg'
 			*/
 
-			image: null,
-			width: 8000,
-			height: 8000
+			image:
+				null,
+
+			width:
+				8000,
+
+			height:
+				8000
 		},
 
+
 		dlc: {
-			id: 'dlc',
+
+			id:
+				'dlc',
 
 			/*
-				Preparado para uma possível layer/mapa DLC.
+				Preparado para uma possível
+				layer/mapa DLC.
 			*/
 
-			image: null,
-			width: 8000,
-			height: 8000
+			image:
+				null,
+
+			width:
+				8000,
+
+			height:
+				8000
 		}
 	};
 
 
-	let activeMapLayer = 'surface';
+	let activeMapLayer =
+		'surface';
 
-	let markerLayerGroups = {};
+
+	let markerLayerGroups =
+		{};
+
 
 
 	/* Cria bounds para uma determinada layer */
-	function getMapBounds(mapDefinition) {
+
+	function getMapBounds(
+		mapDefinition
+	) {
 
 		return [
+
 			[0, 0],
+
 			[
 				mapDefinition.height,
 				mapDefinition.width
@@ -181,64 +449,95 @@
 	}
 
 
+
 	/*
 		Cria os grupos Leaflet.
 
-		Cada layer tem o seu próprio grupo de marcadores.
+		Cada layer tem o seu próprio
+		grupo de marcadores.
 	*/
+
 	function setupMarkerLayers() {
 
-		for (const layerId of Object.keys(mapDefinitions)) {
+		for (
+			const layerId of
+			Object.keys(mapDefinitions)
+		) {
 
 			markerLayerGroups[layerId] =
 				Leaflet.layerGroup();
 		}
 
+
 		/*
-			Apenas a layer ativa é adicionada ao mapa.
+			Apenas a layer ativa
+			é adicionada ao mapa.
 		*/
 
-		markerLayerGroups[activeMapLayer].addTo(map);
+		markerLayerGroups[
+			activeMapLayer
+		].addTo(map);
 	}
 
 
-	/*
-		Função preparada para trocar de mapa/camada.
 
-		Por enquanto não existe botão na interface porque
-		só temos a superfície.
+	/*
+		Função preparada para trocar
+		de mapa/camada.
+
+		Por enquanto não existe botão
+		na interface porque só temos
+		a superfície.
 
 		Mais tarde podemos chamar:
 
 		setActiveMapLayer('underground');
 	*/
-	function setActiveMapLayer(layerId) {
+
+	function setActiveMapLayer(
+		layerId
+	) {
 
 		if (!map) return;
 
-		const definition = mapDefinitions[layerId];
+
+		const definition =
+			mapDefinitions[layerId];
+
 
 		if (!definition) return;
 
+
 		/* Remove os grupos atualmente visíveis */
 
-		for (const group of Object.values(markerLayerGroups)) {
+		for (
+			const group of
+			Object.values(markerLayerGroups)
+		) {
 
-			if (map.hasLayer(group)) {
+			if (
+				map.hasLayer(group)
+			) {
+
 				map.removeLayer(group);
 			}
 		}
 
 
-		activeMapLayer = layerId;
+		activeMapLayer =
+			layerId;
 
 
 		/* Liga apenas os marcadores da layer selecionada */
 
 		const activeGroup =
-			markerLayerGroups[activeMapLayer];
+			markerLayerGroups[
+				activeMapLayer
+			];
+
 
 		if (activeGroup) {
+
 			activeGroup.addTo(map);
 		}
 
@@ -251,11 +550,18 @@
 		if (definition.image) {
 
 			const bounds =
-				getMapBounds(definition);
+				getMapBounds(
+					definition
+				);
+
 
 			if (mapImageOverlay) {
-				map.removeLayer(mapImageOverlay);
+
+				map.removeLayer(
+					mapImageOverlay
+				);
 			}
+
 
 			mapImageOverlay =
 				Leaflet.imageOverlay(
@@ -263,13 +569,21 @@
 					bounds
 				).addTo(map);
 
+
 			mapImageOverlay.bringToBack();
 
-			map.setMaxBounds(bounds);
 
-			map.fitBounds(bounds);
+			map.setMaxBounds(
+				bounds
+			);
+
+
+			map.fitBounds(
+				bounds
+			);
 		}
 	}
+
 
 
 	/* ==========================================
@@ -279,7 +593,8 @@
 	/*
 		IMPORTANTE:
 
-		Os dados estruturais não dependem do idioma.
+		Os dados estruturais não dependem
+		do idioma.
 
 		IDs, categorias, coordenadas e layers
 		continuam sempre iguais.
@@ -290,30 +605,61 @@
 	const locations = [
 
 		{
-			id: 'church-of-elleh',
+
+			id:
+				'church-of-elleh',
+
 
 			/* Layer a que pertence este marcador */
-			mapLayer: 'surface',
+
+			mapLayer:
+				'surface',
+
+
+			/*
+				Categoria interna.
+
+				É esta propriedade que permite
+				aos filtros saberem quais
+				marcadores mostrar/esconder.
+			*/
+
+			categoryId:
+				'site_of_grace',
+
 
 			/* Traduções */
-			nameKey: 'church_of_elleh',
+
+			nameKey:
+				'church_of_elleh',
+
 			descriptionKey:
 				'church_of_elleh_description',
 
-			categoryKey: 'site_of_grace',
+			categoryKey:
+				'site_of_grace',
 
-			regionKey: 'limgrave',
+			regionKey:
+				'limgrave',
+
 
 			/* Coordenadas Leaflet = [Y, X] */
-			coordinates: [2300, 3204],
+
+			coordinates:
+				[2300, 3204],
+
 
 			/* Ícone mostrado no mapa */
+
 			icon:
 				'/icons/site-of-grace.png',
 
+
 			/* Imagem mostrada dentro do popup */
+
 			image:
 				'/locations/church-of-elleh.jpg',
+
 
 
 			/* =====================================
@@ -324,13 +670,18 @@
 			   não aparecem no popup.
 			*/
 
-			npcs: [],
+			npcs:
+				[],
 
-			items: [],
+			items:
+				[],
 
-			quests: [],
+			quests:
+				[],
 
-			notesKey: null,
+			notesKey:
+				null,
+
 
 
 			/* =====================================
@@ -349,17 +700,23 @@
 
 			premium: {
 
-				provider: 'supabase',
+				provider:
+					'supabase',
 
 				sections: [
+
 					'npcs',
+
 					'items',
+
 					'quests',
+
 					'notes'
 				]
 			}
 		}
 	];
+
 
 
 	/* ==========================================
@@ -371,15 +728,37 @@
 		Evita que texto introduzido futuramente
 		possa inserir HTML inesperado no popup.
 	*/
+
 	function escapeHtml(value) {
 
 		return String(value)
-			.replaceAll('&', '&amp;')
-			.replaceAll('<', '&lt;')
-			.replaceAll('>', '&gt;')
-			.replaceAll('"', '&quot;')
-			.replaceAll("'", '&#039;');
+
+			.replaceAll(
+				'&',
+				'&amp;'
+			)
+
+			.replaceAll(
+				'<',
+				'&lt;'
+			)
+
+			.replaceAll(
+				'>',
+				'&gt;'
+			)
+
+			.replaceAll(
+				'"',
+				'&quot;'
+			)
+
+			.replaceAll(
+				"'",
+				'&#039;'
+			);
 	}
+
 
 
 	/*
@@ -389,21 +768,34 @@
 
 		npcs: ['merchant_kale']
 	*/
+
 	function translateList(list) {
 
-		if (!list || !list.length) {
+		if (
+			!list ||
+			!list.length
+		) {
+
 			return '';
 		}
 
+
 		return list
-			.map((item) => t(item))
+
+			.map(
+				(item) => t(item)
+			)
+
 			.join(', ');
 	}
 
 
+
 	/*
-		Cria uma linha opcional do popup.
+		Cria uma linha opcional
+		do popup.
 	*/
+
 	function createPopupInfoRow(
 		labelKey,
 		value
@@ -411,15 +803,23 @@
 
 		if (!value) return '';
 
+
 		return `
 			<div class="deepmap-popup-info-row">
 
 				<span class="deepmap-popup-info-label">
-					${escapeHtml(t(labelKey))}
+
+					${escapeHtml(
+						t(labelKey)
+					)}
+
 				</span>
 
+
 				<span class="deepmap-popup-info-value">
+
 					${escapeHtml(value)}
+
 				</span>
 
 			</div>
@@ -427,90 +827,145 @@
 	}
 
 
-	/*
-		Constrói todo o popup de uma localização.
-	*/
-	function buildLocationPopup(location) {
 
-		let optionalInformation = '';
+	/*
+		Constrói todo o popup
+		de uma localização.
+	*/
+
+	function buildLocationPopup(
+		location
+	) {
+
+		let optionalInformation =
+			'';
+
 
 
 		/* Região */
 
-		if (location.regionKey) {
+		if (
+			location.regionKey
+		) {
 
 			optionalInformation +=
 				createPopupInfoRow(
+
 					'region',
-					t(location.regionKey)
+
+					t(
+						location.regionKey
+					)
 				);
 		}
+
 
 
 		/* NPCs */
 
-		if (location.npcs?.length) {
+		if (
+			location.npcs?.length
+		) {
 
 			optionalInformation +=
 				createPopupInfoRow(
+
 					'npcs',
-					translateList(location.npcs)
+
+					translateList(
+						location.npcs
+					)
 				);
 		}
+
 
 
 		/* Itens */
 
-		if (location.items?.length) {
+		if (
+			location.items?.length
+		) {
 
 			optionalInformation +=
 				createPopupInfoRow(
+
 					'items',
-					translateList(location.items)
+
+					translateList(
+						location.items
+					)
 				);
 		}
+
 
 
 		/* Quests */
 
-		if (location.quests?.length) {
+		if (
+			location.quests?.length
+		) {
 
 			optionalInformation +=
 				createPopupInfoRow(
+
 					'quests',
-					translateList(location.quests)
+
+					translateList(
+						location.quests
+					)
 				);
 		}
+
 
 
 		/* Notas */
 
-		if (location.notesKey) {
+		if (
+			location.notesKey
+		) {
 
 			optionalInformation +=
 				createPopupInfoRow(
+
 					'notes',
-					t(location.notesKey)
+
+					t(
+						location.notesKey
+					)
 				);
 		}
 
 
+
 		/* Imagem */
 
-		const imageHTML = location.image
-			? `
-				<div class="deepmap-popup-image-wrapper">
+		const imageHTML =
+			location.image
 
-					<img
-						src="${escapeHtml(location.image)}"
-						alt="${escapeHtml(t(location.nameKey))}"
-						class="deepmap-popup-image"
-						onerror="this.parentElement.style.display='none'"
-					/>
+				? `
+					<div class="deepmap-popup-image-wrapper">
 
-				</div>
-			`
-			: '';
+						<img
+							src="${escapeHtml(
+								location.image
+							)}"
+
+							alt="${escapeHtml(
+								t(
+									location.nameKey
+								)
+							)}"
+
+							class="deepmap-popup-image"
+
+							onerror="this.parentElement.style.display='none'"
+						/>
+
+					</div>
+				`
+
+				: '';
+
 
 
 		return `
@@ -524,16 +979,22 @@
 
 
 					<div class="deepmap-popup-category">
+
 						${escapeHtml(
-							t(location.categoryKey)
+							t(
+								location.categoryKey
+							)
 						)}
+
 					</div>
 
 
 					<h3 class="deepmap-popup-title">
 
 						${escapeHtml(
-							t(location.nameKey)
+							t(
+								location.nameKey
+							)
 						)}
 
 					</h3>
@@ -541,6 +1002,7 @@
 
 					${
 						optionalInformation
+
 							? `
 								<div class="deepmap-popup-info">
 
@@ -548,12 +1010,14 @@
 
 								</div>
 							`
+
 							: ''
 					}
 
 
 					${
 						location.descriptionKey
+
 							? `
 								<p class="deepmap-popup-description">
 
@@ -565,6 +1029,7 @@
 
 								</p>
 							`
+
 							: ''
 					}
 
@@ -576,79 +1041,124 @@
 	}
 
 
+
 	/* ==========================================
 	   MARCADORES
 	   ========================================== */
 
 
-	function createLocationIcon(location) {
+	function createLocationIcon(
+		location
+	) {
 
 		return Leaflet.icon({
 
-			iconUrl: location.icon,
+			iconUrl:
+				location.icon,
+
 
 			/*
 				O teu ícone atual é mais alto
 				do que largo.
 
-				Podemos ajustar depois se quiseres.
+				Podemos ajustar depois
+				se quiseres.
 			*/
 
-			iconSize: [34, 46],
+			iconSize:
+				[34, 46],
 
-			iconAnchor: [17, 46],
+			iconAnchor:
+				[17, 46],
 
-			popupAnchor: [0, -42],
+			popupAnchor:
+				[0, -42],
 
-			className: 'deepmap-marker-icon'
+			className:
+				'deepmap-marker-icon'
 		});
 	}
+
 
 
 	/*
 		Cria/recria os marcadores.
 
-		É utilizado também quando mudamos
-		o idioma.
+		É utilizado quando:
+		- mudamos o idioma
+		- ativamos/desativamos filtros
 	*/
+
 	function renderLocationMarkers() {
 
 		if (
 			!map ||
 			!Leaflet ||
-			!Object.keys(markerLayerGroups).length
+			!Object.keys(
+				markerLayerGroups
+			).length
 		) {
+
 			return;
 		}
+
 
 
 		/* Limpa os grupos */
 
 		for (
 			const group of
-			Object.values(markerLayerGroups)
+			Object.values(
+				markerLayerGroups
+			)
 		) {
 
 			group.clearLayers();
 		}
 
 
+
 		/* Cria os marcadores */
 
-		for (const location of locations) {
+		for (
+			const location of
+			locations
+		) {
+
+
+			/*
+				Se a categoria estiver desligada
+				no filtro, não criamos o marcador.
+			*/
+
+			if (
+				categoryVisibility[
+					location.categoryId
+				] === false
+			) {
+
+				continue;
+			}
+
+
 
 			const group =
 				markerLayerGroups[
 					location.mapLayer
 				];
 
+
 			if (!group) continue;
+
 
 
 			const marker =
 				Leaflet.marker(
+
 					location.coordinates,
+
 					{
+
 						icon:
 							createLocationIcon(
 								location
@@ -662,17 +1172,28 @@
 				);
 
 
+
 			/* Popup */
 
 			marker.bindPopup(
-				buildLocationPopup(location),
+
+				buildLocationPopup(
+					location
+				),
+
 				{
-					maxWidth: 330,
-					minWidth: 280,
+
+					maxWidth:
+						330,
+
+					minWidth:
+						280,
+
 					className:
 						'deepmap-leaflet-popup'
 				}
 			);
+
 
 
 			/*
@@ -681,45 +1202,70 @@
 			*/
 
 			marker.bindTooltip(
-				t(location.nameKey),
+
+				t(
+					location.nameKey
+				),
+
 				{
-					direction: 'top',
-					offset: [0, -38]
+
+					direction:
+						'top',
+
+					offset:
+						[0, -38]
 				}
 			);
 
 
-			marker.addTo(group);
+
+			marker.addTo(
+				group
+			);
 		}
 	}
+
 
 
 	/* ==========================================
 	   EDITOR DE COORDENADAS
 	   ========================================== */
 
-	let editorMode = false;
+	let editorMode =
+		false;
 
-	let editorMarker = null;
 
-	let editorX = null;
-	let editorY = null;
+	let editorMarker =
+		null;
+
+
+	let editorX =
+		null;
+
+
+	let editorY =
+		null;
+
 
 
 	/*
-		Atualiza visualmente toda a interface
-		do editor.
+		Atualiza visualmente toda
+		a interface do editor.
 
-		A interface fica sempre presente no HTML.
+		A interface fica sempre
+		presente no HTML.
 	*/
+
 	function updateEditorInterface() {
 
 		if (
 			typeof document ===
 			'undefined'
 		) {
+
 			return;
 		}
+
 
 
 		const editorButton =
@@ -727,50 +1273,60 @@
 				'editor-toggle'
 			);
 
+
 		const editorStatus =
 			document.getElementById(
 				'editor-status'
 			);
+
 
 		const coordinatePanel =
 			document.getElementById(
 				'coordinate-panel'
 			);
 
+
 		const xValue =
 			document.getElementById(
 				'editor-x'
 			);
+
 
 		const yValue =
 			document.getElementById(
 				'editor-y'
 			);
 
+
 		const arrayValue =
 			document.getElementById(
 				'editor-array'
 			);
+
 
 		const instruction =
 			document.getElementById(
 				'editor-instruction'
 			);
 
+
 		const coordinatesContent =
 			document.getElementById(
 				'coordinates-content'
 			);
+
 
 		const copyButton =
 			document.getElementById(
 				'copy-coordinates'
 			);
 
+
 		const copyStatus =
 			document.getElementById(
 				'copy-status'
 			);
+
 
 
 		/* Editor desligado */
@@ -780,7 +1336,8 @@
 			if (editorButton) {
 
 				editorButton.textContent =
-					'⚙️ EDITOR';
+					t('editor');
+
 
 				editorButton.classList.remove(
 					'active'
@@ -801,8 +1358,10 @@
 					'none';
 			}
 
+
 			return;
 		}
+
 
 
 		/* Editor ligado */
@@ -810,7 +1369,10 @@
 		if (editorButton) {
 
 			editorButton.textContent =
-				'🛠️ EDITOR ATIVO';
+				t(
+					'editor_active'
+				);
+
 
 			editorButton.classList.add(
 				'active'
@@ -830,6 +1392,7 @@
 			coordinatePanel.style.display =
 				'block';
 		}
+
 
 
 		/* Ainda não existe ponto */
@@ -866,8 +1429,10 @@
 					'';
 			}
 
+
 			return;
 		}
+
 
 
 		/* Temos coordenadas */
@@ -900,6 +1465,7 @@
 		}
 
 
+
 		/*
 			Leaflet utiliza:
 
@@ -928,10 +1494,14 @@
 	}
 
 
+
 	/* Liga / desliga o editor */
+
 	function toggleEditor() {
 
-		editorMode = !editorMode;
+		editorMode =
+			!editorMode;
+
 
 
 		if (!editorMode) {
@@ -947,26 +1517,37 @@
 			}
 
 
-			editorMarker = null;
+			editorMarker =
+				null;
 
-			editorX = null;
-			editorY = null;
+
+			editorX =
+				null;
+
+
+			editorY =
+				null;
 		}
+
 
 
 		updateEditorInterface();
 	}
 
 
+
 	/* Copiar coordenadas */
+
 	async function copyCoordinates() {
 
 		if (
 			editorX === null ||
 			editorY === null
 		) {
+
 			return;
 		}
+
 
 
 		const coordinates =
@@ -979,6 +1560,7 @@
 			);
 
 
+
 		try {
 
 			await navigator.clipboard.writeText(
@@ -989,10 +1571,11 @@
 			if (copyStatus) {
 
 				copyStatus.textContent =
-					'✓ Copiado!';
+					t('copied');
 			}
 
 		} catch (error) {
+
 
 			const textarea =
 				document.createElement(
@@ -1003,8 +1586,10 @@
 			textarea.value =
 				coordinates;
 
+
 			textarea.style.position =
 				'fixed';
+
 
 			textarea.style.opacity =
 				'0';
@@ -1017,7 +1602,11 @@
 
 			textarea.select();
 
-			document.execCommand('copy');
+
+			document.execCommand(
+				'copy'
+			);
+
 
 			document.body.removeChild(
 				textarea
@@ -1027,10 +1616,11 @@
 			if (copyStatus) {
 
 				copyStatus.textContent =
-					'✓ Copiado!';
+					t('copied');
 			}
 		}
 	}
+
 
 
 	/* ==========================================
@@ -1039,19 +1629,26 @@
 
 	onMount(async () => {
 
+
 		const L =
-			await import('leaflet');
+			await import(
+				'leaflet'
+			);
+
 
 		await import(
 			'leaflet/dist/leaflet.css'
 		);
 
 
-		Leaflet = L;
+		Leaflet =
+			L;
+
 
 
 		const surfaceDefinition =
 			mapDefinitions.surface;
+
 
 
 		const bounds =
@@ -1060,27 +1657,37 @@
 			);
 
 
+
 		map =
 			L.map(
+
 				mapContainer,
+
 				{
+
 					crs:
 						L.CRS.Simple,
+
 
 					maxBounds:
 						bounds,
 
+
 					maxBoundsViscosity:
 						0.8,
+
 
 					attributionControl:
 						false,
 
+
 					minZoom:
 						-3,
 
+
 					maxZoom:
 						2,
+
 
 					zoomSnap:
 						0.25
@@ -1088,13 +1695,18 @@
 			);
 
 
+
 		/* Imagem principal */
 
 		mapImageOverlay =
 			L.imageOverlay(
+
 				surfaceDefinition.image,
+
 				bounds
+
 			).addTo(map);
+
 
 
 		/* ==========================================
@@ -1116,7 +1728,9 @@
 
 						const div =
 							L.DomUtil.create(
+
 								'div',
+
 								'map-watermark'
 							);
 
@@ -1134,9 +1748,11 @@
 			});
 
 
+
 		map.addControl(
 			new LogoWatermark()
 		);
+
 
 
 		/* ==========================================
@@ -1145,7 +1761,9 @@
 
 		setupMarkerLayers();
 
+
 		renderLocationMarkers();
+
 
 
 		/* ==========================================
@@ -1154,11 +1772,17 @@
 
 		map.on(
 			'click',
+
 			(e) => {
 
-				if (!editorMode) {
+
+				if (
+					!editorMode
+				) {
+
 					return;
 				}
+
 
 
 				/*
@@ -1173,17 +1797,26 @@
 						e.latlng.lng
 					);
 
+
 				const y =
 					Math.round(
 						e.latlng.lat
 					);
 
 
-				editorX = x;
-				editorY = y;
+
+				editorX =
+					x;
 
 
-				if (editorMarker) {
+				editorY =
+					y;
+
+
+
+				if (
+					editorMarker
+				) {
 
 					map.removeLayer(
 						editorMarker
@@ -1191,24 +1824,36 @@
 				}
 
 
+
 				editorMarker =
 					Leaflet.circleMarker(
+
 						[y, x],
+
 						{
-							radius: 9,
+
+							radius:
+								9,
+
 
 							color:
 								'#ff9f1c',
 
-							weight: 3,
+
+							weight:
+								3,
+
 
 							fillColor:
 								'#ff9f1c',
 
+
 							fillOpacity:
 								0.45
 						}
+
 					).addTo(map);
+
 
 
 				updateEditorInterface();
@@ -1216,8 +1861,10 @@
 		);
 
 
+
 		mapImageOverlay.on(
 			'load',
+
 			() => {
 
 				map.fitBounds(
@@ -1227,25 +1874,32 @@
 		);
 
 
-		map.fitBounds(bounds);
+
+		map.fitBounds(
+			bounds
+		);
+
 
 
 		setTimeout(
+
 			() => {
 
 				if (map) {
 
 					map.invalidateSize();
 				}
-
 			},
+
 			250
 		);
 	});
 </script>
 
 
+
 <div class="app-container">
+
 
 	<!-- ================================================= -->
 	<!-- CONTROLO DO MENU MOBILE -->
@@ -1259,23 +1913,26 @@
 	/>
 
 
+
 	<!-- ================================================= -->
 	<!-- HEADER -->
 	<!-- ================================================= -->
 
 	<header class="header">
 
+
 		<!-- Botão do menu apenas para mobile -->
 
 		<label
 			for="mobile-menu-toggle"
 			class="mobile-toggle"
-			aria-label="Abrir Menu"
+			aria-label={t('open_menu')}
 		>
 
 			<span class="menu-icon">
 				☰
 			</span>
+
 
 			<span class="close-icon">
 				✕
@@ -1284,7 +1941,9 @@
 		</label>
 
 
+
 		<div class="brand">
+
 
 			<img
 				src="/logo.png"
@@ -1294,18 +1953,24 @@
 
 
 			<span class="game-title">
+
 				Elden Ring
+
 			</span>
 
 
 			<span class="version-tag">
-				v1.0.24
+
+				v1.0.25
+
 			</span>
 
 		</div>
 
 
+
 		<div class="header-actions">
+
 
 			<!-- Seletor de idioma -->
 
@@ -1313,12 +1978,13 @@
 				class="language-selector"
 				value={currentLanguage}
 				onchange={changeLanguage}
-				aria-label="Language"
+				aria-label={t('language')}
 			>
 
 				<option value="en">
 					EN
 				</option>
+
 
 				<option value="pt">
 					PT
@@ -1327,16 +1993,21 @@
 			</select>
 
 
+
 			<div class="checklist-status">
 
 				{t('checklist')}
-				<span>(0%)</span>
+
+				<span>
+					(0%)
+				</span>
 
 			</div>
 
 		</div>
 
 	</header>
+
 
 
 	<!-- ================================================= -->
@@ -1346,13 +2017,17 @@
 
 	<div class="editor-ui">
 
+
 		<button
 			id="editor-toggle"
 			class="editor-toggle"
 			onclick={toggleEditor}
 		>
-			⚙️ EDITOR
+
+			{t('editor')}
+
 		</button>
+
 
 
 		<div
@@ -1360,17 +2035,24 @@
 			class="coordinate-panel"
 		>
 
+
 			<div class="coordinate-title">
-				🛠️ EDITOR DE COORDENADAS
+
+				{t('coordinate_editor')}
+
 			</div>
+
 
 
 			<div
 				id="editor-instruction"
 				class="editor-instruction"
 			>
-				Clica num ponto do mapa para obter as coordenadas.
+
+				{t('editor_instruction')}
+
 			</div>
+
 
 
 			<div
@@ -1378,9 +2060,12 @@
 				class="coordinates-content"
 			>
 
+
 				<div class="coordinate-row">
 
-					<span>X:</span>
+					<span>
+						X:
+					</span>
 
 					<strong id="editor-x">
 						—
@@ -1389,9 +2074,12 @@
 				</div>
 
 
+
 				<div class="coordinate-row">
 
-					<span>Y:</span>
+					<span>
+						Y:
+					</span>
 
 					<strong id="editor-y">
 						—
@@ -1400,21 +2088,29 @@
 				</div>
 
 
+
 				<div class="coordinate-divider">
 				</div>
 
 
+
 				<div class="coordinate-label">
-					Pronto para Leaflet:
+
+					{t('ready_for_leaflet')}
+
 				</div>
+
 
 
 				<div
 					id="editor-array"
 					class="coordinate-array"
 				>
+
 					[Y, X]
+
 				</div>
+
 
 
 				<button
@@ -1423,20 +2119,25 @@
 					onclick={copyCoordinates}
 					disabled
 				>
-					📋 COPIAR
+
+					{t('copy')}
+
 				</button>
+
 
 
 				<div
 					id="copy-status"
 					class="copy-status"
-				></div>
+				>
+				</div>
 
 			</div>
 
 		</div>
 
 	</div>
+
 
 
 	<!-- Indicador do modo editor -->
@@ -1449,9 +2150,11 @@
 		<span class="editor-status-dot">
 		</span>
 
-		MODO EDITOR ATIVO — Clica no mapa
+
+		{t('editor_status')}
 
 	</div>
+
 
 
 	<!-- ================================================= -->
@@ -1460,29 +2163,45 @@
 
 	<div class="body-container">
 
+
 		<!-- Sidebar Desktop -->
 
 		<aside class="desktop-sidebar">
 
+
 			<div class="sidebar-content">
+
 
 				<h2>
 					{t('filters')}
 				</h2>
 
 
+
 				<div class="filter-group">
+
 
 					<h3>
 						{t('locations')}
 					</h3>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.site_of_grace
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'site_of_grace',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('sites_of_grace')}
@@ -1490,11 +2209,22 @@
 					</label>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.dungeon
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'dungeon',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('dungeons_caverns')}
@@ -1502,11 +2232,22 @@
 					</label>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.boss
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'boss',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('bosses')}
@@ -1516,18 +2257,31 @@
 				</div>
 
 
+
 				<div class="filter-group">
+
 
 					<h3>
 						{t('collectibles')}
 					</h3>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.weapon_equipment
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'weapon_equipment',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('weapons_equipment')}
@@ -1535,11 +2289,22 @@
 					</label>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.stonesword_key
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'stonesword_key',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('stonesword_keys')}
@@ -1547,11 +2312,22 @@
 					</label>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.talisman
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'talisman',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('talismans')}
@@ -1565,6 +2341,7 @@
 		</aside>
 
 
+
 		<!-- Contentor do Mapa Leaflet -->
 
 		<main class="map-wrapper">
@@ -1572,11 +2349,13 @@
 			<div
 				bind:this={mapContainer}
 				class="map-element"
-			></div>
+			>
+			</div>
 
 		</main>
 
 	</div>
+
 
 
 	<!-- ================================================= -->
@@ -1586,47 +2365,69 @@
 
 	<div class="mobile-menu-layer">
 
+
 		<label
 			for="mobile-menu-toggle"
 			class="mobile-backdrop"
-			aria-label="Fechar Menu"
-		></label>
+			aria-label={t('close_menu')}
+		>
+		</label>
+
 
 
 		<aside class="mobile-sidebar">
 
+
 			<div class="mobile-sidebar-header">
+
 
 				<h2>
 					{t('filters')}
 				</h2>
 
 
+
 				<label
 					for="mobile-menu-toggle"
 					class="mobile-close"
-					aria-label="Fechar Menu"
+					aria-label={t('close_menu')}
 				>
+
 					✕
+
 				</label>
 
 			</div>
 
 
+
 			<div class="sidebar-content">
 
+
 				<div class="filter-group">
+
 
 					<h3>
 						{t('locations')}
 					</h3>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.site_of_grace
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'site_of_grace',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('sites_of_grace')}
@@ -1634,11 +2435,22 @@
 					</label>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.dungeon
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'dungeon',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('dungeons_caverns')}
@@ -1646,11 +2458,22 @@
 					</label>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.boss
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'boss',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('bosses')}
@@ -1660,18 +2483,31 @@
 				</div>
 
 
+
 				<div class="filter-group">
+
 
 					<h3>
 						{t('collectibles')}
 					</h3>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.weapon_equipment
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'weapon_equipment',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('weapons_equipment')}
@@ -1679,11 +2515,22 @@
 					</label>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.stonesword_key
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'stonesword_key',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('stonesword_keys')}
@@ -1691,11 +2538,22 @@
 					</label>
 
 
+
 					<label>
 
 						<input
 							type="checkbox"
-							checked
+
+							checked={
+								categoryVisibility.talisman
+							}
+
+							onchange={(event) =>
+								setCategoryVisibility(
+									'talisman',
+									event.currentTarget.checked
+								)
+							}
 						/>
 
 						{t('talismans')}
@@ -1713,15 +2571,18 @@
 </div>
 
 
+
 <style>
 
 	:global(html),
 	:global(body) {
 
 		margin: 0;
+
 		padding: 0;
 
 		width: 100%;
+
 		height: 100%;
 
 		overflow: hidden;
@@ -1739,17 +2600,20 @@
 	}
 
 
+
 	.app-container {
 
 		width: 100vw;
 
 		height: 100vh;
+
 		height: 100dvh;
 
 		overflow: hidden;
 
 		background: #0b0b0e;
 	}
+
 
 
 	/* ==========================================
@@ -1761,20 +2625,24 @@
 		position: fixed;
 
 		top: 0;
+
 		left: 0;
+
 		right: 0;
 
 		height: 56px;
 
 		background: #16161a;
 
-		border-bottom: 1px solid #2a2a30;
+		border-bottom:
+			1px solid #2a2a30;
 
 		display: flex;
 
 		align-items: center;
 
-		justify-content: space-between;
+		justify-content:
+			space-between;
 
 		padding: 0 16px;
 
@@ -1782,6 +2650,7 @@
 
 		z-index: 10000;
 	}
+
 
 
 	.brand {
@@ -1794,12 +2663,14 @@
 	}
 
 
+
 	.logo-img {
 
 		height: 32px;
 
 		width: auto;
 	}
+
 
 
 	.game-title {
@@ -1814,6 +2685,7 @@
 	}
 
 
+
 	.version-tag {
 
 		font-size: 0.75rem;
@@ -1826,8 +2698,10 @@
 
 		border-radius: 4px;
 
-		border: 1px solid #333340;
+		border:
+			1px solid #333340;
 	}
+
 
 
 	.header-actions {
@@ -1840,11 +2714,13 @@
 	}
 
 
+
 	.language-selector {
 
 		background: #22222a;
 
-		border: 1px solid #3a3a45;
+		border:
+			1px solid #3a3a45;
 
 		border-radius: 5px;
 
@@ -1860,10 +2736,12 @@
 	}
 
 
+
 	.language-selector:hover {
 
 		border-color: #c8a355;
 	}
+
 
 
 	.checklist-status {
@@ -1874,6 +2752,7 @@
 	}
 
 
+
 	.checklist-status span {
 
 		color: #c8a355;
@@ -1882,13 +2761,16 @@
 	}
 
 
+
 	/* ==========================================
 	   BOTÃO MOBILE
 	   ========================================== */
 
 	.mobile-menu-checkbox {
+
 		display: none;
 	}
+
 
 
 	.mobile-toggle {
@@ -1921,6 +2803,7 @@
 	}
 
 
+
 	.menu-icon,
 	.close-icon {
 
@@ -1930,9 +2813,12 @@
 	}
 
 
+
 	.close-icon {
+
 		display: none;
 	}
+
 
 
 	/* ==========================================
@@ -1955,6 +2841,7 @@
 	}
 
 
+
 	.editor-toggle {
 
 		display: block;
@@ -1965,7 +2852,8 @@
 
 		background: #16161a;
 
-		border: 1px solid #c8a355;
+		border:
+			1px solid #c8a355;
 
 		border-radius: 6px;
 
@@ -1992,9 +2880,12 @@
 	}
 
 
+
 	.editor-toggle:hover {
+
 		background: #22222a;
 	}
+
 
 
 	.editor-toggle.active {
@@ -2009,6 +2900,7 @@
 			0 5px 20px
 				rgba(0, 0, 0, 0.5);
 	}
+
 
 
 	.coordinate-panel {
@@ -2033,10 +2925,12 @@
 			0 8px 30px
 			rgba(0, 0, 0, 0.65);
 
-		backdrop-filter: blur(8px);
+		backdrop-filter:
+			blur(8px);
 
 		pointer-events: auto;
 	}
+
 
 
 	.coordinate-title {
@@ -2058,6 +2952,7 @@
 	}
 
 
+
 	.editor-instruction {
 
 		font-size: 0.85rem;
@@ -2068,9 +2963,12 @@
 	}
 
 
+
 	.coordinates-content {
+
 		display: none;
 	}
+
 
 
 	.coordinate-row {
@@ -2088,9 +2986,12 @@
 	}
 
 
+
 	.coordinate-row span {
+
 		color: #9999a5;
 	}
+
 
 
 	.coordinate-row strong {
@@ -2099,6 +3000,7 @@
 
 		font-size: 1rem;
 	}
+
 
 
 	.coordinate-divider {
@@ -2111,18 +3013,21 @@
 	}
 
 
+
 	.coordinate-label {
 
 		color: #888899;
 
 		font-size: 0.75rem;
 
-		text-transform: uppercase;
+		text-transform:
+			uppercase;
 
 		letter-spacing: 0.5px;
 
 		margin-bottom: 7px;
 	}
+
 
 
 	.coordinate-array {
@@ -2152,6 +3057,7 @@
 	}
 
 
+
 	.copy-button {
 
 		width: 100%;
@@ -2174,12 +3080,14 @@
 	}
 
 
+
 	.copy-button:disabled {
 
 		opacity: 0.35;
 
 		cursor: not-allowed;
 	}
+
 
 
 	.copy-status {
@@ -2196,6 +3104,7 @@
 
 		text-align: center;
 	}
+
 
 
 	.editor-status {
@@ -2237,10 +3146,12 @@
 			0 5px 20px
 			rgba(0, 0, 0, 0.55);
 
-		z-index: 999999 !important;
+		z-index:
+			999999 !important;
 
 		pointer-events: none;
 	}
+
 
 
 	.editor-status-dot {
@@ -2257,6 +3168,7 @@
 			0 0 8px
 			rgba(255, 159, 28, 0.8);
 	}
+
 
 
 	/* ==========================================
@@ -2279,6 +3191,7 @@
 
 		display: flex;
 	}
+
 
 
 	/* ==========================================
@@ -2310,6 +3223,7 @@
 	}
 
 
+
 	.sidebar-content {
 
 		padding: 20px;
@@ -2320,6 +3234,7 @@
 
 		box-sizing: border-box;
 	}
+
 
 
 	.desktop-sidebar h2 {
@@ -2337,9 +3252,12 @@
 	}
 
 
+
 	.filter-group {
+
 		margin-bottom: 20px;
 	}
+
 
 
 	.filter-group h3 {
@@ -2348,12 +3266,14 @@
 
 		color: #888;
 
-		text-transform: uppercase;
+		text-transform:
+			uppercase;
 
 		letter-spacing: 0.5px;
 
 		margin-bottom: 10px;
 	}
+
 
 
 	.filter-group label {
@@ -2372,6 +3292,7 @@
 	}
 
 
+
 	.filter-group input[type='checkbox'] {
 
 		accent-color: #c8a355;
@@ -2380,6 +3301,7 @@
 
 		height: 16px;
 	}
+
 
 
 	/* ==========================================
@@ -2402,6 +3324,7 @@
 	}
 
 
+
 	.map-element {
 
 		position: absolute;
@@ -2416,6 +3339,7 @@
 
 		background: #0b0b0e;
 	}
+
 
 
 	/* ==========================================
@@ -2435,10 +3359,13 @@
 	}
 
 
+
 	:global(.deepmap-marker-icon:hover) {
 
-		transform: scale(1.12);
+		transform:
+			scale(1.12);
 	}
+
 
 
 	/* ==========================================
@@ -2467,6 +3394,7 @@
 	}
 
 
+
 	:global(.deepmap-leaflet-popup .leaflet-popup-content) {
 
 		margin: 0;
@@ -2475,35 +3403,45 @@
 	}
 
 
+
 	:global(.deepmap-leaflet-popup .leaflet-popup-tip) {
 
 		background: #16161a;
 	}
 
 
+
 	:global(.deepmap-leaflet-popup .leaflet-popup-close-button) {
 
-		color: #ffffff !important;
+		color:
+			#ffffff !important;
 
 		background:
 			rgba(0, 0, 0, 0.55) !important;
 
-		width: 28px !important;
+		width:
+			28px !important;
 
-		height: 28px !important;
+		height:
+			28px !important;
 
-		line-height: 27px !important;
+		line-height:
+			27px !important;
 
 		border-radius: 50%;
 
-		top: 7px !important;
+		top:
+			7px !important;
 
-		right: 7px !important;
+		right:
+			7px !important;
 
 		z-index: 5;
 
-		font-size: 18px !important;
+		font-size:
+			18px !important;
 	}
+
 
 
 	:global(.deepmap-popup) {
@@ -2512,6 +3450,7 @@
 
 		max-width: 100%;
 	}
+
 
 
 	:global(.deepmap-popup-image-wrapper) {
@@ -2526,6 +3465,7 @@
 	}
 
 
+
 	:global(.deepmap-popup-image) {
 
 		width: 100%;
@@ -2538,10 +3478,13 @@
 	}
 
 
+
 	:global(.deepmap-popup-body) {
 
-		padding: 15px 16px 17px;
+		padding:
+			15px 16px 17px;
 	}
+
 
 
 	:global(.deepmap-popup-category) {
@@ -2554,10 +3497,12 @@
 
 		letter-spacing: 0.8px;
 
-		text-transform: uppercase;
+		text-transform:
+			uppercase;
 
 		margin-bottom: 4px;
 	}
+
 
 
 	:global(.deepmap-popup-title) {
@@ -2573,6 +3518,7 @@
 
 		line-height: 1.25;
 	}
+
 
 
 	:global(.deepmap-popup-info) {
@@ -2591,6 +3537,7 @@
 	}
 
 
+
 	:global(.deepmap-popup-info-row) {
 
 		display: flex;
@@ -2606,10 +3553,12 @@
 	}
 
 
+
 	:global(.deepmap-popup-info-label) {
 
 		color: #888894;
 	}
+
 
 
 	:global(.deepmap-popup-info-value) {
@@ -2622,6 +3571,7 @@
 	}
 
 
+
 	:global(.deepmap-popup-description) {
 
 		margin: 0;
@@ -2632,6 +3582,7 @@
 
 		line-height: 1.5;
 	}
+
 
 
 	/* Marca d'água no canto inferior direito (Apenas logo e bem transparente) */
@@ -2653,9 +3604,10 @@
 
 		border:
 			1px solid
-				rgba(200, 163, 85, 0.2);
+			rgba(200, 163, 85, 0.2);
 
-		backdrop-filter: blur(4px);
+		backdrop-filter:
+			blur(4px);
 
 		margin-bottom: 12px;
 
@@ -2665,6 +3617,7 @@
 
 		pointer-events: none;
 	}
+
 
 
 	:global(.map-watermark img) {
@@ -2677,13 +3630,16 @@
 	}
 
 
+
 	/* ==========================================
 	   MENU MOBILE
 	   ========================================== */
 
 	.mobile-menu-layer {
+
 		display: none;
 	}
+
 
 
 	/* ==========================================
@@ -2691,6 +3647,7 @@
 	   ========================================== */
 
 	@media (max-width: 768px) {
+
 
 		/* Header */
 
@@ -2700,9 +3657,12 @@
 		}
 
 
+
 		.mobile-toggle {
+
 			display: flex;
 		}
+
 
 
 		.brand {
@@ -2715,25 +3675,33 @@
 		}
 
 
+
 		.logo-img {
+
 			height: 30px;
 		}
 
 
+
 		.game-title {
+
 			font-size: 1rem;
 		}
 
 
+
 		.version-tag {
+
 			font-size: 0.65rem;
 		}
+
 
 
 		.header-actions {
 
 			gap: 6px;
 		}
+
 
 
 		.language-selector {
@@ -2744,9 +3712,12 @@
 		}
 
 
+
 		.checklist-status {
+
 			display: none;
 		}
+
 
 
 		/* Editor não aparece no mobile */
@@ -2758,11 +3729,14 @@
 		}
 
 
+
 		/* Sidebar Desktop desaparece no telemóvel */
 
 		.desktop-sidebar {
+
 			display: none;
 		}
+
 
 
 		/* O mapa ocupa 100% do ecrã */
@@ -2775,6 +3749,7 @@
 		}
 
 
+
 		/* Popup ligeiramente menor em mobile */
 
 		:global(.deepmap-popup) {
@@ -2783,10 +3758,12 @@
 		}
 
 
+
 		:global(.deepmap-popup-image-wrapper) {
 
 			height: 145px;
 		}
+
 
 
 		/* ==========================================
@@ -2813,6 +3790,7 @@
 		}
 
 
+
 		/* Quando o checkbox está activo, mostra o menu */
 
 		.mobile-menu-checkbox:checked ~ .mobile-menu-layer {
@@ -2823,6 +3801,7 @@
 		}
 
 
+
 		/* Troca ☰ por X */
 
 		.mobile-menu-checkbox:checked ~ .header .mobile-toggle .menu-icon {
@@ -2831,10 +3810,12 @@
 		}
 
 
+
 		.mobile-menu-checkbox:checked ~ .header .mobile-toggle .close-icon {
 
 			display: block;
 		}
+
 
 
 		.mobile-backdrop {
@@ -2854,6 +3835,7 @@
 			background:
 				rgba(0, 0, 0, 0.65);
 		}
+
 
 
 		.mobile-sidebar {
@@ -2888,6 +3870,7 @@
 		}
 
 
+
 		.mobile-sidebar-header {
 
 			height: 56px;
@@ -2905,8 +3888,10 @@
 			border-bottom:
 				1px solid #2a2a30;
 
-			box-sizing: border-box;
+			box-sizing:
+				border-box;
 		}
+
 
 
 		.mobile-sidebar-header h2 {
@@ -2917,6 +3902,7 @@
 
 			color: #c8a355;
 		}
+
 
 
 		.mobile-close {
@@ -2946,6 +3932,7 @@
 			touch-action:
 				manipulation;
 		}
+
 
 
 		.mobile-sidebar .sidebar-content {
