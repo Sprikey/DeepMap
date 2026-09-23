@@ -22,47 +22,33 @@
 			/* Interface */
 
 			filters: 'Filters',
-
 			locations: 'Locations',
-
 			collectibles: 'Collectibles',
 
 			sites_of_grace: 'Sites of Grace',
-
-			dungeons_caverns:
-				'Dungeons & Caverns',
-
+			dungeons_caverns: 'Dungeons & Caverns',
 			bosses: 'Bosses',
 
-			weapons_equipment:
-				'Weapons & Equipment',
+			weapons_equipment: 'Weapons & Equipment',
+			stonesword_keys: 'Stonesword Keys',
+			talismans: 'Talismans',
 
-			stonesword_keys:
-				'Stonesword Keys',
-
-			talismans:
-				'Talismans',
-
-			checklist:
-				'Checklist',
+			checklist: 'Checklist',
 
 
 			/* Categorias */
 
-			site_of_grace:
-				'Site of Grace',
+			site_of_grace: 'Site of Grace',
 
 
 			/* Regiões */
 
-			limgrave:
-				'Limgrave',
+			limgrave: 'Limgrave',
 
 
 			/* Locais */
 
-			church_of_elleh:
-				'Church of Elleh',
+			church_of_elleh: 'Church of Elleh',
 
 			church_of_elleh_description:
 				'A ruined church located in Limgrave. It contains a Site of Grace and is one of the first notable locations encountered when exploring the region.',
@@ -70,26 +56,16 @@
 
 			/* Labels opcionais do popup */
 
-			region:
-				'Region',
-
-			npcs:
-				'NPCs',
-
-			items:
-				'Items',
-
-			quests:
-				'Quests',
-
-			notes:
-				'Notes',
+			region: 'Region',
+			npcs: 'NPCs',
+			items: 'Items',
+			quests: 'Quests',
+			notes: 'Notes',
 
 
 			/* Editor */
 
-			editor:
-				'⚙️ EDITOR',
+			editor: '⚙️ EDITOR',
 
 			editor_active:
 				'🛠️ EDITOR ACTIVE',
@@ -130,53 +106,34 @@
 
 			/* Interface */
 
-			filters:
-				'Filtros',
+			filters: 'Filtros',
+			locations: 'Locais',
+			collectibles: 'Colecionáveis',
 
-			locations:
-				'Locais',
+			sites_of_grace: 'Locais de Graça',
+			dungeons_caverns: 'Masmorras e Cavernas',
+			bosses: 'Chefes',
 
-			collectibles:
-				'Colecionáveis',
+			weapons_equipment: 'Armas e Equipamento',
+			stonesword_keys: 'Chaves de Espada de Pedra',
+			talismans: 'Talismãs',
 
-			sites_of_grace:
-				'Locais de Graça',
-
-			dungeons_caverns:
-				'Masmorras e Cavernas',
-
-			bosses:
-				'Chefes',
-
-			weapons_equipment:
-				'Armas e Equipamento',
-
-			stonesword_keys:
-				'Chaves de Espada de Pedra',
-
-			talismans:
-				'Talismãs',
-
-			checklist:
-				'Progresso',
+			checklist: 'Progresso',
 
 
 			/* Categorias */
 
-			site_of_grace:
-				'Local de Graça',
+			site_of_grace: 'Local de Graça',
 
 
 			/* Regiões */
 
-			limgrave:
-				'Limgrave',
+			limgrave: 'Limgrave',
 
 
 			/* Locais */
 
-			church_of_elleh:
-				'Igreja de Elleh',
+			church_of_elleh: 'Igreja de Elleh',
 
 			church_of_elleh_description:
 				'Uma igreja em ruínas situada em Limgrave. Contém um Local de Graça e é um dos primeiros locais importantes encontrados ao explorar a região.',
@@ -184,20 +141,11 @@
 
 			/* Labels opcionais do popup */
 
-			region:
-				'Região',
-
-			npcs:
-				'NPCs',
-
-			items:
-				'Itens',
-
-			quests:
-				'Missões',
-
-			notes:
-				'Notas',
+			region: 'Região',
+			npcs: 'NPCs',
+			items: 'Itens',
+			quests: 'Missões',
+			notes: 'Notas',
 
 
 			/* Editor */
@@ -241,7 +189,34 @@
 	};
 
 
-	/* Obtém uma tradução */
+	/* ==========================================
+	   TRADUÇÃO REATIVA DA INTERFACE
+	   ========================================== */
+
+	/*
+		currentTexts muda automaticamente sempre
+		que currentLanguage muda.
+
+		No HTML usamos diretamente:
+
+		currentTexts.filters
+		currentTexts.locations
+		etc.
+
+		Isto garante que a sidebar desktop e
+		o menu mobile mudam imediatamente.
+	*/
+
+	$: currentTexts =
+		translations[currentLanguage] ??
+		translations.en;
+
+
+	/*
+		Esta função continua útil para elementos
+		criados manualmente pelo Leaflet,
+		como os popups e tooltips.
+	*/
 
 	function t(key) {
 
@@ -262,18 +237,15 @@
 
 
 		/*
-			Os textos normais da interface são
-			atualizados automaticamente pelo Svelte.
-
-			Os marcadores e popups Leaflet precisam
-			de ser reconstruídos.
+			Os marcadores e popups Leaflet
+			precisam de ser reconstruídos.
 		*/
 
 		renderLocationMarkers();
 
 
 		/*
-			O editor utiliza alguns elementos
+			Atualiza também os elementos do editor
 			controlados diretamente por JavaScript.
 		*/
 
@@ -291,9 +263,6 @@
 
 		Desktop e mobile utilizam exatamente
 		estes mesmos valores.
-
-		Por isso, alterar um checkbox num lado
-		atualiza automaticamente o outro.
 	*/
 
 	let categoryVisibility = {
@@ -329,11 +298,6 @@
 		};
 
 
-		/*
-			Recriamos os marcadores respeitando
-			os filtros atuais.
-		*/
-
 		renderLocationMarkers();
 	}
 
@@ -353,71 +317,57 @@
 		- DLC
 		- interiores
 		- etc.
-
-		As coordenadas dos marcadores pertencem
-		sempre à layer definida em "mapLayer".
 	*/
 
 	const mapDefinitions = {
 
 		surface: {
 
-			id:
-				'surface',
+			id: 'surface',
 
 			image:
 				'/mapa-elden-ring.jpg',
 
-			width:
-				8000,
+			width: 8000,
 
-			height:
-				8000
+			height: 8000
 		},
 
 
 		underground: {
 
-			id:
-				'underground',
+			id: 'underground',
 
 			/*
-				Quando tivermos o mapa
-				subterrâneo:
+				Quando tivermos
+				o mapa subterrâneo:
 
 				image:
 				'/maps/elden-ring-underground.jpg'
 			*/
 
-			image:
-				null,
+			image: null,
 
-			width:
-				8000,
+			width: 8000,
 
-			height:
-				8000
+			height: 8000
 		},
 
 
 		dlc: {
 
-			id:
-				'dlc',
+			id: 'dlc',
 
 			/*
-				Preparado para uma possível
-				layer/mapa DLC.
+				Preparado para
+				uma layer/mapa DLC.
 			*/
 
-			image:
-				null,
+			image: null,
 
-			width:
-				8000,
+			width: 8000,
 
-			height:
-				8000
+			height: 8000
 		}
 	};
 
@@ -484,10 +434,6 @@
 	/*
 		Função preparada para trocar
 		de mapa/camada.
-
-		Por enquanto não existe botão
-		na interface porque só temos
-		a superfície.
 
 		Mais tarde podemos chamar:
 
@@ -590,18 +536,6 @@
 	   DADOS DOS LOCAIS
 	   ========================================== */
 
-	/*
-		IMPORTANTE:
-
-		Os dados estruturais não dependem
-		do idioma.
-
-		IDs, categorias, coordenadas e layers
-		continuam sempre iguais.
-
-		Os textos usam keys de tradução.
-	*/
-
 	const locations = [
 
 		{
@@ -610,19 +544,13 @@
 				'church-of-elleh',
 
 
-			/* Layer a que pertence este marcador */
+			/* Layer do marcador */
 
 			mapLayer:
 				'surface',
 
 
-			/*
-				Categoria interna.
-
-				É esta propriedade que permite
-				aos filtros saberem quais
-				marcadores mostrar/esconder.
-			*/
+			/* Categoria utilizada pelos filtros */
 
 			categoryId:
 				'site_of_grace',
@@ -655,7 +583,7 @@
 				'/icons/site-of-grace.png',
 
 
-			/* Imagem mostrada dentro do popup */
+			/* Imagem mostrada no popup */
 
 			image:
 				'/locations/church-of-elleh.jpg',
@@ -664,39 +592,21 @@
 
 			/* =====================================
 			   CAMPOS OPCIONAIS
-			   =====================================
+			   ===================================== */
 
-			   Se estiverem vazios ou não existirem,
-			   não aparecem no popup.
-			*/
+			npcs: [],
 
-			npcs:
-				[],
+			items: [],
 
-			items:
-				[],
+			quests: [],
 
-			quests:
-				[],
-
-			notesKey:
-				null,
+			notesKey: null,
 
 
 
 			/* =====================================
 			   PREMIUM — PREPARADO PARA SUPABASE
-			   =====================================
-
-			   Isto NÃO contém os dados premium.
-
-			   Apenas indica que no futuro este local
-			   poderá ter estas secções premium.
-
-			   O conteúdo real será carregado através
-			   do Supabase depois de confirmar que
-			   o utilizador tem acesso premium.
-			*/
+			   ===================================== */
 
 			premium: {
 
@@ -722,12 +632,6 @@
 	/* ==========================================
 	   POPUPS
 	   ========================================== */
-
-
-	/*
-		Evita que texto introduzido futuramente
-		possa inserir HTML inesperado no popup.
-	*/
 
 	function escapeHtml(value) {
 
@@ -761,14 +665,6 @@
 
 
 
-	/*
-		Traduz uma lista de keys.
-
-		Exemplo futuro:
-
-		npcs: ['merchant_kale']
-	*/
-
 	function translateList(list) {
 
 		if (
@@ -790,11 +686,6 @@
 	}
 
 
-
-	/*
-		Cria uma linha opcional
-		do popup.
-	*/
 
 	function createPopupInfoRow(
 		labelKey,
@@ -1046,7 +937,6 @@
 	   MARCADORES
 	   ========================================== */
 
-
 	function createLocationIcon(
 		location
 	) {
@@ -1055,15 +945,6 @@
 
 			iconUrl:
 				location.icon,
-
-
-			/*
-				O teu ícone atual é mais alto
-				do que largo.
-
-				Podemos ajustar depois
-				se quiseres.
-			*/
 
 			iconSize:
 				[34, 46],
@@ -1084,9 +965,9 @@
 	/*
 		Cria/recria os marcadores.
 
-		É utilizado quando:
-		- mudamos o idioma
-		- ativamos/desativamos filtros
+		Usado quando:
+		- mudamos idioma
+		- alteramos filtros
 	*/
 
 	function renderLocationMarkers() {
@@ -1127,8 +1008,8 @@
 
 
 			/*
-				Se a categoria estiver desligada
-				no filtro, não criamos o marcador.
+				Se a categoria estiver desligada,
+				não mostramos o marcador.
 			*/
 
 			if (
@@ -1196,10 +1077,7 @@
 
 
 
-			/*
-				Tooltip ao passar o rato
-				por cima do marcador.
-			*/
+			/* Tooltip */
 
 			marker.bindTooltip(
 
@@ -1248,14 +1126,6 @@
 
 
 
-	/*
-		Atualiza visualmente toda
-		a interface do editor.
-
-		A interface fica sempre
-		presente no HTML.
-	*/
-
 	function updateEditorInterface() {
 
 		if (
@@ -1283,6 +1153,12 @@
 		const coordinatePanel =
 			document.getElementById(
 				'coordinate-panel'
+			);
+
+
+		const coordinateTitle =
+			document.getElementById(
+				'coordinate-title'
 			);
 
 
@@ -1316,6 +1192,12 @@
 			);
 
 
+		const coordinateLabel =
+			document.getElementById(
+				'coordinate-label'
+			);
+
+
 		const copyButton =
 			document.getElementById(
 				'copy-coordinates'
@@ -1326,6 +1208,56 @@
 			document.getElementById(
 				'copy-status'
 			);
+
+
+
+		/* Atualiza textos do editor */
+
+		if (coordinateTitle) {
+
+			coordinateTitle.textContent =
+				t(
+					'coordinate_editor'
+				);
+		}
+
+
+		if (instruction) {
+
+			instruction.textContent =
+				t(
+					'editor_instruction'
+				);
+		}
+
+
+		if (coordinateLabel) {
+
+			coordinateLabel.textContent =
+				t(
+					'ready_for_leaflet'
+				);
+		}
+
+
+		if (copyButton) {
+
+			copyButton.textContent =
+				t('copy');
+		}
+
+
+		if (editorStatus) {
+
+			editorStatus.innerHTML = `
+				<span class="editor-status-dot"></span>
+				${escapeHtml(
+					t(
+						'editor_status'
+					)
+				)}
+			`;
+		}
 
 
 
@@ -1465,13 +1397,6 @@
 		}
 
 
-
-		/*
-			Leaflet utiliza:
-
-			[Y, X]
-		*/
-
 		if (arrayValue) {
 
 			arrayValue.textContent =
@@ -1503,7 +1428,6 @@
 			!editorMode;
 
 
-
 		if (!editorMode) {
 
 			if (
@@ -1528,7 +1452,6 @@
 			editorY =
 				null;
 		}
-
 
 
 		updateEditorInterface();
@@ -1926,7 +1849,7 @@
 		<label
 			for="mobile-menu-toggle"
 			class="mobile-toggle"
-			aria-label={t('open_menu')}
+			aria-label={currentTexts.open_menu}
 		>
 
 			<span class="menu-icon">
@@ -1961,7 +1884,7 @@
 
 			<span class="version-tag">
 
-				v1.0.25
+				v1.0.26
 
 			</span>
 
@@ -1978,7 +1901,7 @@
 				class="language-selector"
 				value={currentLanguage}
 				onchange={changeLanguage}
-				aria-label={t('language')}
+				aria-label={currentTexts.language}
 			>
 
 				<option value="en">
@@ -1996,7 +1919,7 @@
 
 			<div class="checklist-status">
 
-				{t('checklist')}
+				{currentTexts.checklist}
 
 				<span>
 					(0%)
@@ -2024,7 +1947,7 @@
 			onclick={toggleEditor}
 		>
 
-			{t('editor')}
+			{currentTexts.editor}
 
 		</button>
 
@@ -2036,9 +1959,12 @@
 		>
 
 
-			<div class="coordinate-title">
+			<div
+				id="coordinate-title"
+				class="coordinate-title"
+			>
 
-				{t('coordinate_editor')}
+				{currentTexts.coordinate_editor}
 
 			</div>
 
@@ -2049,7 +1975,7 @@
 				class="editor-instruction"
 			>
 
-				{t('editor_instruction')}
+				{currentTexts.editor_instruction}
 
 			</div>
 
@@ -2094,9 +2020,12 @@
 
 
 
-				<div class="coordinate-label">
+				<div
+					id="coordinate-label"
+					class="coordinate-label"
+				>
 
-					{t('ready_for_leaflet')}
+					{currentTexts.ready_for_leaflet}
 
 				</div>
 
@@ -2120,7 +2049,7 @@
 					disabled
 				>
 
-					{t('copy')}
+					{currentTexts.copy}
 
 				</button>
 
@@ -2151,7 +2080,7 @@
 		</span>
 
 
-		{t('editor_status')}
+		{currentTexts.editor_status}
 
 	</div>
 
@@ -2173,7 +2102,7 @@
 
 
 				<h2>
-					{t('filters')}
+					{currentTexts.filters}
 				</h2>
 
 
@@ -2182,7 +2111,7 @@
 
 
 					<h3>
-						{t('locations')}
+						{currentTexts.locations}
 					</h3>
 
 
@@ -2204,7 +2133,7 @@
 							}
 						/>
 
-						{t('sites_of_grace')}
+						{currentTexts.sites_of_grace}
 
 					</label>
 
@@ -2227,7 +2156,7 @@
 							}
 						/>
 
-						{t('dungeons_caverns')}
+						{currentTexts.dungeons_caverns}
 
 					</label>
 
@@ -2250,7 +2179,7 @@
 							}
 						/>
 
-						{t('bosses')}
+						{currentTexts.bosses}
 
 					</label>
 
@@ -2262,7 +2191,7 @@
 
 
 					<h3>
-						{t('collectibles')}
+						{currentTexts.collectibles}
 					</h3>
 
 
@@ -2284,7 +2213,7 @@
 							}
 						/>
 
-						{t('weapons_equipment')}
+						{currentTexts.weapons_equipment}
 
 					</label>
 
@@ -2307,7 +2236,7 @@
 							}
 						/>
 
-						{t('stonesword_keys')}
+						{currentTexts.stonesword_keys}
 
 					</label>
 
@@ -2330,7 +2259,7 @@
 							}
 						/>
 
-						{t('talismans')}
+						{currentTexts.talismans}
 
 					</label>
 
@@ -2369,7 +2298,7 @@
 		<label
 			for="mobile-menu-toggle"
 			class="mobile-backdrop"
-			aria-label={t('close_menu')}
+			aria-label={currentTexts.close_menu}
 		>
 		</label>
 
@@ -2382,7 +2311,7 @@
 
 
 				<h2>
-					{t('filters')}
+					{currentTexts.filters}
 				</h2>
 
 
@@ -2390,7 +2319,7 @@
 				<label
 					for="mobile-menu-toggle"
 					class="mobile-close"
-					aria-label={t('close_menu')}
+					aria-label={currentTexts.close_menu}
 				>
 
 					✕
@@ -2408,7 +2337,7 @@
 
 
 					<h3>
-						{t('locations')}
+						{currentTexts.locations}
 					</h3>
 
 
@@ -2430,7 +2359,7 @@
 							}
 						/>
 
-						{t('sites_of_grace')}
+						{currentTexts.sites_of_grace}
 
 					</label>
 
@@ -2453,7 +2382,7 @@
 							}
 						/>
 
-						{t('dungeons_caverns')}
+						{currentTexts.dungeons_caverns}
 
 					</label>
 
@@ -2476,7 +2405,7 @@
 							}
 						/>
 
-						{t('bosses')}
+						{currentTexts.bosses}
 
 					</label>
 
@@ -2488,7 +2417,7 @@
 
 
 					<h3>
-						{t('collectibles')}
+						{currentTexts.collectibles}
 					</h3>
 
 
@@ -2510,7 +2439,7 @@
 							}
 						/>
 
-						{t('weapons_equipment')}
+						{currentTexts.weapons_equipment}
 
 					</label>
 
@@ -2533,7 +2462,7 @@
 							}
 						/>
 
-						{t('stonesword_keys')}
+						{currentTexts.stonesword_keys}
 
 					</label>
 
@@ -2556,7 +2485,7 @@
 							}
 						/>
 
-						{t('talismans')}
+						{currentTexts.talismans}
 
 					</label>
 
