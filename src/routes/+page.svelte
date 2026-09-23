@@ -133,7 +133,8 @@
 
 			/* Locais */
 
-			church_of_elleh: 'Igreja de Elleh',
+			church_of_elleh:
+				'Igreja de Elleh',
 
 			church_of_elleh_description:
 				'Uma igreja em ruínas situada em Limgrave. Contém um Local de Graça e é um dos primeiros locais importantes encontrados ao explorar a região.',
@@ -190,32 +191,29 @@
 
 
 	/* ==========================================
-	   TRADUÇÃO REATIVA DA INTERFACE
+	   TEXTOS ATUAIS DA INTERFACE
 	   ========================================== */
 
 	/*
-		currentTexts muda automaticamente sempre
-		que currentLanguage muda.
+		Este objeto contém os textos da língua
+		que está atualmente selecionada.
 
-		No HTML usamos diretamente:
+		Não usamos $: porque o teu projeto está
+		a compilar num modo em que essa sintaxe
+		estava a dar erro.
 
-		currentTexts.filters
-		currentTexts.locations
-		etc.
-
-		Isto garante que a sidebar desktop e
-		o menu mobile mudam imediatamente.
+		Sempre que mudamos de idioma, atribuímos
+		um novo objeto a currentTexts.
 	*/
 
-	$: currentTexts =
-		translations[currentLanguage] ??
+	let currentTexts =
 		translations.en;
 
 
 	/*
-		Esta função continua útil para elementos
-		criados manualmente pelo Leaflet,
-		como os popups e tooltips.
+		Função utilizada principalmente nos elementos
+		criados manualmente pelo Leaflet:
+		popups, tooltips, etc.
 	*/
 
 	function t(key) {
@@ -237,6 +235,15 @@
 
 
 		/*
+			Atualiza os textos da interface Svelte.
+		*/
+
+		currentTexts =
+			translations[currentLanguage] ??
+			translations.en;
+
+
+		/*
 			Os marcadores e popups Leaflet
 			precisam de ser reconstruídos.
 		*/
@@ -245,8 +252,7 @@
 
 
 		/*
-			Atualiza também os elementos do editor
-			controlados diretamente por JavaScript.
+			Atualiza também o editor.
 		*/
 
 		updateEditorInterface();
@@ -262,7 +268,7 @@
 		Estado central dos filtros.
 
 		Desktop e mobile utilizam exatamente
-		estes mesmos valores.
+		os mesmos valores.
 	*/
 
 	let categoryVisibility = {
@@ -323,51 +329,62 @@
 
 		surface: {
 
-			id: 'surface',
+			id:
+				'surface',
 
 			image:
 				'/mapa-elden-ring.jpg',
 
-			width: 8000,
+			width:
+				8000,
 
-			height: 8000
+			height:
+				8000
 		},
 
 
 		underground: {
 
-			id: 'underground',
+			id:
+				'underground',
 
 			/*
-				Quando tivermos
-				o mapa subterrâneo:
+				Quando tivermos o mapa
+				subterrâneo:
 
 				image:
 				'/maps/elden-ring-underground.jpg'
 			*/
 
-			image: null,
+			image:
+				null,
 
-			width: 8000,
+			width:
+				8000,
 
-			height: 8000
+			height:
+				8000
 		},
 
 
 		dlc: {
 
-			id: 'dlc',
+			id:
+				'dlc',
 
 			/*
-				Preparado para
-				uma layer/mapa DLC.
+				Preparado para uma possível
+				layer/mapa DLC.
 			*/
 
-			image: null,
+			image:
+				null,
 
-			width: 8000,
+			width:
+				8000,
 
-			height: 8000
+			height:
+				8000
 		}
 	};
 
@@ -536,6 +553,15 @@
 	   DADOS DOS LOCAIS
 	   ========================================== */
 
+	/*
+		IMPORTANTE:
+
+		IDs, categorias, coordenadas e layers
+		não dependem do idioma.
+
+		Apenas os textos são traduzidos.
+	*/
+
 	const locations = [
 
 		{
@@ -544,13 +570,16 @@
 				'church-of-elleh',
 
 
-			/* Layer do marcador */
+			/* Layer a que pertence este marcador */
 
 			mapLayer:
 				'surface',
 
 
-			/* Categoria utilizada pelos filtros */
+			/*
+				Categoria interna utilizada
+				pelos filtros.
+			*/
 
 			categoryId:
 				'site_of_grace',
@@ -592,21 +621,39 @@
 
 			/* =====================================
 			   CAMPOS OPCIONAIS
-			   ===================================== */
+			   =====================================
 
-			npcs: [],
+			   Se estiverem vazios ou não existirem,
+			   não aparecem no popup.
+			*/
 
-			items: [],
+			npcs:
+				[],
 
-			quests: [],
+			items:
+				[],
 
-			notesKey: null,
+			quests:
+				[],
+
+			notesKey:
+				null,
 
 
 
 			/* =====================================
 			   PREMIUM — PREPARADO PARA SUPABASE
-			   ===================================== */
+			   =====================================
+
+			   Isto NÃO contém os dados premium.
+
+			   Apenas indica que no futuro este local
+			   poderá ter estas secções premium.
+
+			   O conteúdo real será carregado através
+			   do Supabase depois de confirmar que
+			   o utilizador tem acesso premium.
+			*/
 
 			premium: {
 
@@ -632,6 +679,11 @@
 	/* ==========================================
 	   POPUPS
 	   ========================================== */
+
+	/*
+		Evita que texto introduzido futuramente
+		possa inserir HTML inesperado no popup.
+	*/
 
 	function escapeHtml(value) {
 
@@ -665,6 +717,14 @@
 
 
 
+	/*
+		Traduz uma lista de keys.
+
+		Exemplo futuro:
+
+		npcs: ['merchant_kale']
+	*/
+
 	function translateList(list) {
 
 		if (
@@ -686,6 +746,10 @@
 	}
 
 
+
+	/*
+		Cria uma linha opcional do popup.
+	*/
 
 	function createPopupInfoRow(
 		labelKey,
@@ -946,6 +1010,12 @@
 			iconUrl:
 				location.icon,
 
+
+			/*
+				O ícone é guardado maior,
+				mas mostrado mais pequeno no mapa.
+			*/
+
 			iconSize:
 				[34, 46],
 
@@ -965,9 +1035,9 @@
 	/*
 		Cria/recria os marcadores.
 
-		Usado quando:
-		- mudamos idioma
-		- alteramos filtros
+		É utilizado quando:
+		- mudamos o idioma
+		- ativamos/desativamos filtros
 	*/
 
 	function renderLocationMarkers() {
@@ -1008,8 +1078,8 @@
 
 
 			/*
-				Se a categoria estiver desligada,
-				não mostramos o marcador.
+				Se a categoria estiver desligada
+				no filtro, não criamos o marcador.
 			*/
 
 			if (
@@ -1077,7 +1147,10 @@
 
 
 
-			/* Tooltip */
+			/*
+				Tooltip ao passar o rato
+				por cima do marcador.
+			*/
 
 			marker.bindTooltip(
 
@@ -1125,6 +1198,14 @@
 		null;
 
 
+
+	/*
+		Atualiza visualmente toda
+		a interface do editor.
+
+		A interface fica sempre
+		presente no HTML.
+	*/
 
 	function updateEditorInterface() {
 
@@ -1244,19 +1325,6 @@
 
 			copyButton.textContent =
 				t('copy');
-		}
-
-
-		if (editorStatus) {
-
-			editorStatus.innerHTML = `
-				<span class="editor-status-dot"></span>
-				${escapeHtml(
-					t(
-						'editor_status'
-					)
-				)}
-			`;
 		}
 
 
@@ -1397,6 +1465,13 @@
 		}
 
 
+
+		/*
+			Leaflet utiliza:
+
+			[Y, X]
+		*/
+
 		if (arrayValue) {
 
 			arrayValue.textContent =
@@ -1428,6 +1503,7 @@
 			!editorMode;
 
 
+
 		if (!editorMode) {
 
 			if (
@@ -1452,6 +1528,7 @@
 			editorY =
 				null;
 		}
+
 
 
 		updateEditorInterface();
@@ -2507,11 +2584,9 @@
 	:global(body) {
 
 		margin: 0;
-
 		padding: 0;
 
 		width: 100%;
-
 		height: 100%;
 
 		overflow: hidden;
@@ -2535,7 +2610,6 @@
 		width: 100vw;
 
 		height: 100vh;
-
 		height: 100dvh;
 
 		overflow: hidden;
@@ -2554,9 +2628,7 @@
 		position: fixed;
 
 		top: 0;
-
 		left: 0;
-
 		right: 0;
 
 		height: 56px;
