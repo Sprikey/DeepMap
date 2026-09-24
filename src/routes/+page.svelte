@@ -1,3914 +1,4114 @@
 <script>
-	import { onMount } from 'svelte';
 
-	let mapContainer;
-	let map;
-	let Leaflet;
+    import { onMount } from 'svelte';
 
-	let mapImageOverlay = null;
+    import { translations } from '$lib/games/elden-ring/translations.js';
 
+    import {
 
-	/* ==========================================
-	   IDIOMAS / TRADUÇÕES
-	   SVELTE 5 RUNES
-	   ========================================== */
+    categories,
 
-	let currentLanguage = $state('en');
+    defaultCategoryVisibility
 
+} from '$lib/games/elden-ring/categories.js';
 
-	const translations = {
+    import { locations } from '$lib/games/elden-ring/locations.js';
 
-		en: {
+    import { mapDefinitions } from '$lib/games/elden-ring/maps.js';
 
-			/* Interface */
+    let mapContainer;
 
-			filters: 'Filters',
-			locations: 'Locations',
-			collectibles: 'Collectibles',
+    let map;
 
-			sites_of_grace: 'Sites of Grace',
-			dungeons_caverns: 'Dungeons & Caverns',
-			bosses: 'Bosses',
+    let Leaflet;
 
-			weapons_equipment: 'Weapons & Equipment',
-			stonesword_keys: 'Stonesword Keys',
-			talismans: 'Talismans',
+    let mapImageOverlay = null;
 
-			checklist: 'Checklist',
 
+    /* ==========================================
 
-			/* Categorias */
+       IDIOMAS / TRADUÇÕES
 
-			site_of_grace: 'Site of Grace',
+       SVELTE 5 RUNES
 
+       ========================================== */
 
-			/* Regiões */
+    let currentLanguage = $state('en');
 
-			limgrave: 'Limgrave',
 
+    let currentTexts = $derived(
 
-			/* Locais */
+        translations[currentLanguage] ??
 
-			church_of_elleh: 'Church of Elleh',
+        translations.en
 
-			church_of_elleh_description:
-				'A ruined church located in Limgrave. It contains a Site of Grace and is one of the first notable locations encountered when exploring the region.',
+    );
 
 
-			/* Labels opcionais do popup */
+    function t(key) {
 
-			region: 'Region',
-			npcs: 'NPCs',
-			items: 'Items',
-			quests: 'Quests',
-			notes: 'Notes',
+        return (
 
+            translations[currentLanguage]?.[key] ??
 
-			/* Editor */
+            translations.en?.[key] ??
 
-			editor: '⚙️ EDITOR',
+            key
 
-			editor_active:
-				'🛠️ EDITOR ACTIVE',
+        );
 
-			coordinate_editor:
-				'🛠️ COORDINATE EDITOR',
+    }
 
-			editor_instruction:
-				'Click a point on the map to get its coordinates.',
 
-			editor_status:
-				'EDITOR MODE ACTIVE — Click on the map',
+    function changeLanguage(event) {
 
-			ready_for_leaflet:
-				'Ready for Leaflet:',
+        currentLanguage =
 
-			copy:
-				'📋 COPY',
+            event.currentTarget.value;
 
-			copied:
-				'✓ Copied!',
 
+        renderLocationMarkers();
 
-			/* Acessibilidade */
 
-			open_menu:
-				'Open Menu',
+        updateEditorInterface();
 
-			close_menu:
-				'Close Menu',
+    }
 
-			language:
-				'Language'
-		},
 
+    /* ==========================================
 
-		pt: {
+       FILTROS
 
-			/* Interface */
+       ========================================== */
 
-			filters: 'Filtros',
-			locations: 'Locais',
-			collectibles: 'Colecionáveis',
 
-			sites_of_grace: 'Locais de Graça',
-			dungeons_caverns: 'Masmorras e Cavernas',
-			bosses: 'Chefes',
+    let categoryVisibility = $state({
 
-			weapons_equipment: 'Armas e Equipamento',
-			stonesword_keys: 'Chaves de Espada de Pedra',
-			talismans: 'Talismãs',
+    ...defaultCategoryVisibility
 
-			checklist: 'Progresso',
+});
 
 
-			/* Categorias */
+    function setCategoryVisibility(
 
-			site_of_grace: 'Local de Graça',
+        categoryId,
 
+        visible
 
-			/* Regiões */
+    ) {
 
-			limgrave: 'Limgrave',
+        categoryVisibility[categoryId] =
 
+            visible;
 
-			/* Locais */
 
-			church_of_elleh:
-				'Igreja de Elleh',
+        renderLocationMarkers();
 
-			church_of_elleh_description:
-				'Uma igreja em ruínas situada em Limgrave. Contém um Local de Graça e é um dos primeiros locais importantes encontrados ao explorar a região.',
+    }
 
 
-			/* Labels opcionais do popup */
+    /* ==========================================
 
-			region: 'Região',
-			npcs: 'NPCs',
-			items: 'Itens',
-			quests: 'Missões',
-			notes: 'Notas',
+       MAPAS / CAMADAS
 
+       ========================================== */
 
-			/* Editor */
 
-			editor:
-				'⚙️ EDITOR',
+    let activeMapLayer =
 
-			editor_active:
-				'🛠️ EDITOR ATIVO',
+        'surface';
 
-			coordinate_editor:
-				'🛠️ EDITOR DE COORDENADAS',
 
-			editor_instruction:
-				'Clica num ponto do mapa para obter as coordenadas.',
+    let markerLayerGroups =
 
-			editor_status:
-				'MODO EDITOR ATIVO — Clica no mapa',
+        {};
 
-			ready_for_leaflet:
-				'Pronto para Leaflet:',
 
-			copy:
-				'📋 COPIAR',
+    function getMapBounds(
 
-			copied:
-				'✓ Copiado!',
+        mapDefinition
 
+    ) {
 
-			/* Acessibilidade */
+        return [
 
-			open_menu:
-				'Abrir Menu',
+            [0, 0],
 
-			close_menu:
-				'Fechar Menu',
+            [
 
-			language:
-				'Idioma'
-		}
-	};
+                mapDefinition.height,
 
+                mapDefinition.width
 
-	/*
-		Svelte 5:
+            ]
 
-		currentTexts é recalculado automaticamente
-		sempre que currentLanguage muda.
-	*/
+        ];
 
-	let currentTexts = $derived(
-		translations[currentLanguage] ??
-		translations.en
-	);
+    }
 
 
-	/*
-		Utilizado principalmente pelo Leaflet,
-		porque os popups são criados manualmente.
-	*/
+    function setupMarkerLayers() {
 
-	function t(key) {
+        for (
 
-		return (
-			translations[currentLanguage]?.[key] ??
-			translations.en?.[key] ??
-			key
-		);
-	}
+            const layerId of
 
+            Object.keys(mapDefinitions)
 
-	/* Troca o idioma */
+        ) {
 
-	function changeLanguage(event) {
+            markerLayerGroups[layerId] =
 
-		currentLanguage =
-			event.currentTarget.value;
+                Leaflet.layerGroup();
 
+        }
 
-		/*
-			O HTML Svelte atualiza automaticamente
-			através de currentTexts.
 
-			Leaflet precisa de reconstruir
-			marcadores, tooltips e popups.
-		*/
+        markerLayerGroups[
 
-		renderLocationMarkers();
+            activeMapLayer
 
+        ].addTo(map);
 
-		/*
-			Alguns elementos do editor são
-			controlados diretamente por JavaScript.
-		*/
+    }
 
-		updateEditorInterface();
-	}
 
+    function setActiveMapLayer(
 
+        layerId
 
-	/* ==========================================
-	   FILTROS
-	   ========================================== */
+    ) {
 
-	/*
-		$state permite que desktop e mobile
-		fiquem sincronizados automaticamente.
-	*/
+        if (!map) return;
 
-	let categoryVisibility = $state({
 
-		site_of_grace: true,
+        const definition =
 
-		dungeon: true,
+            mapDefinitions[layerId];
 
-		boss: true,
 
-		weapon_equipment: true,
+        if (!definition) return;
 
-		stonesword_key: true,
 
-		talisman: true
-	});
+        for (
 
+            const group of
 
-	/*
-		Ativa ou desativa uma categoria.
-	*/
+            Object.values(markerLayerGroups)
 
-	function setCategoryVisibility(
-		categoryId,
-		visible
-	) {
+        ) {
 
-		categoryVisibility[categoryId] =
-			visible;
+            if (
 
+                map.hasLayer(group)
 
-		renderLocationMarkers();
-	}
+            ) {
 
+                map.removeLayer(group);
 
+            }
 
-	/* ==========================================
-	   MAPAS / CAMADAS
-	   ========================================== */
+        }
 
-	/*
-		Cada mapa/camada é independente.
 
-		Hoje usamos apenas "surface".
+        activeMapLayer =
 
-		Mais tarde podemos acrescentar:
+            layerId;
 
-		- underground
-		- DLC
-		- interiores
-		- outros mapas
-	*/
 
-	const mapDefinitions = {
+        const activeGroup =
 
-		surface: {
+            markerLayerGroups[
 
-			id:
-				'surface',
+                activeMapLayer
 
-			image:
-				'/mapa-elden-ring.jpg',
+            ];
 
-			width:
-				8000,
 
-			height:
-				8000
-		},
+        if (activeGroup) {
 
+            activeGroup.addTo(map);
 
-		underground: {
+        }
 
-			id:
-				'underground',
 
-			/*
-				Quando tivermos o mapa
-				subterrâneo:
+        if (definition.image) {
 
-				image:
-				'/maps/elden-ring-underground.jpg'
-			*/
+            const bounds =
 
-			image:
-				null,
+                getMapBounds(
 
-			width:
-				8000,
+                    definition
 
-			height:
-				8000
-		},
+                );
 
 
-		dlc: {
+            if (mapImageOverlay) {
 
-			id:
-				'dlc',
+                map.removeLayer(
 
-			/*
-				Preparado para uma possível
-				layer/mapa DLC.
-			*/
+                    mapImageOverlay
 
-			image:
-				null,
+                );
 
-			width:
-				8000,
+            }
 
-			height:
-				8000
-		}
-	};
 
+            mapImageOverlay =
 
-	let activeMapLayer =
-		'surface';
+                Leaflet.imageOverlay(
 
+                    definition.image,
 
-	let markerLayerGroups =
-		{};
+                    bounds
 
+                ).addTo(map);
 
 
-	/* Cria bounds para uma determinada layer */
+            mapImageOverlay.bringToBack();
 
-	function getMapBounds(
-		mapDefinition
-	) {
 
-		return [
+            map.setMaxBounds(
 
-			[0, 0],
+                bounds
 
-			[
-				mapDefinition.height,
-				mapDefinition.width
-			]
-		];
-	}
+            );
 
 
+            map.fitBounds(
 
-	/*
-		Cria grupos Leaflet separados
-		para cada layer.
-	*/
+                bounds
 
-	function setupMarkerLayers() {
+            );
 
-		for (
-			const layerId of
-			Object.keys(mapDefinitions)
-		) {
+        }
 
-			markerLayerGroups[layerId] =
-				Leaflet.layerGroup();
-		}
+    }
 
 
-		/*
-			Apenas a layer ativa
-			é adicionada ao mapa.
-		*/
+    /* ==========================================
 
-		markerLayerGroups[
-			activeMapLayer
-		].addTo(map);
-	}
+       POPUPS
 
+       ========================================== */
 
+    function escapeHtml(value) {
 
-	/*
-		Função já preparada para trocar
-		de superfície para subterrâneo,
-		DLC, etc.
+        return String(value)
 
-		Exemplo futuro:
+            .replaceAll(
 
-		setActiveMapLayer('underground');
-	*/
+                '&',
 
-	function setActiveMapLayer(
-		layerId
-	) {
+                '&amp;'
 
-		if (!map) return;
+            )
 
+            .replaceAll(
 
-		const definition =
-			mapDefinitions[layerId];
+                '<',
 
+                '&lt;'
 
-		if (!definition) return;
+            )
 
+            .replaceAll(
 
-		/* Remove os grupos atualmente visíveis */
+                '>',
 
-		for (
-			const group of
-			Object.values(markerLayerGroups)
-		) {
+                '&gt;'
 
-			if (
-				map.hasLayer(group)
-			) {
+            )
 
-				map.removeLayer(group);
-			}
-		}
+            .replaceAll(
 
+                '"',
 
-		activeMapLayer =
-			layerId;
+                '&quot;'
 
+            )
 
-		/* Liga apenas os marcadores da nova layer */
+            .replaceAll(
 
-		const activeGroup =
-			markerLayerGroups[
-				activeMapLayer
-			];
+                "'",
 
+                '&#039;'
 
-		if (activeGroup) {
+            );
 
-			activeGroup.addTo(map);
-		}
+    }
 
 
-		/*
-			Se a layer tiver uma imagem própria,
-			trocamos também a imagem do mapa.
-		*/
+    function translateList(list) {
 
-		if (definition.image) {
+        if (
 
-			const bounds =
-				getMapBounds(
-					definition
-				);
+            !list ||
 
+            !list.length
 
-			if (mapImageOverlay) {
+        ) {
 
-				map.removeLayer(
-					mapImageOverlay
-				);
-			}
+            return '';
 
+        }
 
-			mapImageOverlay =
-				Leaflet.imageOverlay(
-					definition.image,
-					bounds
-				).addTo(map);
 
+        return list
 
-			mapImageOverlay.bringToBack();
+            .map(
 
+                (item) => t(item)
 
-			map.setMaxBounds(
-				bounds
-			);
+            )
 
+            .join(', ');
 
-			map.fitBounds(
-				bounds
-			);
-		}
-	}
+    }
 
 
+    function createPopupInfoRow(
 
-	/* ==========================================
-	   DADOS DOS LOCAIS
-	   ========================================== */
+        labelKey,
 
-	/*
-		Os dados estruturais não dependem
-		do idioma.
+        value
 
-		IDs, coordenadas, categorias e layers
-		permanecem sempre iguais.
-	*/
+    ) {
 
-	const locations = [
+        if (!value) return '';
 
-		{
 
-			id:
-				'church-of-elleh',
+        return `
 
+            <div class="deepmap-popup-info-row">
 
-			/* Layer */
+                <span class="deepmap-popup-info-label">
 
-			mapLayer:
-				'surface',
+                    ${escapeHtml(
 
+                        t(labelKey)
 
-			/* Categoria utilizada pelos filtros */
+                    )}
 
-			categoryId:
-				'site_of_grace',
+                </span>
 
 
-			/* Traduções */
+                <span class="deepmap-popup-info-value">
 
-			nameKey:
-				'church_of_elleh',
+                    ${escapeHtml(value)}
 
-			descriptionKey:
-				'church_of_elleh_description',
+                </span>
 
-			categoryKey:
-				'site_of_grace',
+            </div>
 
-			regionKey:
-				'limgrave',
+        `;
 
+    }
 
-			/* Coordenadas Leaflet = [Y, X] */
 
-			coordinates:
-				[2300, 3204],
+    function buildLocationPopup(
 
+        location
 
-			/* Ícone do marcador */
+    ) {
 
-			icon:
-				'/icons/site-of-grace.png',
+        let optionalInformation =
 
+            '';
 
-			/* Imagem do popup */
 
-			image:
-				'/locations/church-of-elleh.jpg',
+        if (
 
+            location.regionKey
 
+        ) {
 
-			/* =====================================
-			   CAMPOS OPCIONAIS
-			   =====================================
+            optionalInformation +=
 
-			   Se estiverem vazios,
-			   não aparecem no popup.
-			*/
+                createPopupInfoRow(
 
-			npcs:
-				[],
+                    'region',
 
-			items:
-				[],
+                    t(
 
-			quests:
-				[],
+                        location.regionKey
 
-			notesKey:
-				null,
+                    )
 
+                );
 
+        }
 
-			/* =====================================
-			   PREMIUM — PREPARADO PARA SUPABASE
-			   =====================================
 
-			   Aqui não guardamos o conteúdo
-			   premium propriamente dito.
+        if (
 
-			   Mais tarde o Supabase verifica
-			   se o utilizador tem acesso e só
-			   então envia esses dados.
-			*/
+            location.npcs?.length
 
-			premium: {
+        ) {
 
-				provider:
-					'supabase',
+            optionalInformation +=
 
-				sections: [
+                createPopupInfoRow(
 
-					'npcs',
+                    'npcs',
 
-					'items',
+                    translateList(
 
-					'quests',
+                        location.npcs
 
-					'notes'
-				]
-			}
-		}
-	];
+                    )
 
+                );
 
+        }
 
-	/* ==========================================
-	   POPUPS
-	   ========================================== */
 
-	function escapeHtml(value) {
+        if (
 
-		return String(value)
+            location.items?.length
 
-			.replaceAll(
-				'&',
-				'&amp;'
-			)
+        ) {
 
-			.replaceAll(
-				'<',
-				'&lt;'
-			)
+            optionalInformation +=
 
-			.replaceAll(
-				'>',
-				'&gt;'
-			)
+                createPopupInfoRow(
 
-			.replaceAll(
-				'"',
-				'&quot;'
-			)
+                    'items',
 
-			.replaceAll(
-				"'",
-				'&#039;'
-			);
-	}
+                    translateList(
 
+                        location.items
 
+                    )
 
-	/*
-		Traduz uma lista de keys.
+                );
 
-		Exemplo futuro:
+        }
 
-		npcs: ['merchant_kale']
-	*/
 
-	function translateList(list) {
+        if (
 
-		if (
-			!list ||
-			!list.length
-		) {
+            location.quests?.length
 
-			return '';
-		}
+        ) {
 
+            optionalInformation +=
 
-		return list
+                createPopupInfoRow(
 
-			.map(
-				(item) => t(item)
-			)
+                    'quests',
 
-			.join(', ');
-	}
+                    translateList(
 
+                        location.quests
 
+                    )
 
-	/*
-		Cria uma linha opcional do popup.
-	*/
+                );
 
-	function createPopupInfoRow(
-		labelKey,
-		value
-	) {
+        }
 
-		if (!value) return '';
 
+        if (
 
-		return `
-			<div class="deepmap-popup-info-row">
+            location.notesKey
 
-				<span class="deepmap-popup-info-label">
+        ) {
 
-					${escapeHtml(
-						t(labelKey)
-					)}
+            optionalInformation +=
 
-				</span>
+                createPopupInfoRow(
 
+                    'notes',
 
-				<span class="deepmap-popup-info-value">
+                    t(
 
-					${escapeHtml(value)}
+                        location.notesKey
 
-				</span>
+                    )
 
-			</div>
-		`;
-	}
+                );
 
+        }
 
 
-	/*
-		Constrói o popup completo
-		de uma localização.
-	*/
+        const imageHTML =
 
-	function buildLocationPopup(
-		location
-	) {
+            location.image
 
-		let optionalInformation =
-			'';
+                ? `
 
+                    <div class="deepmap-popup-image-wrapper">
 
+                        <img
 
-		/* Região */
+                            src="${escapeHtml(
 
-		if (
-			location.regionKey
-		) {
+                                location.image
 
-			optionalInformation +=
-				createPopupInfoRow(
+                            )}"
 
-					'region',
+                            alt="${escapeHtml(
 
-					t(
-						location.regionKey
-					)
-				);
-		}
+                                t(
 
+                                    location.nameKey
 
+                                )
 
-		/* NPCs */
+                            )}"
 
-		if (
-			location.npcs?.length
-		) {
+                            class="deepmap-popup-image"
 
-			optionalInformation +=
-				createPopupInfoRow(
+                            onerror="this.parentElement.style.display='none'"
 
-					'npcs',
+                        />
 
-					translateList(
-						location.npcs
-					)
-				);
-		}
+                    </div>
 
+                `
 
+                : '';
 
-		/* Itens */
 
-		if (
-			location.items?.length
-		) {
+        return `
 
-			optionalInformation +=
-				createPopupInfoRow(
+            <div class="deepmap-popup">
 
-					'items',
+                ${imageHTML}
 
-					translateList(
-						location.items
-					)
-				);
-		}
 
+                <div class="deepmap-popup-body">
 
 
-		/* Quests */
+                    <div class="deepmap-popup-category">
 
-		if (
-			location.quests?.length
-		) {
+                        ${escapeHtml(
 
-			optionalInformation +=
-				createPopupInfoRow(
+                            t(
 
-					'quests',
+                                location.categoryKey
 
-					translateList(
-						location.quests
-					)
-				);
-		}
+                            )
 
+                        )}
 
+                    </div>
 
-		/* Notas */
 
-		if (
-			location.notesKey
-		) {
+                    <h3 class="deepmap-popup-title">
 
-			optionalInformation +=
-				createPopupInfoRow(
+                        ${escapeHtml(
 
-					'notes',
+                            t(
 
-					t(
-						location.notesKey
-					)
-				);
-		}
+                                location.nameKey
 
+                            )
 
+                        )}
 
-		/* Imagem */
+                    </h3>
 
-		const imageHTML =
-			location.image
 
-				? `
-					<div class="deepmap-popup-image-wrapper">
+                    ${
 
-						<img
-							src="${escapeHtml(
-								location.image
-							)}"
+                        optionalInformation
 
-							alt="${escapeHtml(
-								t(
-									location.nameKey
-								)
-							)}"
+                            ? `
 
-							class="deepmap-popup-image"
+                                <div class="deepmap-popup-info">
 
-							onerror="this.parentElement.style.display='none'"
-						/>
+                                    ${optionalInformation}
 
-					</div>
-				`
+                                </div>
 
-				: '';
+                            `
 
+                            : ''
 
+                    }
 
-		return `
 
-			<div class="deepmap-popup">
+                    ${
 
-				${imageHTML}
+                        location.descriptionKey
 
+                            ? `
 
-				<div class="deepmap-popup-body">
+                                <p class="deepmap-popup-description">
 
+                                    ${escapeHtml(
 
-					<div class="deepmap-popup-category">
+                                        t(
 
-						${escapeHtml(
-							t(
-								location.categoryKey
-							)
-						)}
+                                            location.descriptionKey
 
-					</div>
+                                        )
 
+                                    )}
 
-					<h3 class="deepmap-popup-title">
+                                </p>
 
-						${escapeHtml(
-							t(
-								location.nameKey
-							)
-						)}
+                            `
 
-					</h3>
+                            : ''
 
+                    }
 
-					${
-						optionalInformation
 
-							? `
-								<div class="deepmap-popup-info">
+                </div>
 
-									${optionalInformation}
+            </div>
 
-								</div>
-							`
+        `;
 
-							: ''
-					}
+    }
 
 
-					${
-						location.descriptionKey
+    /* ==========================================
 
-							? `
-								<p class="deepmap-popup-description">
+       MARCADORES
 
-									${escapeHtml(
-										t(
-											location.descriptionKey
-										)
-									)}
+       ========================================== */
 
-								</p>
-							`
+ function createLocationIcon(location) {
 
-							: ''
-					}
+    const category =
+        categories[location.categoryId];
 
+    const iconUrl =
+        category?.icon ??
+        location.icon;
 
-				</div>
+    const markerColor =
+        category?.color ??
+        '#22222a';
 
-			</div>
-		`;
-	}
+    const markerWidth =
+        category?.markerWidth ??
+        30;
 
+    const markerHeight =
+        category?.markerHeight ??
+        39;
 
+    const symbolSize =
+        category?.symbolSize ??
+        18;
 
-	/* ==========================================
-	   MARCADORES
-	   ========================================== */
+    // Converte o tamanho do símbolo para a escala interna do SVG.
+    const svgSymbolSize =
+        (symbolSize / markerWidth) * 40;
 
-	function createLocationIcon(
-		location
-	) {
+    const svgSymbolX =
+        (40 - svgSymbolSize) / 2;
 
-		return Leaflet.icon({
+    const svgSymbolY =
+        8;
 
-			iconUrl:
-				location.icon,
+    return Leaflet.divIcon({
 
+        className:
+            'deepmap-marker-wrapper',
 
-			/*
-				O ficheiro original pode ser maior,
-				mas no mapa mostramos o ícone
-				neste tamanho.
-			*/
+        html: `
+            <div
+                class="deepmap-marker"
+                style="
+                    --marker-width: ${markerWidth}px;
+                    --marker-height: ${markerHeight}px;
+                "
+            >
+                <svg
+                    class="deepmap-marker-shape"
+                    viewBox="0 0 40 52"
+                    xmlns="http://www.w3.org/2000/svg"
+                >
+                    <path
+                        d="
+                            M20 1
+                            C9.5 1 1 9.5 1 20
+                            C1 34 20 51 20 51
+                            C20 51 39 34 39 20
+                            C39 9.5 30.5 1 20 1
+                            Z
+                        "
+                        fill="${markerColor}"
+                    />
 
-			iconSize:
-				[34, 46],
+                    <image
+                        href="${escapeHtml(iconUrl)}"
+                        x="${svgSymbolX}"
+                        y="${svgSymbolY}"
+                        width="${svgSymbolSize}"
+                        height="${svgSymbolSize}"
+                        preserveAspectRatio="xMidYMid meet"
+                    />
+                </svg>
+            </div>
+        `,
 
-			iconAnchor:
-				[17, 46],
+        iconSize:
+            [markerWidth, markerHeight],
 
-			popupAnchor:
-				[0, -42],
+        iconAnchor:
+            [
+                markerWidth / 2,
+                markerHeight
+            ],
 
-			className:
-				'deepmap-marker-icon'
-		});
-	}
+        popupAnchor:
+            [
+                0,
+                -markerHeight + 4
+            ]
+    });
+}
 
 
+    function renderLocationMarkers() {
 
-	/*
-		Cria/recria os marcadores.
+        if (
 
-		Utilizado quando:
+            !map ||
 
-		- mudamos idioma
-		- alteramos filtros
-	*/
+            !Leaflet ||
 
-	function renderLocationMarkers() {
+            !Object.keys(
 
-		if (
-			!map ||
-			!Leaflet ||
-			!Object.keys(
-				markerLayerGroups
-			).length
-		) {
+                markerLayerGroups
 
-			return;
-		}
+            ).length
 
+        ) {
 
+            return;
 
-		/* Limpa os grupos */
+        }
 
-		for (
-			const group of
-			Object.values(
-				markerLayerGroups
-			)
-		) {
 
-			group.clearLayers();
-		}
+        for (
 
+            const group of
 
+            Object.values(
 
-		/* Cria marcadores */
+                markerLayerGroups
 
-		for (
-			const location of
-			locations
-		) {
+            )
 
+        ) {
 
-			/*
-				Se a categoria estiver OFF,
-				o marcador não é criado.
-			*/
+            group.clearLayers();
 
-			if (
-				categoryVisibility[
-					location.categoryId
-				] === false
-			) {
+        }
 
-				continue;
-			}
 
+        for (
 
+            const location of
 
-			const group =
-				markerLayerGroups[
-					location.mapLayer
-				];
+            locations
 
+        ) {
 
-			if (!group) continue;
 
+            if (
 
+                categoryVisibility[
 
-			const marker =
-				Leaflet.marker(
+                    location.categoryId
 
-					location.coordinates,
+                ] === false
 
-					{
+            ) {
 
-						icon:
-							createLocationIcon(
-								location
-							),
+                continue;
 
-						title:
-							t(
-								location.nameKey
-							)
-					}
-				);
+            }
 
 
+            const group =
 
-			/* Popup */
+                markerLayerGroups[
 
-			marker.bindPopup(
+                    location.mapLayer
 
-				buildLocationPopup(
-					location
-				),
+                ];
 
-				{
 
-					maxWidth:
-						330,
+            if (!group) continue;
 
-					minWidth:
-						280,
 
-					className:
-						'deepmap-leaflet-popup'
-				}
-			);
+const marker =
+    Leaflet.marker(
+        location.coordinates,
+        {
+            icon:
+                createLocationIcon(
+                    location
+                )
+        }
+    );
 
 
+            marker.bindPopup(
 
-			/* Tooltip */
+                buildLocationPopup(
+
+                    location
+
+                ),
+
+                {
+
+                    maxWidth:
+
+                        330,
+
+                    minWidth:
+
+                        280,
+
+                    className:
+
+                        'deepmap-leaflet-popup'
+
+                }
+
+            );
 
 			marker.bindTooltip(
+    t(location.nameKey),
+    {
+        direction: 'top',
+        offset: [0, -32],
+        opacity: 1,
+        className: 'deepmap-marker-tooltip'
+    }
+);
 
-				t(
-					location.nameKey
-				),
+marker.on('click', () => {
+    marker.closeTooltip();
+});
 
-				{
 
-					direction:
-						'top',
+            marker.addTo(
 
-					offset:
-						[0, -38]
-				}
-			);
+                group
 
+            );
 
+        }
 
-			marker.addTo(
-				group
-			);
-		}
-	}
+    }
 
 
+    /* ==========================================
 
-	/* ==========================================
-	   EDITOR DE COORDENADAS
-	   ========================================== */
+       EDITOR DE COORDENADAS
 
-	let editorMode =
-		false;
+       ========================================== */
 
+    let editorMode =
 
-	let editorMarker =
-		null;
+        false;
 
 
-	let editorX =
-		null;
+    let editorMarker =
 
+        null;
 
-	let editorY =
-		null;
 
+    let editorX =
 
+        null;
 
-	/*
-		Atualiza visualmente a interface
-		do editor.
-	*/
 
-	function updateEditorInterface() {
+    let editorY =
 
-		if (
-			typeof document ===
-			'undefined'
-		) {
+        null;
 
-			return;
-		}
 
+    function updateEditorInterface() {
 
+        if (
 
-		const editorButton =
-			document.getElementById(
-				'editor-toggle'
-			);
+            typeof document ===
 
+            'undefined'
 
-		const editorStatus =
-			document.getElementById(
-				'editor-status'
-			);
+        ) {
 
+            return;
 
-		const coordinatePanel =
-			document.getElementById(
-				'coordinate-panel'
-			);
+        }
 
 
-		const coordinateTitle =
-			document.getElementById(
-				'coordinate-title'
-			);
+        const editorButton =
 
+            document.getElementById(
 
-		const xValue =
-			document.getElementById(
-				'editor-x'
-			);
+                'editor-toggle'
 
+            );
 
-		const yValue =
-			document.getElementById(
-				'editor-y'
-			);
 
+        const editorStatus =
 
-		const arrayValue =
-			document.getElementById(
-				'editor-array'
-			);
+            document.getElementById(
 
+                'editor-status'
 
-		const instruction =
-			document.getElementById(
-				'editor-instruction'
-			);
+            );
 
 
-		const coordinatesContent =
-			document.getElementById(
-				'coordinates-content'
-			);
+        const coordinatePanel =
 
+            document.getElementById(
 
-		const coordinateLabel =
-			document.getElementById(
-				'coordinate-label'
-			);
+                'coordinate-panel'
 
+            );
 
-		const copyButton =
-			document.getElementById(
-				'copy-coordinates'
-			);
 
+        const coordinateTitle =
 
-		const copyStatus =
-			document.getElementById(
-				'copy-status'
-			);
+            document.getElementById(
 
+                'coordinate-title'
 
+            );
 
-		/* Atualiza textos do editor */
 
-		if (coordinateTitle) {
+        const xValue =
 
-			coordinateTitle.textContent =
-				t(
-					'coordinate_editor'
-				);
-		}
+            document.getElementById(
 
+                'editor-x'
 
-		if (instruction) {
+            );
 
-			instruction.textContent =
-				t(
-					'editor_instruction'
-				);
-		}
 
+        const yValue =
 
-		if (coordinateLabel) {
+            document.getElementById(
 
-			coordinateLabel.textContent =
-				t(
-					'ready_for_leaflet'
-				);
-		}
+                'editor-y'
 
+            );
 
-		if (copyButton) {
 
-			copyButton.textContent =
-				t('copy');
-		}
+        const arrayValue =
 
+            document.getElementById(
 
+                'editor-array'
 
-		/* Editor desligado */
+            );
 
-		if (!editorMode) {
 
-			if (editorButton) {
+        const instruction =
 
-				editorButton.textContent =
-					t('editor');
+            document.getElementById(
 
+                'editor-instruction'
 
-				editorButton.classList.remove(
-					'active'
-				);
-			}
+            );
 
 
-			if (editorStatus) {
+        const coordinatesContent =
 
-				editorStatus.style.display =
-					'none';
-			}
+            document.getElementById(
 
+                'coordinates-content'
 
-			if (coordinatePanel) {
+            );
 
-				coordinatePanel.style.display =
-					'none';
-			}
 
+        const coordinateLabel =
 
-			return;
-		}
+            document.getElementById(
 
+                'coordinate-label'
 
+            );
 
-		/* Editor ligado */
 
-		if (editorButton) {
+        const copyButton =
 
-			editorButton.textContent =
-				t(
-					'editor_active'
-				);
+            document.getElementById(
 
+                'copy-coordinates'
 
-			editorButton.classList.add(
-				'active'
-			);
-		}
+            );
 
 
-		if (editorStatus) {
+        const copyStatus =
 
-			editorStatus.style.display =
-				'flex';
-		}
+            document.getElementById(
 
+                'copy-status'
 
-		if (coordinatePanel) {
+            );
 
-			coordinatePanel.style.display =
-				'block';
-		}
 
+        if (coordinateTitle) {
 
+            coordinateTitle.textContent =
 
-		/* Ainda não existe ponto */
+                t(
 
-		if (
-			editorX === null ||
-			editorY === null
-		) {
+                    'coordinate_editor'
 
-			if (instruction) {
+                );
 
-				instruction.style.display =
-					'block';
-			}
+        }
 
 
-			if (coordinatesContent) {
+        if (instruction) {
 
-				coordinatesContent.style.display =
-					'none';
-			}
+            instruction.textContent =
 
+                t(
 
-			if (copyButton) {
+                    'editor_instruction'
 
-				copyButton.disabled =
-					true;
-			}
+                );
 
+        }
 
-			if (copyStatus) {
 
-				copyStatus.textContent =
-					'';
-			}
+        if (coordinateLabel) {
 
+            coordinateLabel.textContent =
 
-			return;
-		}
+                t(
 
+                    'ready_for_leaflet'
 
+                );
 
-		/* Temos coordenadas */
+        }
 
-		if (instruction) {
 
-			instruction.style.display =
-				'none';
-		}
+        if (copyButton) {
 
+            copyButton.textContent =
 
-		if (coordinatesContent) {
+                t('copy');
 
-			coordinatesContent.style.display =
-				'block';
-		}
+        }
 
 
-		if (xValue) {
+        if (!editorMode) {
 
-			xValue.textContent =
-				editorX;
-		}
+            if (editorButton) {
 
+                editorButton.textContent =
 
-		if (yValue) {
+                    t('editor');
 
-			yValue.textContent =
-				editorY;
-		}
 
+                editorButton.classList.remove(
 
+                    'active'
 
-		/*
-			Leaflet utiliza:
+                );
 
-			[Y, X]
-		*/
+            }
 
-		if (arrayValue) {
 
-			arrayValue.textContent =
-				`[${editorY}, ${editorX}]`;
-		}
+            if (editorStatus) {
 
+                editorStatus.style.display =
 
-		if (copyButton) {
+                    'none';
 
-			copyButton.disabled =
-				false;
-		}
+            }
 
 
-		if (copyStatus) {
+            if (coordinatePanel) {
 
-			copyStatus.textContent =
-				'';
-		}
-	}
+                coordinatePanel.style.display =
 
+                    'none';
 
+            }
 
-	/* Liga / desliga o editor */
 
-	function toggleEditor() {
+            return;
 
-		editorMode =
-			!editorMode;
+        }
 
 
+        if (editorButton) {
 
-		if (!editorMode) {
+            editorButton.textContent =
 
-			if (
-				editorMarker &&
-				map
-			) {
+                t(
 
-				map.removeLayer(
-					editorMarker
-				);
-			}
+                    'editor_active'
 
+                );
 
-			editorMarker =
-				null;
 
+            editorButton.classList.add(
 
-			editorX =
-				null;
+                'active'
 
+            );
 
-			editorY =
-				null;
-		}
+        }
 
 
+        if (editorStatus) {
 
-		updateEditorInterface();
-	}
+            editorStatus.style.display =
 
+                'flex';
 
+        }
 
-	/* Copiar coordenadas */
 
-	async function copyCoordinates() {
+        if (coordinatePanel) {
 
-		if (
-			editorX === null ||
-			editorY === null
-		) {
+            coordinatePanel.style.display =
 
-			return;
-		}
+                'block';
 
+        }
 
 
-		const coordinates =
-			`[${editorY}, ${editorX}]`;
+        if (
 
+            editorX === null ||
 
-		const copyStatus =
-			document.getElementById(
-				'copy-status'
-			);
+            editorY === null
 
+        ) {
 
+            if (instruction) {
 
-		try {
+                instruction.style.display =
 
-			await navigator.clipboard.writeText(
-				coordinates
-			);
+                    'block';
 
+            }
 
-			if (copyStatus) {
 
-				copyStatus.textContent =
-					t('copied');
-			}
+            if (coordinatesContent) {
 
-		} catch (error) {
+                coordinatesContent.style.display =
 
+                    'none';
 
-			const textarea =
-				document.createElement(
-					'textarea'
-				);
+            }
 
 
-			textarea.value =
-				coordinates;
+            if (copyButton) {
 
+                copyButton.disabled =
 
-			textarea.style.position =
-				'fixed';
+                    true;
 
+            }
 
-			textarea.style.opacity =
-				'0';
 
+            if (copyStatus) {
 
-			document.body.appendChild(
-				textarea
-			);
+                copyStatus.textContent =
 
+                    '';
 
-			textarea.select();
+            }
 
 
-			document.execCommand(
-				'copy'
-			);
+            return;
 
+        }
 
-			document.body.removeChild(
-				textarea
-			);
 
+        if (instruction) {
 
-			if (copyStatus) {
+            instruction.style.display =
 
-				copyStatus.textContent =
-					t('copied');
-			}
-		}
-	}
+                'none';
 
+        }
 
 
-	/* ==========================================
-	   INICIALIZAÇÃO DO MAPA
-	   ========================================== */
+        if (coordinatesContent) {
 
-	onMount(async () => {
+            coordinatesContent.style.display =
 
+                'block';
 
-		const L =
-			await import(
-				'leaflet'
-			);
+        }
 
 
-		await import(
-			'leaflet/dist/leaflet.css'
-		);
+        if (xValue) {
 
+            xValue.textContent =
 
-		Leaflet =
-			L;
+                editorX;
 
+        }
 
 
-		const surfaceDefinition =
-			mapDefinitions.surface;
+        if (yValue) {
 
+            yValue.textContent =
 
+                editorY;
 
-		const bounds =
-			getMapBounds(
-				surfaceDefinition
-			);
+        }
 
 
+        /*
 
-		map =
-			L.map(
+            Leaflet utiliza:
 
-				mapContainer,
+            [Y, X]
 
-				{
+        */
 
-					crs:
-						L.CRS.Simple,
+        if (arrayValue) {
 
+            arrayValue.textContent =
 
-					maxBounds:
-						bounds,
+                `[${editorY}, ${editorX}]`;
 
+        }
 
-					maxBoundsViscosity:
-						0.8,
 
+        if (copyButton) {
 
-					attributionControl:
-						false,
+            copyButton.disabled =
 
+                false;
 
-					minZoom:
-						-3,
+        }
 
 
-					maxZoom:
-						2,
+        if (copyStatus) {
 
+            copyStatus.textContent =
 
-					zoomSnap:
-						0.25
-				}
-			);
+                '';
 
+        }
 
+    }
 
-		/* Imagem principal */
 
-		mapImageOverlay =
-			L.imageOverlay(
+    function toggleEditor() {
 
-				surfaceDefinition.image,
+        editorMode =
 
-				bounds
+            !editorMode;
 
-			).addTo(map);
 
+        if (!editorMode) {
 
+            if (
 
-		/* ==========================================
-		   MARCA D'ÁGUA
-		   ========================================== */
+                editorMarker &&
 
-		const LogoWatermark =
-			L.Control.extend({
+                map
 
-				options: {
+            ) {
 
-					position:
-						'bottomright'
-				},
+                map.removeLayer(
 
+                    editorMarker
 
-				onAdd:
-					function () {
+                );
 
-						const div =
-							L.DomUtil.create(
+            }
 
-								'div',
 
-								'map-watermark'
-							);
+            editorMarker =
 
+                null;
 
-						div.innerHTML = `
-							<img
-								src="/logo.png"
-								alt="DeepMap Logo"
-							/>
-						`;
 
+            editorX =
 
-						return div;
-					}
-			});
+                null;
 
 
+            editorY =
 
-		map.addControl(
-			new LogoWatermark()
-		);
+                null;
 
+        }
 
 
-		/* ==========================================
-		   LAYERS DOS MARCADORES
-		   ========================================== */
+        updateEditorInterface();
 
-		setupMarkerLayers();
+    }
 
 
-		renderLocationMarkers();
+    async function copyCoordinates() {
 
+        if (
 
+            editorX === null ||
 
-		/* ==========================================
-		   CLIQUE NO MAPA — EDITOR
-		   ========================================== */
+            editorY === null
 
-		map.on(
-			'click',
+        ) {
 
-			(e) => {
+            return;
 
+        }
 
-				if (
-					!editorMode
-				) {
 
-					return;
-				}
+        const coordinates =
 
+            `[${editorY}, ${editorX}]`;
 
 
-				/*
-					Leaflet:
+        const copyStatus =
 
-					lat = Y
-					lng = X
-				*/
+            document.getElementById(
 
-				const x =
-					Math.round(
-						e.latlng.lng
-					);
+                'copy-status'
 
+            );
 
-				const y =
-					Math.round(
-						e.latlng.lat
-					);
 
+        try {
 
+            await navigator.clipboard.writeText(
 
-				editorX =
-					x;
+                coordinates
 
+            );
 
-				editorY =
-					y;
 
+            if (copyStatus) {
 
+                copyStatus.textContent =
 
-				if (
-					editorMarker
-				) {
+                    t('copied');
 
-					map.removeLayer(
-						editorMarker
-					);
-				}
+            }
 
+        } catch (error) {
 
 
-				editorMarker =
-					Leaflet.circleMarker(
+            const textarea =
 
-						[y, x],
+                document.createElement(
 
-						{
+                    'textarea'
 
-							radius:
-								9,
+                );
 
 
-							color:
-								'#ff9f1c',
+            textarea.value =
 
+                coordinates;
 
-							weight:
-								3,
 
+            textarea.style.position =
 
-							fillColor:
-								'#ff9f1c',
+                'fixed';
 
 
-							fillOpacity:
-								0.45
-						}
+            textarea.style.opacity =
 
-					).addTo(map);
+                '0';
 
 
+            document.body.appendChild(
 
-				updateEditorInterface();
-			}
-		);
+                textarea
 
+            );
 
 
-		mapImageOverlay.on(
-			'load',
+            textarea.select();
 
-			() => {
 
-				map.fitBounds(
-					bounds
-				);
-			}
-		);
+            document.execCommand(
 
+                'copy'
 
+            );
 
-		map.fitBounds(
-			bounds
-		);
 
+            document.body.removeChild(
 
+                textarea
 
-		setTimeout(
+            );
 
-			() => {
 
-				if (map) {
+            if (copyStatus) {
 
-					map.invalidateSize();
-				}
-			},
+                copyStatus.textContent =
 
-			250
-		);
-	});
+                    t('copied');
+
+            }
+
+        }
+
+    }
+
+
+    /* ==========================================
+
+       INICIALIZAÇÃO DO MAPA
+
+       ========================================== */
+
+    onMount(async () => {
+
+
+        const L =
+
+            await import(
+
+                'leaflet'
+
+            );
+
+
+        await import(
+
+            'leaflet/dist/leaflet.css'
+
+        );
+
+
+        Leaflet =
+
+            L;
+
+
+        const surfaceDefinition =
+
+            mapDefinitions.surface;
+
+
+        const bounds =
+
+            getMapBounds(
+
+                surfaceDefinition
+
+            );
+
+
+        map =
+
+            L.map(
+
+                mapContainer,
+
+                {
+
+                    crs:
+
+                        L.CRS.Simple,
+
+
+                    maxBounds:
+
+                        bounds,
+
+
+                    maxBoundsViscosity:
+
+                        0.8,
+
+
+                    attributionControl:
+
+                        false,
+
+
+                    minZoom:
+
+                        -3,
+
+
+                    maxZoom:
+
+                        2,
+
+
+                    zoomSnap:
+
+                        0.25
+
+                }
+
+            );
+
+
+        mapImageOverlay =
+
+            L.imageOverlay(
+
+                surfaceDefinition.image,
+
+                bounds
+
+            ).addTo(map);
+
+
+        /* ==========================================
+
+           MARCA D'ÁGUA
+
+           ========================================== */
+
+        const LogoWatermark =
+
+            L.Control.extend({
+
+                options: {
+
+                    position:
+
+                        'bottomright'
+
+                },
+
+
+                onAdd:
+
+                    function () {
+
+                        const div =
+
+                            L.DomUtil.create(
+
+                                'div',
+
+                                'map-watermark'
+
+                            );
+
+
+                        div.innerHTML = `
+
+                            <img
+
+                                src="/logo.png"
+
+                                alt="DeepMap Logo"
+
+                            />
+
+                        `;
+
+
+                        return div;
+
+                    }
+
+            });
+
+
+        map.addControl(
+
+            new LogoWatermark()
+
+        );
+
+
+        /* ==========================================
+
+           LAYERS DOS MARCADORES
+
+           ========================================== */
+
+        setupMarkerLayers();
+
+
+        renderLocationMarkers();
+
+
+        /* ==========================================
+
+           CLIQUE NO MAPA — EDITOR
+
+           ========================================== */
+
+        map.on(
+
+            'click',
+
+            (e) => {
+
+
+                if (
+
+                    !editorMode
+
+                ) {
+
+                    return;
+
+                }
+
+
+                const x =
+
+                    Math.round(
+
+                        e.latlng.lng
+
+                    );
+
+
+                const y =
+
+                    Math.round(
+
+                        e.latlng.lat
+
+                    );
+
+
+                editorX =
+
+                    x;
+
+
+                editorY =
+
+                    y;
+
+
+                if (
+
+                    editorMarker
+
+                ) {
+
+                    map.removeLayer(
+
+                        editorMarker
+
+                    );
+
+                }
+
+
+                editorMarker =
+
+                    Leaflet.circleMarker(
+
+                        [y, x],
+
+                        {
+
+                            radius:
+
+                                9,
+
+
+                            color:
+
+                                '#ff9f1c',
+
+
+                            weight:
+
+                                3,
+
+
+                            fillColor:
+
+                                '#ff9f1c',
+
+
+                            fillOpacity:
+
+                                0.45
+
+                        }
+
+                    ).addTo(map);
+
+
+                updateEditorInterface();
+
+            }
+
+        );
+
+
+        mapImageOverlay.on(
+
+            'load',
+
+            () => {
+
+                map.fitBounds(
+
+                    bounds
+
+                );
+
+            }
+
+        );
+
+
+        map.fitBounds(
+
+            bounds
+
+        );
+
+
+        setTimeout(
+
+            () => {
+
+                if (map) {
+
+                    map.invalidateSize();
+
+                }
+
+            },
+
+            250
+
+        );
+
+    });
+
 </script>
-
 
 
 <div class="app-container">
 
 
-	<!-- ================================================= -->
-	<!-- CONTROLO DO MENU MOBILE -->
-	<!-- Checkbox invisível: o CSS controla abrir/fechar -->
-	<!-- ================================================= -->
+    <!-- CONTROLO DO MENU MOBILE -->
 
-	<input
-		type="checkbox"
-		id="mobile-menu-toggle"
-		class="mobile-menu-checkbox"
-	/>
+    <!-- Checkbox invisível: o CSS controla abrir/fechar -->
 
 
+    <input
 
-	<!-- ================================================= -->
-	<!-- HEADER -->
-	<!-- ================================================= -->
+        type="checkbox"
 
-	<header class="header">
+        id="mobile-menu-toggle"
 
+        class="mobile-menu-checkbox"
 
-		<!-- Botão do menu apenas para mobile -->
+    />
 
-		<label
-			for="mobile-menu-toggle"
-			class="mobile-toggle"
-			aria-label={currentTexts.open_menu}
-		>
 
-			<span class="menu-icon">
-				☰
-			</span>
+    <!-- HEADER -->
 
 
-			<span class="close-icon">
-				✕
-			</span>
+    <header class="header">
 
-		</label>
 
+        <label
 
+            for="mobile-menu-toggle"
 
-		<div class="brand">
+            class="mobile-toggle"
 
+            aria-label={currentTexts.open_menu}
 
-			<img
-				src="/logo.png"
-				alt="DeepMap"
-				class="logo-img"
-			/>
+        >
 
+            <span class="menu-icon">
 
-			<span class="game-title">
+                ☰
 
-				Elden Ring
+            </span>
 
-			</span>
 
+            <span class="close-icon">
 
-			<span class="version-tag">
+                ✕
 
-				v1.0.26
+            </span>
 
-			</span>
+        </label>
 
-		</div>
 
+        <div class="brand">
 
 
-		<div class="header-actions">
+            <img
 
+                src="/logo.png"
 
-			<!-- Seletor de idioma -->
+                alt="DeepMap"
 
-			<select
-				class="language-selector"
-				value={currentLanguage}
-				onchange={changeLanguage}
-				aria-label={currentTexts.language}
-			>
+                class="logo-img"
 
-				<option value="en">
-					EN
-				</option>
+            />
 
 
-				<option value="pt">
-					PT
-				</option>
+            <span class="game-title">
 
-			</select>
+                Elden Ring
 
+            </span>
 
 
-			<div class="checklist-status">
+            <span class="version-tag">
 
-				{currentTexts.checklist}
+                v1.0.27
 
-				<span>
-					(0%)
-				</span>
+            </span>
 
-			</div>
+        </div>
 
-		</div>
 
-	</header>
+        <div class="header-actions">
 
 
+            <select
 
-	<!-- ================================================= -->
-	<!-- EDITOR DE COORDENADAS -->
-	<!-- Apenas utilizado no PC -->
-	<!-- ================================================= -->
+                class="language-selector"
 
-	<div class="editor-ui">
+                value={currentLanguage}
 
+                onchange={changeLanguage}
 
-		<button
-			id="editor-toggle"
-			class="editor-toggle"
-			onclick={toggleEditor}
-		>
+                aria-label={currentTexts.language}
 
-			{currentTexts.editor}
+            >
 
-		</button>
+                <option value="en">
 
+                    EN
 
+                </option>
 
-		<div
-			id="coordinate-panel"
-			class="coordinate-panel"
-		>
 
+                <option value="pt">
 
-			<div
-				id="coordinate-title"
-				class="coordinate-title"
-			>
+                    PT
 
-				{currentTexts.coordinate_editor}
+                </option>
 
-			</div>
+            </select>
 
 
+            <div class="checklist-status">
 
-			<div
-				id="editor-instruction"
-				class="editor-instruction"
-			>
+                {currentTexts.checklist}
 
-				{currentTexts.editor_instruction}
+                <span>
 
-			</div>
+                    (0%)
 
+                </span>
 
+            </div>
 
-			<div
-				id="coordinates-content"
-				class="coordinates-content"
-			>
+        </div>
 
+    </header>
 
-				<div class="coordinate-row">
 
-					<span>
-						X:
-					</span>
+    <!-- EDITOR DE COORDENADAS -->
 
-					<strong id="editor-x">
-						—
-					</strong>
+    <!-- Apenas utilizado no PC -->
 
-				</div>
 
+    <div class="editor-ui">
 
 
-				<div class="coordinate-row">
+        <button
 
-					<span>
-						Y:
-					</span>
+            id="editor-toggle"
 
-					<strong id="editor-y">
-						—
-					</strong>
+            class="editor-toggle"
 
-				</div>
+            onclick={toggleEditor}
 
+        >
 
+            {currentTexts.editor}
 
-				<div class="coordinate-divider">
-				</div>
+        </button>
 
 
+        <div
 
-				<div
-					id="coordinate-label"
-					class="coordinate-label"
-				>
+            id="coordinate-panel"
 
-					{currentTexts.ready_for_leaflet}
+            class="coordinate-panel"
 
-				</div>
+        >
 
 
+            <div
 
-				<div
-					id="editor-array"
-					class="coordinate-array"
-				>
+                id="coordinate-title"
 
-					[Y, X]
+                class="coordinate-title"
 
-				</div>
+            >
 
+                {currentTexts.coordinate_editor}
 
+            </div>
 
-				<button
-					id="copy-coordinates"
-					class="copy-button"
-					onclick={copyCoordinates}
-					disabled
-				>
 
-					{currentTexts.copy}
+            <div
 
-				</button>
+                id="editor-instruction"
 
+                class="editor-instruction"
 
+            >
 
-				<div
-					id="copy-status"
-					class="copy-status"
-				>
-				</div>
+                {currentTexts.editor_instruction}
 
-			</div>
+            </div>
 
-		</div>
 
-	</div>
+            <div
 
+                id="coordinates-content"
 
+                class="coordinates-content"
 
-	<!-- Indicador do modo editor -->
+            >
 
-	<div
-		id="editor-status"
-		class="editor-status"
-	>
 
-		<span class="editor-status-dot">
-		</span>
+                <div class="coordinate-row">
 
+                    <span>
 
-		{currentTexts.editor_status}
+                        X:
 
-	</div>
+                    </span>
 
+                    <strong id="editor-x">
 
+                        —
 
-	<!-- ================================================= -->
-	<!-- CONTEÚDO PRINCIPAL -->
-	<!-- ================================================= -->
+                    </strong>
 
-	<div class="body-container">
+                </div>
 
 
-		<!-- Sidebar Desktop -->
+                <div class="coordinate-row">
 
-		<aside class="desktop-sidebar">
+                    <span>
 
+                        Y:
 
-			<div class="sidebar-content">
+                    </span>
 
+                    <strong id="editor-y">
 
-				<h2>
-					{currentTexts.filters}
-				</h2>
+                        —
 
+                    </strong>
 
+                </div>
 
-				<div class="filter-group">
 
+                <div class="coordinate-divider">
 
-					<h3>
-						{currentTexts.locations}
-					</h3>
+                </div>
 
 
+                <div
 
-					<label>
+                    id="coordinate-label"
 
-						<input
-							type="checkbox"
+                    class="coordinate-label"
 
-							checked={
-								categoryVisibility.site_of_grace
-							}
+                >
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'site_of_grace',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                    {currentTexts.ready_for_leaflet}
 
-						{currentTexts.sites_of_grace}
+                </div>
 
-					</label>
 
+                <div
 
+                    id="editor-array"
 
-					<label>
+                    class="coordinate-array"
 
-						<input
-							type="checkbox"
+                >
 
-							checked={
-								categoryVisibility.dungeon
-							}
+                    [Y, X]
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'dungeon',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                </div>
 
-						{currentTexts.dungeons_caverns}
 
-					</label>
+                <button
 
+                    id="copy-coordinates"
 
+                    class="copy-button"
 
-					<label>
+                    onclick={copyCoordinates}
 
-						<input
-							type="checkbox"
+                    disabled
 
-							checked={
-								categoryVisibility.boss
-							}
+                >
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'boss',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                    {currentTexts.copy}
 
-						{currentTexts.bosses}
+                </button>
 
-					</label>
 
-				</div>
+                <div
 
+                    id="copy-status"
 
+                    class="copy-status"
 
-				<div class="filter-group">
+                >
 
+                </div>
 
-					<h3>
-						{currentTexts.collectibles}
-					</h3>
+            </div>
 
+        </div>
 
+    </div>
 
-					<label>
 
-						<input
-							type="checkbox"
+    <div
 
-							checked={
-								categoryVisibility.weapon_equipment
-							}
+        id="editor-status"
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'weapon_equipment',
-									event.currentTarget.checked
-								)
-							}
-						/>
+        class="editor-status"
 
-						{currentTexts.weapons_equipment}
+    >
 
-					</label>
+        <span class="editor-status-dot">
 
+        </span>
 
 
-					<label>
+        {currentTexts.editor_status}
 
-						<input
-							type="checkbox"
+    </div>
 
-							checked={
-								categoryVisibility.stonesword_key
-							}
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'stonesword_key',
-									event.currentTarget.checked
-								)
-							}
-						/>
+    <!-- CONTEÚDO PRINCIPAL -->
 
-						{currentTexts.stonesword_keys}
 
-					</label>
+    <div class="body-container">
 
 
+        <aside class="desktop-sidebar">
 
-					<label>
 
-						<input
-							type="checkbox"
+            <div class="sidebar-content">
 
-							checked={
-								categoryVisibility.talisman
-							}
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'talisman',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                <h2>
 
-						{currentTexts.talismans}
+                    {currentTexts.filters}
 
-					</label>
+                </h2>
 
-				</div>
 
-			</div>
+                <div class="filter-group">
 
-		</aside>
 
+                    <h3>
 
+                        {currentTexts.locations}
 
-		<!-- Contentor do Mapa Leaflet -->
+                    </h3>
 
-		<main class="map-wrapper">
 
-			<div
-				bind:this={mapContainer}
-				class="map-element"
-			>
-			</div>
+                    <label>
 
-		</main>
+                        <input
 
-	</div>
+                            type="checkbox"
 
+                            checked={
 
+                                categoryVisibility.site_of_grace
 
-	<!-- ================================================= -->
-	<!-- MENU MOBILE -->
-	<!-- É controlado pelo checkbox através de CSS -->
-	<!-- ================================================= -->
+                            }
 
-	<div class="mobile-menu-layer">
+                            onchange={(event) =>
 
+                                setCategoryVisibility(
 
-		<label
-			for="mobile-menu-toggle"
-			class="mobile-backdrop"
-			aria-label={currentTexts.close_menu}
-		>
-		</label>
+                                    'site_of_grace',
 
+                                    event.currentTarget.checked
 
+                                )
 
-		<aside class="mobile-sidebar">
+                            }
 
+                        />
 
-			<div class="mobile-sidebar-header">
+                        {currentTexts.sites_of_grace}
 
+                    </label>
 
-				<h2>
-					{currentTexts.filters}
-				</h2>
 
+                    <label>
 
+                        <input
 
-				<label
-					for="mobile-menu-toggle"
-					class="mobile-close"
-					aria-label={currentTexts.close_menu}
-				>
+                            type="checkbox"
 
-					✕
+                            checked={
 
-				</label>
+                                categoryVisibility.dungeon
 
-			</div>
+                            }
 
+                            onchange={(event) =>
 
+                                setCategoryVisibility(
 
-			<div class="sidebar-content">
+                                    'dungeon',
 
+                                    event.currentTarget.checked
 
-				<div class="filter-group">
+                                )
 
+                            }
 
-					<h3>
-						{currentTexts.locations}
-					</h3>
+                        />
 
+                        {currentTexts.dungeons_caverns}
 
+                    </label>
 
-					<label>
 
-						<input
-							type="checkbox"
+                    <label>
 
-							checked={
-								categoryVisibility.site_of_grace
-							}
+                        <input
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'site_of_grace',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                            type="checkbox"
 
-						{currentTexts.sites_of_grace}
+                            checked={
 
-					</label>
+                                categoryVisibility.boss
 
+                            }
 
+                            onchange={(event) =>
 
-					<label>
+                                setCategoryVisibility(
 
-						<input
-							type="checkbox"
+                                    'boss',
 
-							checked={
-								categoryVisibility.dungeon
-							}
+                                    event.currentTarget.checked
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'dungeon',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                                )
 
-						{currentTexts.dungeons_caverns}
+                            }
 
-					</label>
+                        />
 
+                        {currentTexts.bosses}
 
+                    </label>
 
-					<label>
+                </div>
 
-						<input
-							type="checkbox"
 
-							checked={
-								categoryVisibility.boss
-							}
+                <div class="filter-group">
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'boss',
-									event.currentTarget.checked
-								)
-							}
-						/>
 
-						{currentTexts.bosses}
+                    <h3>
 
-					</label>
+                        {currentTexts.collectibles}
 
-				</div>
+                    </h3>
 
 
+                    <label>
 
-				<div class="filter-group">
+                        <input
 
+                            type="checkbox"
 
-					<h3>
-						{currentTexts.collectibles}
-					</h3>
+                            checked={
 
+                                categoryVisibility.weapon_equipment
 
+                            }
 
-					<label>
+                            onchange={(event) =>
 
-						<input
-							type="checkbox"
+                                setCategoryVisibility(
 
-							checked={
-								categoryVisibility.weapon_equipment
-							}
+                                    'weapon_equipment',
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'weapon_equipment',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                                    event.currentTarget.checked
 
-						{currentTexts.weapons_equipment}
+                                )
 
-					</label>
+                            }
 
+                        />
 
+                        {currentTexts.weapons_equipment}
 
-					<label>
+                    </label>
 
-						<input
-							type="checkbox"
 
-							checked={
-								categoryVisibility.stonesword_key
-							}
+                    <label>
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'stonesword_key',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                        <input
 
-						{currentTexts.stonesword_keys}
+                            type="checkbox"
 
-					</label>
+                            checked={
 
+                                categoryVisibility.stonesword_key
 
+                            }
 
-					<label>
+                            onchange={(event) =>
 
-						<input
-							type="checkbox"
+                                setCategoryVisibility(
 
-							checked={
-								categoryVisibility.talisman
-							}
+                                    'stonesword_key',
 
-							onchange={(event) =>
-								setCategoryVisibility(
-									'talisman',
-									event.currentTarget.checked
-								)
-							}
-						/>
+                                    event.currentTarget.checked
 
-						{currentTexts.talismans}
+                                )
 
-					</label>
+                            }
 
-				</div>
+                        />
 
-			</div>
+                        {currentTexts.stonesword_keys}
 
-		</aside>
+                    </label>
 
-	</div>
+
+                    <label>
+
+                        <input
+
+                            type="checkbox"
+
+                            checked={
+
+                                categoryVisibility.talisman
+
+                            }
+
+                            onchange={(event) =>
+
+                                setCategoryVisibility(
+
+                                    'talisman',
+
+                                    event.currentTarget.checked
+
+                                )
+
+                            }
+
+                        />
+
+                        {currentTexts.talismans}
+
+                    </label>
+
+                </div>
+
+            </div>
+
+        </aside>
+
+
+        <main class="map-wrapper">
+
+            <div
+
+                bind:this={mapContainer}
+
+                class="map-element"
+
+            >
+
+            </div>
+
+        </main>
+
+    </div>
+
+
+    <!-- MENU MOBILE -->
+
+    <!-- É controlado pelo checkbox através de CSS -->
+
+
+    <div class="mobile-menu-layer">
+
+
+        <label
+
+            for="mobile-menu-toggle"
+
+            class="mobile-backdrop"
+
+            aria-label={currentTexts.close_menu}
+
+        >
+
+        </label>
+
+
+        <aside class="mobile-sidebar">
+
+
+            <div class="mobile-sidebar-header">
+
+
+                <h2>
+
+                    {currentTexts.filters}
+
+                </h2>
+
+
+                <label
+
+                    for="mobile-menu-toggle"
+
+                    class="mobile-close"
+
+                    aria-label={currentTexts.close_menu}
+
+                >
+
+                    ✕
+
+                </label>
+
+            </div>
+
+
+            <div class="sidebar-content">
+
+
+                <div class="filter-group">
+
+
+                    <h3>
+
+                        {currentTexts.locations}
+
+                    </h3>
+
+
+                    <label>
+
+                        <input
+
+                            type="checkbox"
+
+                            checked={
+
+                                categoryVisibility.site_of_grace
+
+                            }
+
+                            onchange={(event) =>
+
+                                setCategoryVisibility(
+
+                                    'site_of_grace',
+
+                                    event.currentTarget.checked
+
+                                )
+
+                            }
+
+                        />
+
+                        {currentTexts.sites_of_grace}
+
+                    </label>
+
+
+                    <label>
+
+                        <input
+
+                            type="checkbox"
+
+                            checked={
+
+                                categoryVisibility.dungeon
+
+                            }
+
+                            onchange={(event) =>
+
+                                setCategoryVisibility(
+
+                                    'dungeon',
+
+                                    event.currentTarget.checked
+
+                                )
+
+                            }
+
+                        />
+
+                        {currentTexts.dungeons_caverns}
+
+                    </label>
+
+
+                    <label>
+
+                        <input
+
+                            type="checkbox"
+
+                            checked={
+
+                                categoryVisibility.boss
+
+                            }
+
+                            onchange={(event) =>
+
+                                setCategoryVisibility(
+
+                                    'boss',
+
+                                    event.currentTarget.checked
+
+                                )
+
+                            }
+
+                        />
+
+                        {currentTexts.bosses}
+
+                    </label>
+
+                </div>
+
+
+                <div class="filter-group">
+
+
+                    <h3>
+
+                        {currentTexts.collectibles}
+
+                    </h3>
+
+
+                    <label>
+
+                        <input
+
+                            type="checkbox"
+
+                            checked={
+
+                                categoryVisibility.weapon_equipment
+
+                            }
+
+                            onchange={(event) =>
+
+                                setCategoryVisibility(
+
+                                    'weapon_equipment',
+
+                                    event.currentTarget.checked
+
+                                )
+
+                            }
+
+                        />
+
+                        {currentTexts.weapons_equipment}
+
+                    </label>
+
+
+                    <label>
+
+                        <input
+
+                            type="checkbox"
+
+                            checked={
+
+                                categoryVisibility.stonesword_key
+
+                            }
+
+                            onchange={(event) =>
+
+                                setCategoryVisibility(
+
+                                    'stonesword_key',
+
+                                    event.currentTarget.checked
+
+                                )
+
+                            }
+
+                        />
+
+                        {currentTexts.stonesword_keys}
+
+                    </label>
+
+
+                    <label>
+
+                        <input
+
+                            type="checkbox"
+
+                            checked={
+
+                                categoryVisibility.talisman
+
+                            }
+
+                            onchange={(event) =>
+
+                                setCategoryVisibility(
+
+                                    'talisman',
+
+                                    event.currentTarget.checked
+
+                                )
+
+                            }
+
+                        />
+
+                        {currentTexts.talismans}
+
+                    </label>
+
+                </div>
+
+            </div>
+
+        </aside>
+
+    </div>
 
 </div>
 
 
-
 <style>
 
-	:global(html),
-	:global(body) {
+    :global(html),
 
-		margin: 0;
-		padding: 0;
+    :global(body) {
 
-		width: 100%;
-		height: 100%;
+        margin: 0;
 
-		overflow: hidden;
+        padding: 0;
 
-		background-color: #0b0b0e;
+        width: 100%;
 
-		font-family:
-			'Segoe UI',
-			Roboto,
-			Helvetica,
-			Arial,
-			sans-serif;
+        height: 100%;
 
-		color: #e0e0e0;
-	}
+        overflow: hidden;
 
+        background-color: #0b0b0e;
 
+        font-family:
 
-	.app-container {
+            'Segoe UI',
 
-		width: 100vw;
+            Roboto,
 
-		height: 100vh;
-		height: 100dvh;
+            Helvetica,
 
-		overflow: hidden;
+            Arial,
 
-		background: #0b0b0e;
-	}
+            sans-serif;
 
+        color: #e0e0e0;
 
+    }
 
-	/* ==========================================
-	   HEADER
-	   ========================================== */
 
-	.header {
+    .app-container {
 
-		position: fixed;
+        width: 100vw;
 
-		top: 0;
-		left: 0;
-		right: 0;
+        height: 100vh;
 
-		height: 56px;
+        height: 100dvh;
 
-		background: #16161a;
+        overflow: hidden;
 
-		border-bottom:
-			1px solid #2a2a30;
+        background: #0b0b0e;
 
-		display: flex;
+    }
 
-		align-items: center;
 
-		justify-content:
-			space-between;
+    /* ==========================================
 
-		padding: 0 16px;
+       HEADER
 
-		box-sizing: border-box;
+       ========================================== */
 
-		z-index: 10000;
-	}
+    .header {
 
+        position: fixed;
 
+        top: 0;
 
-	.brand {
+        left: 0;
 
-		display: flex;
+        right: 0;
 
-		align-items: center;
+        height: 56px;
 
-		gap: 12px;
-	}
+        background: #16161a;
 
+        border-bottom:
 
+            1px solid #2a2a30;
 
-	.logo-img {
+        display: flex;
 
-		height: 32px;
+        align-items: center;
 
-		width: auto;
-	}
+        justify-content:
 
+            space-between;
 
+        padding: 0 16px;
 
-	.game-title {
+        box-sizing: border-box;
 
-		font-size: 1.2rem;
+        z-index: 10000;
 
-		font-weight: 700;
+    }
 
-		color: #c8a355;
 
-		letter-spacing: 1px;
-	}
+    .brand {
 
+        display: flex;
 
+        align-items: center;
 
-	.version-tag {
+        gap: 12px;
 
-		font-size: 0.75rem;
+    }
 
-		color: #888899;
 
-		background: #22222a;
+    .logo-img {
 
-		padding: 2px 6px;
+        height: 32px;
 
-		border-radius: 4px;
+        width: auto;
 
-		border:
-			1px solid #333340;
-	}
+    }
 
 
+    .game-title {
 
-	.header-actions {
+        font-size: 1.2rem;
 
-		display: flex;
+        font-weight: 700;
 
-		align-items: center;
+        color: #c8a355;
 
-		gap: 12px;
-	}
+        letter-spacing: 1px;
 
+    }
 
 
-	.language-selector {
+    .version-tag {
 
-		background: #22222a;
+        font-size: 0.75rem;
 
-		border:
-			1px solid #3a3a45;
+        color: #888899;
 
-		border-radius: 5px;
+        background: #22222a;
 
-		color: #c8a355;
+        padding: 2px 6px;
 
-		padding: 5px 7px;
+        border-radius: 4px;
 
-		font-weight: 700;
+        border:
 
-		cursor: pointer;
+            1px solid #333340;
 
-		outline: none;
-	}
+    }
 
 
+    .header-actions {
 
-	.language-selector:hover {
+        display: flex;
 
-		border-color: #c8a355;
-	}
+        align-items: center;
 
+        gap: 12px;
 
+    }
 
-	.checklist-status {
 
-		font-size: 0.9rem;
+    .language-selector {
 
-		color: #a0a0a0;
-	}
+        background: #22222a;
 
+        border:
 
+            1px solid #3a3a45;
 
-	.checklist-status span {
+        border-radius: 5px;
 
-		color: #c8a355;
+        color: #c8a355;
 
-		font-weight: 600;
-	}
+        padding: 5px 7px;
 
+        font-weight: 700;
 
+        cursor: pointer;
 
-	/* ==========================================
-	   BOTÃO MOBILE
-	   ========================================== */
+        outline: none;
 
-	.mobile-menu-checkbox {
+    }
 
-		display: none;
-	}
 
+    .language-selector:hover {
 
+        border-color: #c8a355;
 
-	.mobile-toggle {
+    }
 
-		display: none;
 
-		align-items: center;
+    .checklist-status {
 
-		justify-content: center;
+        font-size: 0.9rem;
 
-		width: 48px;
+        color: #a0a0a0;
 
-		height: 48px;
+    }
 
-		padding: 0;
 
-		background: transparent;
+    .checklist-status span {
 
-		border: 0;
+        color: #c8a355;
 
-		color: #c8a355;
+        font-weight: 600;
 
-		font-size: 28px;
+    }
 
-		cursor: pointer;
 
-		touch-action: manipulation;
+    /* ==========================================
 
-		z-index: 10001;
-	}
+       BOTÃO MOBILE
 
+       ========================================== */
 
+    .mobile-menu-checkbox {
 
-	.menu-icon,
-	.close-icon {
+        display: none;
 
-		display: block;
+    }
 
-		line-height: 1;
-	}
 
+    .mobile-toggle {
 
+        display: none;
 
-	.close-icon {
+        align-items: center;
 
-		display: none;
-	}
+        justify-content: center;
 
+        width: 48px;
 
+        height: 48px;
 
-	/* ==========================================
-	   EDITOR DE COORDENADAS
-	   ========================================== */
+        padding: 0;
 
-	.editor-ui {
+        background: transparent;
 
-		position: fixed !important;
+        border: 0;
 
-		top: 68px !important;
+        color: #c8a355;
 
-		right: 16px !important;
+        font-size: 28px;
 
-		width: 280px;
+        cursor: pointer;
 
-		z-index: 999999 !important;
+        touch-action: manipulation;
 
-		pointer-events: none;
-	}
+        z-index: 10001;
 
+    }
 
 
-	.editor-toggle {
+    .menu-icon,
 
-		display: block;
+    .close-icon {
 
-		margin-left: auto;
+        display: block;
 
-		padding: 10px 16px;
+        line-height: 1;
 
-		background: #16161a;
+    }
 
-		border:
-			1px solid #c8a355;
 
-		border-radius: 6px;
+    .close-icon {
 
-		color: #c8a355;
+        display: none;
 
-		font-size: 0.78rem;
+    }
 
-		font-weight: 700;
 
-		letter-spacing: 0.5px;
+    /* ==========================================
 
-		cursor: pointer;
+       EDITOR DE COORDENADAS
 
-		box-shadow:
-			0 4px 15px
-			rgba(0, 0, 0, 0.4);
+       ========================================== */
 
-		pointer-events: auto;
+    .editor-ui {
 
-		transition:
-			background 0.2s,
-			color 0.2s,
-			box-shadow 0.2s;
-	}
+        position: fixed !important;
 
+        top: 68px !important;
 
+        right: 16px !important;
 
-	.editor-toggle:hover {
+        width: 280px;
 
-		background: #22222a;
-	}
+        z-index: 999999 !important;
 
+        pointer-events: none;
 
+    }
 
-	.editor-toggle.active {
 
-		background: #c8a355;
+    .editor-toggle {
 
-		color: #111116;
+        display: block;
 
-		box-shadow:
-			0 0 0 2px
-				rgba(200, 163, 85, 0.15),
-			0 5px 20px
-				rgba(0, 0, 0, 0.5);
-	}
+        margin-left: auto;
 
+        padding: 10px 16px;
 
+        background: #16161a;
 
-	.coordinate-panel {
+        border:
 
-		display: none;
+            1px solid #c8a355;
 
-		margin-top: 10px;
+        border-radius: 6px;
 
-		background:
-			rgba(22, 22, 26, 0.97);
+        color: #c8a355;
 
-		border:
-			1px solid #c8a355;
+        font-size: 0.78rem;
 
-		border-radius: 8px;
+        font-weight: 700;
 
-		padding: 16px;
+        letter-spacing: 0.5px;
 
-		box-sizing: border-box;
+        cursor: pointer;
 
-		box-shadow:
-			0 8px 30px
-			rgba(0, 0, 0, 0.65);
+        box-shadow:
 
-		backdrop-filter:
-			blur(8px);
+            0 4px 15px
 
-		pointer-events: auto;
-	}
+            rgba(0, 0, 0, 0.4);
 
+        pointer-events: auto;
 
+        transition:
 
-	.coordinate-title {
+            background 0.2s,
 
-		color: #c8a355;
+            color 0.2s,
 
-		font-size: 0.8rem;
+            box-shadow 0.2s;
 
-		font-weight: 700;
+    }
 
-		letter-spacing: 0.6px;
 
-		margin-bottom: 14px;
+    .editor-toggle:hover {
 
-		padding-bottom: 10px;
+        background: #22222a;
 
-		border-bottom:
-			1px solid #2a2a30;
-	}
+    }
 
 
+    .editor-toggle.active {
 
-	.editor-instruction {
+        background: #c8a355;
 
-		font-size: 0.85rem;
+        color: #111116;
 
-		color: #b0b0b8;
+        box-shadow:
 
-		line-height: 1.5;
-	}
+            0 0 0 2px
 
+                rgba(200, 163, 85, 0.15),
 
+            0 5px 20px
 
-	.coordinates-content {
+                rgba(0, 0, 0, 0.5);
 
-		display: none;
-	}
+    }
 
 
+    .coordinate-panel {
 
-	.coordinate-row {
+        display: none;
 
-		display: flex;
+        margin-top: 10px;
 
-		align-items: center;
+        background:
 
-		justify-content:
-			space-between;
+            rgba(22, 22, 26, 0.97);
 
-		margin-bottom: 8px;
+        border:
 
-		font-size: 0.95rem;
-	}
+            1px solid #c8a355;
 
+        border-radius: 8px;
 
+        padding: 16px;
 
-	.coordinate-row span {
+        box-sizing: border-box;
 
-		color: #9999a5;
-	}
+        box-shadow:
 
+            0 8px 30px
 
+            rgba(0, 0, 0, 0.65);
 
-	.coordinate-row strong {
+        backdrop-filter:
 
-		color: #ffffff;
+            blur(8px);
 
-		font-size: 1rem;
-	}
+        pointer-events: auto;
 
+    }
 
 
-	.coordinate-divider {
+    .coordinate-title {
 
-		height: 1px;
+        color: #c8a355;
 
-		background: #2a2a30;
+        font-size: 0.8rem;
 
-		margin: 14px 0;
-	}
+        font-weight: 700;
 
+        letter-spacing: 0.6px;
 
+        margin-bottom: 14px;
 
-	.coordinate-label {
+        padding-bottom: 10px;
 
-		color: #888899;
+        border-bottom:
 
-		font-size: 0.75rem;
+            1px solid #2a2a30;
 
-		text-transform:
-			uppercase;
+    }
 
-		letter-spacing: 0.5px;
 
-		margin-bottom: 7px;
-	}
+    .editor-instruction {
 
+        font-size: 0.85rem;
 
+        color: #b0b0b8;
 
-	.coordinate-array {
+        line-height: 1.5;
 
-		background: #0b0b0e;
+    }
 
-		border:
-			1px solid #333340;
 
-		border-radius: 5px;
+    .coordinates-content {
 
-		padding: 10px;
+        display: none;
 
-		margin-bottom: 10px;
+    }
 
-		text-align: center;
 
-		font-family: monospace;
+    .coordinate-row {
 
-		font-size: 1rem;
+        display: flex;
 
-		font-weight: 700;
+        align-items: center;
 
-		color: #ffb640;
+        justify-content:
 
-		user-select: all;
-	}
+            space-between;
 
+        margin-bottom: 8px;
 
+        font-size: 0.95rem;
 
-	.copy-button {
+    }
 
-		width: 100%;
 
-		padding: 9px;
+    .coordinate-row span {
 
-		background: #c8a355;
+        color: #9999a5;
 
-		border: 0;
+    }
 
-		border-radius: 5px;
 
-		color: #111116;
+    .coordinate-row strong {
 
-		font-size: 0.78rem;
+        color: #ffffff;
 
-		font-weight: 800;
+        font-size: 1rem;
 
-		cursor: pointer;
-	}
+    }
 
 
+    .coordinate-divider {
 
-	.copy-button:disabled {
+        height: 1px;
 
-		opacity: 0.35;
+        background: #2a2a30;
 
-		cursor: not-allowed;
-	}
+        margin: 14px 0;
 
+    }
 
 
-	.copy-status {
+    .coordinate-label {
 
-		min-height: 18px;
+        color: #888899;
 
-		margin-top: 7px;
+        font-size: 0.75rem;
 
-		color: #7edc98;
+        text-transform:
 
-		font-size: 0.75rem;
+            uppercase;
 
-		font-weight: 600;
+        letter-spacing: 0.5px;
 
-		text-align: center;
-	}
+        margin-bottom: 7px;
 
+    }
 
 
-	.editor-status {
+    .coordinate-array {
 
-		display: none;
+        background: #0b0b0e;
 
-		position: fixed !important;
+        border:
 
-		top: 68px !important;
+            1px solid #333340;
 
-		left: 50% !important;
+        border-radius: 5px;
 
-		transform:
-			translateX(-50%);
+        padding: 10px;
 
-		align-items: center;
+        margin-bottom: 10px;
 
-		gap: 8px;
+        text-align: center;
 
-		padding: 8px 14px;
+        font-family: monospace;
 
-		background:
-			rgba(22, 22, 26, 0.96);
+        font-size: 1rem;
 
-		border:
-			1px solid #ff9f1c;
+        font-weight: 700;
 
-		border-radius: 6px;
+        color: #ffb640;
 
-		color: #ffb340;
+        user-select: all;
 
-		font-size: 0.76rem;
+    }
 
-		font-weight: 800;
 
-		letter-spacing: 0.4px;
+    .copy-button {
 
-		box-shadow:
-			0 5px 20px
-			rgba(0, 0, 0, 0.55);
+        width: 100%;
 
-		z-index:
-			999999 !important;
+        padding: 9px;
 
-		pointer-events: none;
-	}
+        background: #c8a355;
 
+        border: 0;
 
+        border-radius: 5px;
 
-	.editor-status-dot {
+        color: #111116;
 
-		width: 8px;
+        font-size: 0.78rem;
 
-		height: 8px;
+        font-weight: 800;
 
-		border-radius: 50%;
+        cursor: pointer;
 
-		background: #ff9f1c;
+    }
 
-		box-shadow:
-			0 0 8px
-			rgba(255, 159, 28, 0.8);
-	}
 
+    .copy-button:disabled {
 
+        opacity: 0.35;
 
-	/* ==========================================
-	   BODY / MAPA
-	   ========================================== */
+        cursor: not-allowed;
 
-	.body-container {
+    }
 
-		position: fixed;
 
-		top: 56px;
+    .copy-status {
 
-		left: 0;
+        min-height: 18px;
 
-		right: 0;
+        margin-top: 7px;
 
-		bottom: 0;
+        color: #7edc98;
 
-		overflow: hidden;
+        font-size: 0.75rem;
 
-		display: flex;
-	}
+        font-weight: 600;
 
+        text-align: center;
 
+    }
 
-	/* ==========================================
-	   SIDEBAR DESKTOP
-	   ========================================== */
 
-	.desktop-sidebar {
+    .editor-status {
 
-		position: fixed;
+        display: none;
 
-		top: 56px;
+        position: fixed !important;
 
-		left: 0;
+        top: 68px !important;
 
-		bottom: 0;
+        left: 50% !important;
 
-		width: 300px;
+        transform:
 
-		background: #16161a;
+            translateX(-50%);
 
-		border-right:
-			1px solid #2a2a30;
+        align-items: center;
 
-		box-sizing: border-box;
+        gap: 8px;
 
-		z-index: 9000;
+        padding: 8px 14px;
 
-		overflow: hidden;
-	}
+        background:
 
+            rgba(22, 22, 26, 0.96);
 
+        border:
 
-	.sidebar-content {
+            1px solid #ff9f1c;
 
-		padding: 20px;
+        border-radius: 6px;
 
-		overflow-y: auto;
+        color: #ffb340;
 
-		height: 100%;
+        font-size: 0.76rem;
 
-		box-sizing: border-box;
-	}
+        font-weight: 800;
 
+        letter-spacing: 0.4px;
 
+        box-shadow:
 
-	.desktop-sidebar h2 {
+            0 5px 20px
 
-		font-size: 1.1rem;
+            rgba(0, 0, 0, 0.55);
 
-		color: #c8a355;
+        z-index:
 
-		margin-top: 0;
+            999999 !important;
 
-		border-bottom:
-			1px solid #2a2a30;
+        pointer-events: none;
 
-		padding-bottom: 8px;
-	}
+    }
 
 
+    .editor-status-dot {
 
-	.filter-group {
+        width: 8px;
 
-		margin-bottom: 20px;
-	}
+        height: 8px;
 
+        border-radius: 50%;
 
+        background: #ff9f1c;
 
-	.filter-group h3 {
+        box-shadow:
 
-		font-size: 0.9rem;
+            0 0 8px
 
-		color: #888;
+            rgba(255, 159, 28, 0.8);
 
-		text-transform:
-			uppercase;
+    }
 
-		letter-spacing: 0.5px;
 
-		margin-bottom: 10px;
-	}
+    /* ==========================================
 
+       BODY / MAPA
 
+       ========================================== */
 
-	.filter-group label {
+    .body-container {
 
-		display: flex;
+        position: fixed;
 
-		align-items: center;
+        top: 56px;
 
-		gap: 10px;
+        left: 0;
 
-		margin-bottom: 8px;
+        right: 0;
 
-		font-size: 0.95rem;
+        bottom: 0;
 
-		cursor: pointer;
-	}
+        overflow: hidden;
 
+        display: flex;
 
+    }
 
-	.filter-group input[type='checkbox'] {
 
-		accent-color: #c8a355;
+    /* ==========================================
 
-		width: 16px;
+       SIDEBAR DESKTOP
 
-		height: 16px;
-	}
+       ========================================== */
 
+    .desktop-sidebar {
 
+        position: fixed;
 
-	/* ==========================================
-	   MAPA
-	   ========================================== */
+        top: 56px;
 
-	.map-wrapper {
+        left: 0;
 
-		position: absolute;
+        bottom: 0;
 
-		top: 0;
+        width: 300px;
 
-		left: 300px;
+        background: #16161a;
 
-		right: 0;
+        border-right:
 
-		bottom: 0;
+            1px solid #2a2a30;
 
-		background: #0b0b0e;
-	}
+        box-sizing: border-box;
 
+        z-index: 9000;
 
+        overflow: hidden;
 
-	.map-element {
+    }
 
-		position: absolute;
 
-		top: 0;
+    .sidebar-content {
 
-		left: 0;
+        padding: 20px;
 
-		right: 0;
+        overflow-y: auto;
 
-		bottom: 0;
+        height: 100%;
 
-		background: #0b0b0e;
-	}
+        box-sizing: border-box;
 
+    }
 
 
-	/* ==========================================
-	   ÍCONES DOS MARCADORES
-	   ========================================== */
+    .desktop-sidebar h2 {
 
-	:global(.deepmap-marker-icon) {
+        font-size: 1.1rem;
 
-		filter:
-			drop-shadow(
-				0 3px 4px
-				rgba(0, 0, 0, 0.7)
-			);
+        color: #c8a355;
 
-		transition:
-			transform 0.15s ease;
-	}
+        margin-top: 0;
 
+        border-bottom:
 
+            1px solid #2a2a30;
 
-	:global(.deepmap-marker-icon:hover) {
+        padding-bottom: 8px;
 
-		transform:
-			scale(1.12);
-	}
+    }
 
 
+    .filter-group {
 
-	/* ==========================================
-	   POPUP DE LOCALIZAÇÕES
-	   ========================================== */
+        margin-bottom: 20px;
 
-	:global(.deepmap-leaflet-popup .leaflet-popup-content-wrapper) {
+    }
 
-		background: #16161a;
 
-		color: #e7e7ea;
+    .filter-group h3 {
 
-		padding: 0;
+        font-size: 0.9rem;
 
-		border-radius: 10px;
+        color: #888;
 
-		border:
-			1px solid
-			rgba(200, 163, 85, 0.45);
+        text-transform:
 
-		overflow: hidden;
+            uppercase;
 
-		box-shadow:
-			0 12px 35px
-			rgba(0, 0, 0, 0.7);
-	}
+        letter-spacing: 0.5px;
 
+        margin-bottom: 10px;
 
+    }
 
-	:global(.deepmap-leaflet-popup .leaflet-popup-content) {
 
-		margin: 0;
+    .filter-group label {
 
-		width: auto !important;
-	}
+        display: flex;
 
+        align-items: center;
 
+        gap: 10px;
 
-	:global(.deepmap-leaflet-popup .leaflet-popup-tip) {
+        margin-bottom: 8px;
 
-		background: #16161a;
-	}
+        font-size: 0.95rem;
 
+        cursor: pointer;
 
+    }
 
-	:global(.deepmap-leaflet-popup .leaflet-popup-close-button) {
 
-		color:
-			#ffffff !important;
+    .filter-group input[type='checkbox'] {
 
-		background:
-			rgba(0, 0, 0, 0.55) !important;
+        accent-color: #c8a355;
 
-		width:
-			28px !important;
+        width: 16px;
 
-		height:
-			28px !important;
+        height: 16px;
 
-		line-height:
-			27px !important;
+    }
 
-		border-radius: 50%;
 
-		top:
-			7px !important;
+    /* ==========================================
 
-		right:
-			7px !important;
+       MAPA
 
-		z-index: 5;
+       ========================================== */
 
-		font-size:
-			18px !important;
-	}
+    .map-wrapper {
 
+        position: absolute;
 
+        top: 0;
 
-	:global(.deepmap-popup) {
+        left: 300px;
 
-		width: 310px;
+        right: 0;
 
-		max-width: 100%;
-	}
+        bottom: 0;
 
+        background: #0b0b0e;
 
+    }
 
-	:global(.deepmap-popup-image-wrapper) {
 
-		width: 100%;
+    .map-element {
 
-		height: 165px;
+        position: absolute;
 
-		overflow: hidden;
+        top: 0;
 
-		background: #0b0b0e;
-	}
+        left: 0;
 
+        right: 0;
 
+        bottom: 0;
 
-	:global(.deepmap-popup-image) {
+        background: #0b0b0e;
 
-		width: 100%;
+    }
 
-		height: 100%;
 
-		display: block;
+    /* ==========================================
 
-		object-fit: cover;
-	}
+       ÍCONES DOS MARCADORES
 
+       ========================================== */
 
+  :global(.deepmap-marker-wrapper) {
+    background: transparent !important;
+    border: 0 !important;
+}
 
-	:global(.deepmap-popup-body) {
+:global(.deepmap-marker) {
+    width: var(--marker-width);
+    height: var(--marker-height);
 
-		padding:
-			15px 16px 17px;
-	}
+    transition:
+        transform 0.15s ease;
+}
 
+:global(.deepmap-marker-shape) {
+    width: 100%;
+    height: 100%;
 
+    display: block;
 
-	:global(.deepmap-popup-category) {
+    overflow: visible;
 
-		color: #c8a355;
+    filter:
+        drop-shadow(
+            0 3px 4px
+            rgba(0, 0, 0, 0.5)
+        );
+}
 
-		font-size: 0.69rem;
+:global(.deepmap-marker:hover) {
+    transform:
+        scale(1.12);
+}
 
-		font-weight: 800;
+:global(.deepmap-marker-tooltip) {
+    background: #16161a;
+    color: #ffffff;
 
-		letter-spacing: 0.8px;
+    border: 1px solid #2a2a30;
+    border-radius: 5px;
 
-		text-transform:
-			uppercase;
+    padding: 5px 8px;
 
-		margin-bottom: 4px;
-	}
+    font-size: 0.78rem;
+    font-weight: 600;
 
+    box-shadow:
+        0 3px 8px
+        rgba(0, 0, 0, 0.45);
+}
 
+:global(.deepmap-marker-tooltip::before) {
+    border-top-color: #16161a;
+}
+    /* ==========================================
 
-	:global(.deepmap-popup-title) {
+       POPUP DE LOCALIZAÇÕES
 
-		margin:
-			0 0 12px;
+       ========================================== */
 
-		padding: 0;
+    :global(.deepmap-leaflet-popup .leaflet-popup-content-wrapper) {
 
-		color: #ffffff;
+        background: #16161a;
 
-		font-size: 1.15rem;
+        color: #e7e7ea;
 
-		line-height: 1.25;
-	}
+        padding: 0;
 
+        border-radius: 10px;
 
+        border:
 
-	:global(.deepmap-popup-info) {
+            1px solid
 
-		margin-bottom: 12px;
+            rgba(200, 163, 85, 0.45);
 
-		padding:
-			8px 10px;
+        overflow: hidden;
 
-		background: #111115;
+        box-shadow:
 
-		border-radius: 6px;
+            0 12px 35px
 
-		border:
-			1px solid #292930;
-	}
+            rgba(0, 0, 0, 0.7);
 
+    }
 
 
-	:global(.deepmap-popup-info-row) {
+    :global(.deepmap-leaflet-popup .leaflet-popup-content) {
 
-		display: flex;
+        margin: 0;
 
-		justify-content:
-			space-between;
+        width: auto !important;
 
-		gap: 14px;
+    }
 
-		padding: 3px 0;
 
-		font-size: 0.78rem;
-	}
+    :global(.deepmap-leaflet-popup .leaflet-popup-tip) {
 
+        background: #16161a;
 
+    }
 
-	:global(.deepmap-popup-info-label) {
 
-		color: #888894;
-	}
+    :global(.deepmap-leaflet-popup .leaflet-popup-close-button) {
 
+        color:
 
+            #ffffff !important;
 
-	:global(.deepmap-popup-info-value) {
+        background:
 
-		color: #d8d8dd;
+            rgba(0, 0, 0, 0.55) !important;
 
-		text-align: right;
+        width:
 
-		font-weight: 600;
-	}
+            28px !important;
 
+        height:
 
+            28px !important;
 
-	:global(.deepmap-popup-description) {
+        line-height:
 
-		margin: 0;
+            27px !important;
 
-		color: #ababaf;
+        border-radius: 50%;
 
-		font-size: 0.82rem;
+        top:
 
-		line-height: 1.5;
-	}
+            7px !important;
 
+        right:
 
+            7px !important;
 
-	/* Marca d'água no canto inferior direito (Apenas logo e bem transparente) */
+        z-index: 5;
 
-	:global(.map-watermark) {
+        font-size:
 
-		display: flex;
+            18px !important;
 
-		align-items: center;
+    }
 
-		justify-content: center;
 
-		background:
-			rgba(22, 22, 26, 0.5);
+    :global(.deepmap-popup) {
 
-		padding: 6px;
+        width: 310px;
 
-		border-radius: 8px;
+        max-width: 100%;
 
-		border:
-			1px solid
-			rgba(200, 163, 85, 0.2);
+    }
 
-		backdrop-filter:
-			blur(4px);
 
-		margin-bottom: 12px;
+    :global(.deepmap-popup-image-wrapper) {
 
-		margin-right: 12px;
+        width: 100%;
 
-		opacity: 0.6; /* Transparência suave */
+        height: 165px;
 
-		pointer-events: none;
-	}
+        overflow: hidden;
 
+        background: #0b0b0e;
 
+    }
 
-	:global(.map-watermark img) {
 
-		height: 28px;
+    :global(.deepmap-popup-image) {
 
-		width: auto;
+        width: 100%;
 
-		display: block;
-	}
+        height: 100%;
 
+        display: block;
 
+        object-fit: cover;
 
-	/* ==========================================
-	   MENU MOBILE
-	   ========================================== */
+    }
 
-	.mobile-menu-layer {
 
-		display: none;
-	}
+    :global(.deepmap-popup-body) {
 
+        padding:
 
+            15px 16px 17px;
 
-	/* ==========================================
-	   MOBILE
-	   ========================================== */
+    }
 
-	@media (max-width: 768px) {
 
+    :global(.deepmap-popup-category) {
 
-		/* Header */
+        color: #c8a355;
 
-		.header {
+        font-size: 0.69rem;
 
-			padding: 0 8px;
-		}
+        font-weight: 800;
 
+        letter-spacing: 0.8px;
 
+        text-transform:
 
-		.mobile-toggle {
+            uppercase;
 
-			display: flex;
-		}
+        margin-bottom: 4px;
 
+    }
 
 
-		.brand {
+    :global(.deepmap-popup-title) {
 
-			flex: 1;
+        margin:
 
-			margin-left: 4px;
+            0 0 12px;
 
-			gap: 8px;
-		}
+        padding: 0;
 
+        color: #ffffff;
 
+        font-size: 1.15rem;
 
-		.logo-img {
+        line-height: 1.25;
 
-			height: 30px;
-		}
+    }
 
 
+    :global(.deepmap-popup-info) {
 
-		.game-title {
+        margin-bottom: 12px;
 
-			font-size: 1rem;
-		}
+        padding:
 
+            8px 10px;
 
+        background: #111115;
 
-		.version-tag {
+        border-radius: 6px;
 
-			font-size: 0.65rem;
-		}
+        border:
 
+            1px solid #292930;
 
+    }
 
-		.header-actions {
 
-			gap: 6px;
-		}
+    :global(.deepmap-popup-info-row) {
 
+        display: flex;
 
+        justify-content:
 
-		.language-selector {
+            space-between;
 
-			font-size: 0.7rem;
+        gap: 14px;
 
-			padding: 4px 4px;
-		}
+        padding: 3px 0;
 
+        font-size: 0.78rem;
 
+    }
 
-		.checklist-status {
 
-			display: none;
-		}
+    :global(.deepmap-popup-info-label) {
 
+        color: #888894;
 
+    }
 
-		/* Editor não aparece no mobile */
 
-		.editor-ui,
-		.editor-status {
+    :global(.deepmap-popup-info-value) {
 
-			display: none !important;
-		}
+        color: #d8d8dd;
 
+        text-align: right;
 
+        font-weight: 600;
 
-		/* Sidebar Desktop desaparece no telemóvel */
+    }
 
-		.desktop-sidebar {
 
-			display: none;
-		}
+    :global(.deepmap-popup-description) {
 
+        margin: 0;
 
+        color: #ababaf;
 
-		/* O mapa ocupa 100% do ecrã */
+        font-size: 0.82rem;
 
-		.map-wrapper {
+        line-height: 1.5;
 
-			left: 0;
+    }
 
-			width: 100%;
-		}
 
+    :global(.map-watermark) {
 
+        display: flex;
 
-		/* Popup ligeiramente menor em mobile */
+        align-items: center;
 
-		:global(.deepmap-popup) {
+        justify-content: center;
 
-			width: 275px;
-		}
+        background:
 
+            rgba(22, 22, 26, 0.5);
 
+        padding: 6px;
 
-		:global(.deepmap-popup-image-wrapper) {
+        border-radius: 8px;
 
-			height: 145px;
-		}
+        border:
 
+            1px solid
 
+            rgba(200, 163, 85, 0.2);
 
-		/* ==========================================
-		   MENU MOBILE INDEPENDENTE
-		   ========================================== */
+        backdrop-filter:
 
-		.mobile-menu-layer {
+            blur(4px);
 
-			display: none;
+        margin-bottom: 12px;
 
-			position: fixed;
+        margin-right: 12px;
 
-			top: 56px;
+        opacity: 0.6;
 
-			left: 0;
+        pointer-events: none;
 
-			right: 0;
+    }
 
-			bottom: 0;
 
-			z-index: 20000;
+    :global(.map-watermark img) {
 
-			pointer-events: none;
-		}
+        height: 28px;
 
+        width: auto;
 
+        display: block;
 
-		/* Quando o checkbox está ativo, mostra o menu */
+    }
 
-		.mobile-menu-checkbox:checked ~ .mobile-menu-layer {
 
-			display: block;
+    /* ==========================================
 
-			pointer-events: auto;
-		}
+       MENU MOBILE
 
+       ========================================== */
 
+    .mobile-menu-layer {
 
-		/* Troca ☰ por X */
+        display: none;
 
-		.mobile-menu-checkbox:checked ~ .header .mobile-toggle .menu-icon {
+    }
 
-			display: none;
-		}
 
+    /* ==========================================
 
+       MOBILE
 
-		.mobile-menu-checkbox:checked ~ .header .mobile-toggle .close-icon {
+       ========================================== */
 
-			display: block;
-		}
+    @media (max-width: 768px) {
 
 
+        .header {
 
-		.mobile-backdrop {
+            padding: 0 8px;
 
-			display: block;
+        }
 
-			position: absolute;
 
-			top: 0;
+        .mobile-toggle {
 
-			left: 0;
+            display: flex;
 
-			right: 0;
+        }
 
-			bottom: 0;
 
-			background:
-				rgba(0, 0, 0, 0.65);
-		}
+        .brand {
 
+            flex: 1;
 
+            margin-left: 4px;
 
-		.mobile-sidebar {
+            gap: 8px;
 
-			display: block;
+        }
 
-			position: absolute;
 
-			top: 0;
+        .logo-img {
 
-			left: 0;
+            height: 30px;
 
-			bottom: 0;
+        }
 
-			width:
-				min(300px, 85vw);
 
-			background: #16161a;
+        .game-title {
 
-			border-right:
-				1px solid #2a2a30;
+            font-size: 1rem;
 
-			box-shadow:
-				8px 0 30px
-					rgba(0, 0, 0, 0.6);
+        }
 
-			box-sizing: border-box;
 
-			z-index: 1;
+        .version-tag {
 
-			overflow-y: auto;
-		}
+            font-size: 0.65rem;
 
+        }
 
 
-		.mobile-sidebar-header {
+        .header-actions {
 
-			height: 56px;
+            gap: 6px;
 
-			display: flex;
+        }
 
-			align-items: center;
 
-			justify-content:
-				space-between;
+        .language-selector {
 
-			padding:
-				0 12px 0 20px;
+            font-size: 0.7rem;
 
-			border-bottom:
-				1px solid #2a2a30;
+            padding: 4px 4px;
 
-			box-sizing:
-				border-box;
-		}
+        }
 
 
+        .checklist-status {
 
-		.mobile-sidebar-header h2 {
+            display: none;
 
-			margin: 0;
+        }
 
-			font-size: 1.1rem;
 
-			color: #c8a355;
-		}
+        .editor-ui,
 
+        .editor-status {
 
+            display: none !important;
 
-		.mobile-close {
+        }
 
-			width: 40px;
 
-			height: 40px;
+        .desktop-sidebar {
 
-			display: flex;
+            display: none;
 
-			align-items: center;
+        }
 
-			justify-content: center;
 
-			padding: 0;
+        .map-wrapper {
 
-			background: transparent;
+            left: 0;
 
-			border: 0;
+            width: 100%;
 
-			color: #c8a355;
+        }
 
-			font-size: 24px;
 
-			cursor: pointer;
+        :global(.deepmap-popup) {
 
-			touch-action:
-				manipulation;
-		}
+            width: 275px;
 
+        }
 
 
-		.mobile-sidebar .sidebar-content {
+        :global(.deepmap-popup-image-wrapper) {
 
-			height: auto;
+            height: 145px;
 
-			padding: 20px;
-		}
-	}
+        }
+
+
+        /* ==========================================
+
+           MENU MOBILE INDEPENDENTE
+
+           ========================================== */
+
+        .mobile-menu-layer {
+
+            display: none;
+
+            position: fixed;
+
+            top: 56px;
+
+            left: 0;
+
+            right: 0;
+
+            bottom: 0;
+
+            z-index: 20000;
+
+            pointer-events: none;
+
+        }
+
+
+        .mobile-menu-checkbox:checked ~ .mobile-menu-layer {
+
+            display: block;
+
+            pointer-events: auto;
+
+        }
+
+
+        .mobile-menu-checkbox:checked ~ .header .mobile-toggle .menu-icon {
+
+            display: none;
+
+        }
+
+
+        .mobile-menu-checkbox:checked ~ .header .mobile-toggle .close-icon {
+
+            display: block;
+
+        }
+
+
+        .mobile-backdrop {
+
+            display: block;
+
+            position: absolute;
+
+            top: 0;
+
+            left: 0;
+
+            right: 0;
+
+            bottom: 0;
+
+            background:
+
+                rgba(0, 0, 0, 0.65);
+
+        }
+
+
+        .mobile-sidebar {
+
+            display: block;
+
+            position: absolute;
+
+            top: 0;
+
+            left: 0;
+
+            bottom: 0;
+
+            width:
+
+                min(300px, 85vw);
+
+            background: #16161a;
+
+            border-right:
+
+                1px solid #2a2a30;
+
+            box-shadow:
+
+                8px 0 30px
+
+                    rgba(0, 0, 0, 0.6);
+
+            box-sizing: border-box;
+
+            z-index: 1;
+
+            overflow-y: auto;
+
+        }
+
+
+        .mobile-sidebar-header {
+
+            height: 56px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content:
+
+                space-between;
+
+            padding:
+
+                0 12px 0 20px;
+
+            border-bottom:
+
+                1px solid #2a2a30;
+
+            box-sizing:
+
+                border-box;
+
+        }
+
+
+        .mobile-sidebar-header h2 {
+
+            margin: 0;
+
+            font-size: 1.1rem;
+
+            color: #c8a355;
+
+        }
+
+
+        .mobile-close {
+
+            width: 40px;
+
+            height: 40px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            padding: 0;
+
+            background: transparent;
+
+            border: 0;
+
+            color: #c8a355;
+
+            font-size: 24px;
+
+            cursor: pointer;
+
+            touch-action:
+
+                manipulation;
+
+        }
+
+
+        .mobile-sidebar .sidebar-content {
+
+            height: auto;
+
+            padding: 20px;
+
+        }
+
+    }
 
 </style>
