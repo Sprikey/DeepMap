@@ -65,7 +65,7 @@ export const locations = [
 		/* Imagem do popup */
 
 		image:
-			'/games/elden-ring/locations/church-of-elleh.jpg',
+			'/games/elden-ring/locations/sites-of-grace/church-of-elleh.jpg',
 
 
 		/* Campos opcionais */
@@ -101,5 +101,43 @@ export const locations = [
 				'notes'
 			]
 		}
-	}
+	},
+
+{
+    id: 'gatefront',
+
+    mapLayer: 'surface',
+
+    categoryId: 'site_of_grace',
+
+    nameKey: 'gatefront',
+
+    descriptionKey: 'gatefront_description',
+
+    categoryKey: 'site_of_grace',
+
+    regionKey: 'limgrave',
+
+    coordinates: [2534, 3257],
+
+    image: '/games/elden-ring/locations/sites-of-grace/gatefront.webp',
+
+    npcs: [],
+    items: [],
+    quests: [],
+
+    notesKey: null,
+
+    premium: {
+        provider: 'supabase',
+
+        sections: [
+            'npcs',
+            'items',
+            'quests',
+            'notes'
+        ]
+    }
+}
+
 ];

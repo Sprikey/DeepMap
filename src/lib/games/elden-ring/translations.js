@@ -39,7 +39,11 @@ export const translations = {
 
         church_of_elleh_description:
             'A ruined church located in Limgrave. It contains a Site of Grace and is one of the first notable locations encountered when exploring the region.',
+		
+		gatefront: 'Gatefront',
 
+		gatefront_description:
+    		'A Site of Grace located near the ruined camp at Gatefront in Limgrave. It serves as an important early waypoint on the road toward Stormveil Castle.',
 
         /* Labels opcionais do popup */
 
@@ -128,6 +132,12 @@ export const translations = {
 
         church_of_elleh_description:
             'Uma igreja em ruínas situada em Limgrave. Contém um Local de Graça e é um dos primeiros locais importantes encontrados ao explorar a região.',
+		
+			
+		gatefront: 'Portão Principal',
+
+		gatefront_description:
+    		'Um Local de Graça situado perto do acampamento em ruínas no Portão Principal, em Limgrave. Serve como um ponto importante nas fases iniciais da viagem em direção ao Castelo Stormveil.',
 
 
         /* Labels opcionais do popup */
