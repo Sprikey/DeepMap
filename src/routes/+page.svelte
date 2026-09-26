@@ -728,7 +728,7 @@
             </span>
 
             <span class="version-tag">
-                v1.0.28
+                v1.0.29
             </span>
 
         </div>
@@ -1898,8 +1898,11 @@
     @media (max-width: 768px) {
 
         .header {
-            padding: 0 8px;
-        }
+    padding: 0 8px;
+
+    /* Permite gestos normais, mas impede pinch-zoom no header. */
+    touch-action: pan-x pan-y;
+}
 
         .mobile-toggle {
             display: flex;
@@ -1973,6 +1976,7 @@
 
             z-index: 20000;
             pointer-events: none;
+            touch-action: pan-y;
         }
 
         .mobile-menu-checkbox:checked ~ .mobile-menu-layer {
