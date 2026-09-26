@@ -1,1873 +1,734 @@
-<script>
 
+<script>
     import { onMount } from 'svelte';
 
     import { translations } from '$lib/games/elden-ring/translations.js';
 
     import {
-
-    categories,
-
-    defaultCategoryVisibility
-
-} from '$lib/games/elden-ring/categories.js';
+        categories,
+        categoryGroups,
+        defaultCategoryVisibility
+    } from '$lib/games/elden-ring/categories.js';
 
     import { locations } from '$lib/games/elden-ring/locations.js';
-
     import { mapDefinitions } from '$lib/games/elden-ring/maps.js';
 
     let mapContainer;
-
     let map;
-
     let Leaflet;
-
     let mapImageOverlay = null;
 
 
     /* ==========================================
-
-       IDIOMAS / TRADUÇÕES
-
-       SVELTE 5 RUNES
-
+       IDIOMAS / TRADUÇÕES — SVELTE 5
        ========================================== */
 
     let currentLanguage = $state('en');
 
-
     let currentTexts = $derived(
-
-        translations[currentLanguage] ??
-
-        translations.en
-
+        translations[currentLanguage] ?? translations.en
     );
 
-
     function t(key) {
-
         return (
-
             translations[currentLanguage]?.[key] ??
-
             translations.en?.[key] ??
-
             key
-
         );
-
     }
-
 
     function changeLanguage(event) {
-
-        currentLanguage =
-
-            event.currentTarget.value;
-
+        currentLanguage = event.currentTarget.value;
 
         renderLocationMarkers();
-
-
         updateEditorInterface();
-
     }
 
 
     /* ==========================================
-
-       FILTROS
-
+       FILTROS — v1.0.28
        ========================================== */
-
 
     let categoryVisibility = $state({
+        ...defaultCategoryVisibility
+    });
 
-    ...defaultCategoryVisibility
+    // Os mesmos dados alimentam os filtros desktop e mobile.
+    const filterGroups = categoryGroups.map((group) => ({
+        ...group,
+        categories: Object.values(categories).filter(
+            (category) => category.group === group.id
+        )
+    }));
 
-});
+    function setCategoryVisibility(categoryId, visible) {
+        categoryVisibility[categoryId] = visible;
+        renderLocationMarkers();
+    }
 
+    function toggleCategory(categoryId) {
+        setCategoryVisibility(
+            categoryId,
+            categoryVisibility[categoryId] === false
+        );
+    }
 
-    function setCategoryVisibility(
-
-        categoryId,
-
-        visible
-
-    ) {
-
-        categoryVisibility[categoryId] =
-
-            visible;
-
+    function setAllCategoryVisibility(visible) {
+        for (const categoryId of Object.keys(categories)) {
+            categoryVisibility[categoryId] = visible;
+        }
 
         renderLocationMarkers();
-
     }
 
 
     /* ==========================================
-
        MAPAS / CAMADAS
-
        ========================================== */
 
+    let activeMapLayer = 'surface';
+    let markerLayerGroups = {};
 
-    let activeMapLayer =
-
-        'surface';
-
-
-    let markerLayerGroups =
-
-        {};
-
-
-    function getMapBounds(
-
-        mapDefinition
-
-    ) {
-
+    function getMapBounds(mapDefinition) {
         return [
-
             [0, 0],
-
-            [
-
-                mapDefinition.height,
-
-                mapDefinition.width
-
-            ]
-
+            [mapDefinition.height, mapDefinition.width]
         ];
-
     }
-
 
     function setupMarkerLayers() {
-
-        for (
-
-            const layerId of
-
-            Object.keys(mapDefinitions)
-
-        ) {
-
-            markerLayerGroups[layerId] =
-
-                Leaflet.layerGroup();
-
+        for (const layerId of Object.keys(mapDefinitions)) {
+            markerLayerGroups[layerId] = Leaflet.layerGroup();
         }
 
-
-        markerLayerGroups[
-
-            activeMapLayer
-
-        ].addTo(map);
-
+        markerLayerGroups[activeMapLayer].addTo(map);
     }
 
-
-    function setActiveMapLayer(
-
-        layerId
-
-    ) {
-
+    function setActiveMapLayer(layerId) {
         if (!map) return;
 
-
-        const definition =
-
-            mapDefinitions[layerId];
-
-
+        const definition = mapDefinitions[layerId];
         if (!definition) return;
 
-
-        for (
-
-            const group of
-
-            Object.values(markerLayerGroups)
-
-        ) {
-
-            if (
-
-                map.hasLayer(group)
-
-            ) {
-
+        for (const group of Object.values(markerLayerGroups)) {
+            if (map.hasLayer(group)) {
                 map.removeLayer(group);
-
             }
-
         }
 
+        activeMapLayer = layerId;
 
-        activeMapLayer =
-
-            layerId;
-
-
-        const activeGroup =
-
-            markerLayerGroups[
-
-                activeMapLayer
-
-            ];
-
+        const activeGroup = markerLayerGroups[activeMapLayer];
 
         if (activeGroup) {
-
             activeGroup.addTo(map);
-
         }
-
 
         if (definition.image) {
-
-            const bounds =
-
-                getMapBounds(
-
-                    definition
-
-                );
-
+            const bounds = getMapBounds(definition);
 
             if (mapImageOverlay) {
-
-                map.removeLayer(
-
-                    mapImageOverlay
-
-                );
-
+                map.removeLayer(mapImageOverlay);
             }
 
-
-            mapImageOverlay =
-
-                Leaflet.imageOverlay(
-
-                    definition.image,
-
-                    bounds
-
-                ).addTo(map);
-
+            mapImageOverlay = Leaflet.imageOverlay(
+                definition.image,
+                bounds
+            ).addTo(map);
 
             mapImageOverlay.bringToBack();
-
-
-            map.setMaxBounds(
-
-                bounds
-
-            );
-
-
-            map.fitBounds(
-
-                bounds
-
-            );
-
+            map.setMaxBounds(bounds);
+            map.fitBounds(bounds);
         }
-
     }
 
 
     /* ==========================================
-
        POPUPS
-
        ========================================== */
 
     function escapeHtml(value) {
-
         return String(value)
-
-            .replaceAll(
-
-                '&',
-
-                '&amp;'
-
-            )
-
-            .replaceAll(
-
-                '<',
-
-                '&lt;'
-
-            )
-
-            .replaceAll(
-
-                '>',
-
-                '&gt;'
-
-            )
-
-            .replaceAll(
-
-                '"',
-
-                '&quot;'
-
-            )
-
-            .replaceAll(
-
-                "'",
-
-                '&#039;'
-
-            );
-
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
     }
-
 
     function translateList(list) {
-
-        if (
-
-            !list ||
-
-            !list.length
-
-        ) {
-
-            return '';
-
-        }
-
+        if (!list || !list.length) return '';
 
         return list
-
-            .map(
-
-                (item) => t(item)
-
-            )
-
+            .map((item) => t(item))
             .join(', ');
-
     }
 
-
-    function createPopupInfoRow(
-
-        labelKey,
-
-        value
-
-    ) {
-
+    function createPopupInfoRow(labelKey, value) {
         if (!value) return '';
 
-
         return `
-
             <div class="deepmap-popup-info-row">
-
                 <span class="deepmap-popup-info-label">
-
-                    ${escapeHtml(
-
-                        t(labelKey)
-
-                    )}
-
+                    ${escapeHtml(t(labelKey))}
                 </span>
-
 
                 <span class="deepmap-popup-info-value">
-
                     ${escapeHtml(value)}
-
                 </span>
-
             </div>
-
         `;
-
     }
 
+    function buildLocationPopup(location) {
+        let optionalInformation = '';
 
-    function buildLocationPopup(
-
-        location
-
-    ) {
-
-        let optionalInformation =
-
-            '';
-
-
-        if (
-
-            location.regionKey
-
-        ) {
-
-            optionalInformation +=
-
-                createPopupInfoRow(
-
-                    'region',
-
-                    t(
-
-                        location.regionKey
-
-                    )
-
-                );
-
+        if (location.regionKey) {
+            optionalInformation += createPopupInfoRow(
+                'region',
+                t(location.regionKey)
+            );
         }
 
-
-        if (
-
-            location.npcs?.length
-
-        ) {
-
-            optionalInformation +=
-
-                createPopupInfoRow(
-
-                    'npcs',
-
-                    translateList(
-
-                        location.npcs
-
-                    )
-
-                );
-
+        if (location.npcs?.length) {
+            optionalInformation += createPopupInfoRow(
+                'npcs',
+                translateList(location.npcs)
+            );
         }
 
-
-        if (
-
-            location.items?.length
-
-        ) {
-
-            optionalInformation +=
-
-                createPopupInfoRow(
-
-                    'items',
-
-                    translateList(
-
-                        location.items
-
-                    )
-
-                );
-
+        if (location.items?.length) {
+            optionalInformation += createPopupInfoRow(
+                'items',
+                translateList(location.items)
+            );
         }
 
-
-        if (
-
-            location.quests?.length
-
-        ) {
-
-            optionalInformation +=
-
-                createPopupInfoRow(
-
-                    'quests',
-
-                    translateList(
-
-                        location.quests
-
-                    )
-
-                );
-
+        if (location.quests?.length) {
+            optionalInformation += createPopupInfoRow(
+                'quests',
+                translateList(location.quests)
+            );
         }
 
-
-        if (
-
-            location.notesKey
-
-        ) {
-
-            optionalInformation +=
-
-                createPopupInfoRow(
-
-                    'notes',
-
-                    t(
-
-                        location.notesKey
-
-                    )
-
-                );
-
+        if (location.notesKey) {
+            optionalInformation += createPopupInfoRow(
+                'notes',
+                t(location.notesKey)
+            );
         }
 
-
-        const imageHTML =
-
-            location.image
-
-                ? `
-
-                    <div class="deepmap-popup-image-wrapper">
-
-                        <img
-
-                            src="${escapeHtml(
-
-                                location.image
-
-                            )}"
-
-                            alt="${escapeHtml(
-
-                                t(
-
-                                    location.nameKey
-
-                                )
-
-                            )}"
-
-                            class="deepmap-popup-image"
-
-                            onerror="this.parentElement.style.display='none'"
-
-                        />
-
-                    </div>
-
-                `
-
-                : '';
-
+        const imageHTML = location.image
+            ? `
+                <div class="deepmap-popup-image-wrapper">
+                    <img
+                        src="${escapeHtml(location.image)}"
+                        alt="${escapeHtml(t(location.nameKey))}"
+                        class="deepmap-popup-image"
+                        onerror="this.parentElement.style.display='none'"
+                    />
+                </div>
+            `
+            : '';
 
         return `
-
             <div class="deepmap-popup">
-
                 ${imageHTML}
-
 
                 <div class="deepmap-popup-body">
 
-
                     <div class="deepmap-popup-category">
-
-                        ${escapeHtml(
-
-                            t(
-
-                                location.categoryKey
-
-                            )
-
-                        )}
-
+                        ${escapeHtml(t(location.categoryKey))}
                     </div>
 
-
                     <h3 class="deepmap-popup-title">
-
-                        ${escapeHtml(
-
-                            t(
-
-                                location.nameKey
-
-                            )
-
-                        )}
-
+                        ${escapeHtml(t(location.nameKey))}
                     </h3>
 
-
                     ${
-
                         optionalInformation
-
                             ? `
-
                                 <div class="deepmap-popup-info">
-
                                     ${optionalInformation}
-
                                 </div>
-
                             `
-
                             : ''
-
                     }
-
 
                     ${
-
                         location.descriptionKey
-
                             ? `
-
                                 <p class="deepmap-popup-description">
-
-                                    ${escapeHtml(
-
-                                        t(
-
-                                            location.descriptionKey
-
-                                        )
-
-                                    )}
-
+                                    ${escapeHtml(t(location.descriptionKey))}
                                 </p>
-
                             `
-
                             : ''
-
                     }
-
 
                 </div>
-
             </div>
-
         `;
-
     }
 
 
     /* ==========================================
-
-       MARCADORES
-
+       MARCADORES SVG
        ========================================== */
 
- function createLocationIcon(location) {
+    function createLocationIcon(location) {
+        const category = categories[location.categoryId];
 
-    const category =
-        categories[location.categoryId];
+        const iconUrl = category?.icon ?? location.icon;
+        const markerColor = category?.color ?? '#22222a';
 
-    const iconUrl =
-        category?.icon ??
-        location.icon;
+        const markerWidth = category?.markerWidth ?? 30;
+        const markerHeight = category?.markerHeight ?? 39;
+        const symbolSize = category?.symbolSize ?? 18;
 
-    const markerColor =
-        category?.color ??
-        '#22222a';
+        // Converte o tamanho do símbolo para a escala interna do SVG.
+        const svgSymbolSize = (symbolSize / markerWidth) * 40;
+        const svgSymbolX = (40 - svgSymbolSize) / 2;
+        const svgSymbolY = 8;
 
-    const markerWidth =
-        category?.markerWidth ??
-        30;
+        return Leaflet.divIcon({
+            className: 'deepmap-marker-wrapper',
 
-    const markerHeight =
-        category?.markerHeight ??
-        39;
-
-    const symbolSize =
-        category?.symbolSize ??
-        18;
-
-    // Converte o tamanho do símbolo para a escala interna do SVG.
-    const svgSymbolSize =
-        (symbolSize / markerWidth) * 40;
-
-    const svgSymbolX =
-        (40 - svgSymbolSize) / 2;
-
-    const svgSymbolY =
-        8;
-
-    return Leaflet.divIcon({
-
-        className:
-            'deepmap-marker-wrapper',
-
-        html: `
-            <div
-                class="deepmap-marker"
-                style="
-                    --marker-width: ${markerWidth}px;
-                    --marker-height: ${markerHeight}px;
-                "
-            >
-                <svg
-                    class="deepmap-marker-shape"
-                    viewBox="0 0 40 52"
-                    xmlns="http://www.w3.org/2000/svg"
+            html: `
+                <div
+                    class="deepmap-marker"
+                    style="
+                        --marker-width: ${markerWidth}px;
+                        --marker-height: ${markerHeight}px;
+                    "
                 >
-                    <path
-                        d="
-                            M20 1
-                            C9.5 1 1 9.5 1 20
-                            C1 34 20 51 20 51
-                            C20 51 39 34 39 20
-                            C39 9.5 30.5 1 20 1
-                            Z
-                        "
-                        fill="${markerColor}"
-                    />
+                    <svg
+                        class="deepmap-marker-shape"
+                        viewBox="0 0 40 52"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <path
+                            d="
+                                M20 1
+                                C9.5 1 1 9.5 1 20
+                                C1 34 20 51 20 51
+                                C20 51 39 34 39 20
+                                C39 9.5 30.5 1 20 1
+                                Z
+                            "
+                            fill="${markerColor}"
+                        />
 
-                    <image
-                        href="${escapeHtml(iconUrl)}"
-                        x="${svgSymbolX}"
-                        y="${svgSymbolY}"
-                        width="${svgSymbolSize}"
-                        height="${svgSymbolSize}"
-                        preserveAspectRatio="xMidYMid meet"
-                    />
-                </svg>
-            </div>
-        `,
+                        <image
+                            href="${escapeHtml(iconUrl)}"
+                            x="${svgSymbolX}"
+                            y="${svgSymbolY}"
+                            width="${svgSymbolSize}"
+                            height="${svgSymbolSize}"
+                            preserveAspectRatio="xMidYMid meet"
+                        />
+                    </svg>
+                </div>
+            `,
 
-        iconSize:
-            [markerWidth, markerHeight],
+            iconSize: [markerWidth, markerHeight],
 
-        iconAnchor:
-            [
+            iconAnchor: [
                 markerWidth / 2,
                 markerHeight
             ],
 
-        popupAnchor:
-            [
+            popupAnchor: [
                 0,
                 -markerHeight + 4
             ]
-    });
-}
-
+        });
+    }
 
     function renderLocationMarkers() {
-
         if (
-
             !map ||
-
             !Leaflet ||
-
-            !Object.keys(
-
-                markerLayerGroups
-
-            ).length
-
+            !Object.keys(markerLayerGroups).length
         ) {
-
             return;
-
         }
 
-
-        for (
-
-            const group of
-
-            Object.values(
-
-                markerLayerGroups
-
-            )
-
-        ) {
-
+        for (const group of Object.values(markerLayerGroups)) {
             group.clearLayers();
-
         }
 
-
-        for (
-
-            const location of
-
-            locations
-
-        ) {
-
-
+        for (const location of locations) {
             if (
-
-                categoryVisibility[
-
-                    location.categoryId
-
-                ] === false
-
+                categoryVisibility[location.categoryId] === false
             ) {
-
                 continue;
-
             }
 
-
-            const group =
-
-                markerLayerGroups[
-
-                    location.mapLayer
-
-                ];
-
+            const group = markerLayerGroups[location.mapLayer];
 
             if (!group) continue;
 
-
-const marker =
-    Leaflet.marker(
-        location.coordinates,
-        {
-            icon:
-                createLocationIcon(
-                    location
-                )
-        }
-    );
-
+            const marker = Leaflet.marker(
+                location.coordinates,
+                {
+                    icon: createLocationIcon(location)
+                }
+            );
 
             marker.bindPopup(
-
-                buildLocationPopup(
-
-                    location
-
-                ),
-
+                buildLocationPopup(location),
                 {
-
-                    maxWidth:
-
-                        330,
-
-                    minWidth:
-
-                        280,
-
-                    className:
-
-                        'deepmap-leaflet-popup'
-
+                    maxWidth: 330,
+                    minWidth: 280,
+                    className: 'deepmap-leaflet-popup'
                 }
-
             );
 
-			marker.bindTooltip(
-    t(location.nameKey),
-    {
-        direction: 'top',
-        offset: [0, -32],
-        opacity: 1,
-        className: 'deepmap-marker-tooltip'
-    }
-);
-
-marker.on('click', () => {
-    marker.closeTooltip();
-});
-
-
-            marker.addTo(
-
-                group
-
+            // Tooltip traduzido ao passar o rato.
+            marker.bindTooltip(
+                t(location.nameKey),
+                {
+                    direction: 'top',
+                    offset: [0, -32],
+                    opacity: 1,
+                    className: 'deepmap-marker-tooltip'
+                }
             );
 
+            marker.on('click', () => {
+                marker.closeTooltip();
+            });
+
+            marker.addTo(group);
         }
-
     }
 
 
     /* ==========================================
-
        EDITOR DE COORDENADAS
-
        ========================================== */
 
-    let editorMode =
-
-        false;
-
-
-    let editorMarker =
-
-        null;
-
-
-    let editorX =
-
-        null;
-
-
-    let editorY =
-
-        null;
-
+    let editorMode = false;
+    let editorMarker = null;
+    let editorX = null;
+    let editorY = null;
 
     function updateEditorInterface() {
+        if (typeof document === 'undefined') return;
 
-        if (
+        const editorButton = document.getElementById('editor-toggle');
+        const editorStatus = document.getElementById('editor-status');
 
-            typeof document ===
+        const coordinatePanel = document.getElementById('coordinate-panel');
+        const coordinateTitle = document.getElementById('coordinate-title');
 
-            'undefined'
+        const xValue = document.getElementById('editor-x');
+        const yValue = document.getElementById('editor-y');
+        const arrayValue = document.getElementById('editor-array');
 
-        ) {
+        const instruction = document.getElementById('editor-instruction');
+        const coordinatesContent = document.getElementById('coordinates-content');
+        const coordinateLabel = document.getElementById('coordinate-label');
 
-            return;
-
-        }
-
-
-        const editorButton =
-
-            document.getElementById(
-
-                'editor-toggle'
-
-            );
-
-
-        const editorStatus =
-
-            document.getElementById(
-
-                'editor-status'
-
-            );
-
-
-        const coordinatePanel =
-
-            document.getElementById(
-
-                'coordinate-panel'
-
-            );
-
-
-        const coordinateTitle =
-
-            document.getElementById(
-
-                'coordinate-title'
-
-            );
-
-
-        const xValue =
-
-            document.getElementById(
-
-                'editor-x'
-
-            );
-
-
-        const yValue =
-
-            document.getElementById(
-
-                'editor-y'
-
-            );
-
-
-        const arrayValue =
-
-            document.getElementById(
-
-                'editor-array'
-
-            );
-
-
-        const instruction =
-
-            document.getElementById(
-
-                'editor-instruction'
-
-            );
-
-
-        const coordinatesContent =
-
-            document.getElementById(
-
-                'coordinates-content'
-
-            );
-
-
-        const coordinateLabel =
-
-            document.getElementById(
-
-                'coordinate-label'
-
-            );
-
-
-        const copyButton =
-
-            document.getElementById(
-
-                'copy-coordinates'
-
-            );
-
-
-        const copyStatus =
-
-            document.getElementById(
-
-                'copy-status'
-
-            );
-
+        const copyButton = document.getElementById('copy-coordinates');
+        const copyStatus = document.getElementById('copy-status');
 
         if (coordinateTitle) {
-
-            coordinateTitle.textContent =
-
-                t(
-
-                    'coordinate_editor'
-
-                );
-
+            coordinateTitle.textContent = t('coordinate_editor');
         }
-
 
         if (instruction) {
-
-            instruction.textContent =
-
-                t(
-
-                    'editor_instruction'
-
-                );
-
+            instruction.textContent = t('editor_instruction');
         }
-
 
         if (coordinateLabel) {
-
-            coordinateLabel.textContent =
-
-                t(
-
-                    'ready_for_leaflet'
-
-                );
-
+            coordinateLabel.textContent = t('ready_for_leaflet');
         }
-
 
         if (copyButton) {
-
-            copyButton.textContent =
-
-                t('copy');
-
+            copyButton.textContent = t('copy');
         }
 
-
         if (!editorMode) {
-
             if (editorButton) {
-
-                editorButton.textContent =
-
-                    t('editor');
-
-
-                editorButton.classList.remove(
-
-                    'active'
-
-                );
-
+                editorButton.textContent = t('editor');
+                editorButton.classList.remove('active');
             }
-
 
             if (editorStatus) {
-
-                editorStatus.style.display =
-
-                    'none';
-
+                editorStatus.style.display = 'none';
             }
-
 
             if (coordinatePanel) {
-
-                coordinatePanel.style.display =
-
-                    'none';
-
+                coordinatePanel.style.display = 'none';
             }
 
-
             return;
-
         }
-
 
         if (editorButton) {
-
-            editorButton.textContent =
-
-                t(
-
-                    'editor_active'
-
-                );
-
-
-            editorButton.classList.add(
-
-                'active'
-
-            );
-
+            editorButton.textContent = t('editor_active');
+            editorButton.classList.add('active');
         }
-
 
         if (editorStatus) {
-
-            editorStatus.style.display =
-
-                'flex';
-
+            editorStatus.style.display = 'flex';
         }
-
 
         if (coordinatePanel) {
-
-            coordinatePanel.style.display =
-
-                'block';
-
+            coordinatePanel.style.display = 'block';
         }
 
-
-        if (
-
-            editorX === null ||
-
-            editorY === null
-
-        ) {
-
+        if (editorX === null || editorY === null) {
             if (instruction) {
-
-                instruction.style.display =
-
-                    'block';
-
+                instruction.style.display = 'block';
             }
-
 
             if (coordinatesContent) {
-
-                coordinatesContent.style.display =
-
-                    'none';
-
+                coordinatesContent.style.display = 'none';
             }
-
 
             if (copyButton) {
-
-                copyButton.disabled =
-
-                    true;
-
+                copyButton.disabled = true;
             }
-
 
             if (copyStatus) {
-
-                copyStatus.textContent =
-
-                    '';
-
+                copyStatus.textContent = '';
             }
 
-
             return;
-
         }
-
 
         if (instruction) {
-
-            instruction.style.display =
-
-                'none';
-
+            instruction.style.display = 'none';
         }
-
 
         if (coordinatesContent) {
-
-            coordinatesContent.style.display =
-
-                'block';
-
+            coordinatesContent.style.display = 'block';
         }
-
 
         if (xValue) {
-
-            xValue.textContent =
-
-                editorX;
-
+            xValue.textContent = editorX;
         }
-
 
         if (yValue) {
-
-            yValue.textContent =
-
-                editorY;
-
+            yValue.textContent = editorY;
         }
 
-
-        /*
-
-            Leaflet utiliza:
-
-            [Y, X]
-
-        */
-
+        // Leaflet utiliza coordenadas [Y, X].
         if (arrayValue) {
-
-            arrayValue.textContent =
-
-                `[${editorY}, ${editorX}]`;
-
+            arrayValue.textContent = `[${editorY}, ${editorX}]`;
         }
-
 
         if (copyButton) {
-
-            copyButton.disabled =
-
-                false;
-
+            copyButton.disabled = false;
         }
-
 
         if (copyStatus) {
-
-            copyStatus.textContent =
-
-                '';
-
+            copyStatus.textContent = '';
         }
-
     }
-
 
     function toggleEditor() {
-
-        editorMode =
-
-            !editorMode;
-
+        editorMode = !editorMode;
 
         if (!editorMode) {
-
-            if (
-
-                editorMarker &&
-
-                map
-
-            ) {
-
-                map.removeLayer(
-
-                    editorMarker
-
-                );
-
+            if (editorMarker && map) {
+                map.removeLayer(editorMarker);
             }
 
-
-            editorMarker =
-
-                null;
-
-
-            editorX =
-
-                null;
-
-
-            editorY =
-
-                null;
-
+            editorMarker = null;
+            editorX = null;
+            editorY = null;
         }
-
 
         updateEditorInterface();
-
     }
 
-
     async function copyCoordinates() {
+        if (editorX === null || editorY === null) return;
 
-        if (
+        const coordinates = `[${editorY}, ${editorX}]`;
 
-            editorX === null ||
-
-            editorY === null
-
-        ) {
-
-            return;
-
-        }
-
-
-        const coordinates =
-
-            `[${editorY}, ${editorX}]`;
-
-
-        const copyStatus =
-
-            document.getElementById(
-
-                'copy-status'
-
-            );
-
+        const copyStatus = document.getElementById('copy-status');
 
         try {
-
-            await navigator.clipboard.writeText(
-
-                coordinates
-
-            );
-
+            await navigator.clipboard.writeText(coordinates);
 
             if (copyStatus) {
-
-                copyStatus.textContent =
-
-                    t('copied');
-
+                copyStatus.textContent = t('copied');
             }
-
         } catch (error) {
+            const textarea = document.createElement('textarea');
 
+            textarea.value = coordinates;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
 
-            const textarea =
-
-                document.createElement(
-
-                    'textarea'
-
-                );
-
-
-            textarea.value =
-
-                coordinates;
-
-
-            textarea.style.position =
-
-                'fixed';
-
-
-            textarea.style.opacity =
-
-                '0';
-
-
-            document.body.appendChild(
-
-                textarea
-
-            );
-
+            document.body.appendChild(textarea);
 
             textarea.select();
+            document.execCommand('copy');
 
-
-            document.execCommand(
-
-                'copy'
-
-            );
-
-
-            document.body.removeChild(
-
-                textarea
-
-            );
-
+            document.body.removeChild(textarea);
 
             if (copyStatus) {
-
-                copyStatus.textContent =
-
-                    t('copied');
-
+                copyStatus.textContent = t('copied');
             }
-
         }
-
     }
 
 
     /* ==========================================
-
        INICIALIZAÇÃO DO MAPA
-
        ========================================== */
 
     onMount(async () => {
+        const L = await import('leaflet');
 
+        await import('leaflet/dist/leaflet.css');
 
-        const L =
+        Leaflet = L;
 
-            await import(
+        const surfaceDefinition = mapDefinitions.surface;
+        const bounds = getMapBounds(surfaceDefinition);
 
-                'leaflet'
-
-            );
-
-
-        await import(
-
-            'leaflet/dist/leaflet.css'
-
+        map = L.map(
+            mapContainer,
+            {
+                crs: L.CRS.Simple,
+                maxBounds: bounds,
+                maxBoundsViscosity: 0.8,
+                attributionControl: false,
+                minZoom: -3,
+                maxZoom: 2,
+                zoomSnap: 0.25
+            }
         );
 
+        mapImageOverlay = L.imageOverlay(
+            surfaceDefinition.image,
+            bounds
+        ).addTo(map);
 
-        Leaflet =
 
-            L;
+        /* MARCA D'ÁGUA */
 
+        const LogoWatermark = L.Control.extend({
+            options: {
+                position: 'bottomright'
+            },
 
-        const surfaceDefinition =
+            onAdd: function () {
+                const div = L.DomUtil.create(
+                    'div',
+                    'map-watermark'
+                );
 
-            mapDefinitions.surface;
+                div.innerHTML = `
+                    <img
+                        src="/logo.png"
+                        alt="DeepMap Logo"
+                    />
+                `;
 
+                return div;
+            }
+        });
 
-        const bounds =
+        map.addControl(new LogoWatermark());
 
-            getMapBounds(
 
-                surfaceDefinition
-
-            );
-
-
-        map =
-
-            L.map(
-
-                mapContainer,
-
-                {
-
-                    crs:
-
-                        L.CRS.Simple,
-
-
-                    maxBounds:
-
-                        bounds,
-
-
-                    maxBoundsViscosity:
-
-                        0.8,
-
-
-                    attributionControl:
-
-                        false,
-
-
-                    minZoom:
-
-                        -3,
-
-
-                    maxZoom:
-
-                        2,
-
-
-                    zoomSnap:
-
-                        0.25
-
-                }
-
-            );
-
-
-        mapImageOverlay =
-
-            L.imageOverlay(
-
-                surfaceDefinition.image,
-
-                bounds
-
-            ).addTo(map);
-
-
-        /* ==========================================
-
-           MARCA D'ÁGUA
-
-           ========================================== */
-
-        const LogoWatermark =
-
-            L.Control.extend({
-
-                options: {
-
-                    position:
-
-                        'bottomright'
-
-                },
-
-
-                onAdd:
-
-                    function () {
-
-                        const div =
-
-                            L.DomUtil.create(
-
-                                'div',
-
-                                'map-watermark'
-
-                            );
-
-
-                        div.innerHTML = `
-
-                            <img
-
-                                src="/logo.png"
-
-                                alt="DeepMap Logo"
-
-                            />
-
-                        `;
-
-
-                        return div;
-
-                    }
-
-            });
-
-
-        map.addControl(
-
-            new LogoWatermark()
-
-        );
-
-
-        /* ==========================================
-
-           LAYERS DOS MARCADORES
-
-           ========================================== */
+        /* LAYERS DOS MARCADORES */
 
         setupMarkerLayers();
-
-
         renderLocationMarkers();
 
 
-        /* ==========================================
+        /* CLIQUE NO MAPA — EDITOR */
 
-           CLIQUE NO MAPA — EDITOR
+        map.on('click', (e) => {
+            if (!editorMode) return;
 
-           ========================================== */
+            const x = Math.round(e.latlng.lng);
+            const y = Math.round(e.latlng.lat);
 
-        map.on(
+            editorX = x;
+            editorY = y;
 
-            'click',
-
-            (e) => {
-
-
-                if (
-
-                    !editorMode
-
-                ) {
-
-                    return;
-
-                }
-
-
-                const x =
-
-                    Math.round(
-
-                        e.latlng.lng
-
-                    );
-
-
-                const y =
-
-                    Math.round(
-
-                        e.latlng.lat
-
-                    );
-
-
-                editorX =
-
-                    x;
-
-
-                editorY =
-
-                    y;
-
-
-                if (
-
-                    editorMarker
-
-                ) {
-
-                    map.removeLayer(
-
-                        editorMarker
-
-                    );
-
-                }
-
-
-                editorMarker =
-
-                    Leaflet.circleMarker(
-
-                        [y, x],
-
-                        {
-
-                            radius:
-
-                                9,
-
-
-                            color:
-
-                                '#ff9f1c',
-
-
-                            weight:
-
-                                3,
-
-
-                            fillColor:
-
-                                '#ff9f1c',
-
-
-                            fillOpacity:
-
-                                0.45
-
-                        }
-
-                    ).addTo(map);
-
-
-                updateEditorInterface();
-
+            if (editorMarker) {
+                map.removeLayer(editorMarker);
             }
 
-        );
-
-
-        mapImageOverlay.on(
-
-            'load',
-
-            () => {
-
-                map.fitBounds(
-
-                    bounds
-
-                );
-
-            }
-
-        );
-
-
-        map.fitBounds(
-
-            bounds
-
-        );
-
-
-        setTimeout(
-
-            () => {
-
-                if (map) {
-
-                    map.invalidateSize();
-
+            editorMarker = Leaflet.circleMarker(
+                [y, x],
+                {
+                    radius: 9,
+                    color: '#ff9f1c',
+                    weight: 3,
+                    fillColor: '#ff9f1c',
+                    fillOpacity: 0.45
                 }
+            ).addTo(map);
 
-            },
+            updateEditorInterface();
+        });
 
-            250
+        mapImageOverlay.on('load', () => {
+            map.fitBounds(bounds);
+        });
 
-        );
+        map.fitBounds(bounds);
 
+        setTimeout(() => {
+            if (map) {
+                map.invalidateSize();
+            }
+        }, 250);
     });
-
 </script>
 
 
 <div class="app-container">
 
-
     <!-- CONTROLO DO MENU MOBILE -->
-
-    <!-- Checkbox invisível: o CSS controla abrir/fechar -->
-
+    <!-- Mantém esta estrutura: o CSS controla abrir/fechar. -->
 
     <input
-
         type="checkbox"
-
         id="mobile-menu-toggle"
-
         class="mobile-menu-checkbox"
-
     />
 
 
     <!-- HEADER -->
 
-
     <header class="header">
 
-
         <label
-
             for="mobile-menu-toggle"
-
             class="mobile-toggle"
-
             aria-label={currentTexts.open_menu}
-
         >
-
-            <span class="menu-icon">
-
-                ☰
-
-            </span>
-
-
-            <span class="close-icon">
-
-                ✕
-
-            </span>
-
+            <span class="menu-icon">☰</span>
+            <span class="close-icon">✕</span>
         </label>
 
 
         <div class="brand">
 
-
             <img
-
                 src="/logo.png"
-
                 alt="DeepMap"
-
                 class="logo-img"
-
             />
 
-
             <span class="game-title">
-
                 Elden Ring
-
             </span>
 
-
             <span class="version-tag">
-
-                v1.0.27
-
+                v1.0.28
             </span>
 
         </div>
@@ -1875,45 +736,19 @@ marker.on('click', () => {
 
         <div class="header-actions">
 
-
             <select
-
                 class="language-selector"
-
                 value={currentLanguage}
-
                 onchange={changeLanguage}
-
                 aria-label={currentTexts.language}
-
             >
-
-                <option value="en">
-
-                    EN
-
-                </option>
-
-
-                <option value="pt">
-
-                    PT
-
-                </option>
-
+                <option value="en">EN</option>
+                <option value="pt">PT</option>
             </select>
 
-
             <div class="checklist-status">
-
                 {currentTexts.checklist}
-
-                <span>
-
-                    (0%)
-
-                </span>
-
+                <span>(0%)</span>
             </div>
 
         </div>
@@ -1921,486 +756,225 @@ marker.on('click', () => {
     </header>
 
 
-    <!-- EDITOR DE COORDENADAS -->
-
-    <!-- Apenas utilizado no PC -->
-
+    <!-- EDITOR DE COORDENADAS — PC -->
 
     <div class="editor-ui">
 
-
         <button
-
             id="editor-toggle"
-
             class="editor-toggle"
-
             onclick={toggleEditor}
-
         >
-
             {currentTexts.editor}
-
         </button>
 
-
         <div
-
             id="coordinate-panel"
-
             class="coordinate-panel"
-
         >
 
-
             <div
-
                 id="coordinate-title"
-
                 class="coordinate-title"
-
             >
-
                 {currentTexts.coordinate_editor}
-
             </div>
 
-
             <div
-
                 id="editor-instruction"
-
                 class="editor-instruction"
-
             >
-
                 {currentTexts.editor_instruction}
-
             </div>
 
-
             <div
-
                 id="coordinates-content"
-
                 class="coordinates-content"
-
             >
 
+                <div class="coordinate-row">
+                    <span>X:</span>
+                    <strong id="editor-x">—</strong>
+                </div>
 
                 <div class="coordinate-row">
-
-                    <span>
-
-                        X:
-
-                    </span>
-
-                    <strong id="editor-x">
-
-                        —
-
-                    </strong>
-
+                    <span>Y:</span>
+                    <strong id="editor-y">—</strong>
                 </div>
 
-
-                <div class="coordinate-row">
-
-                    <span>
-
-                        Y:
-
-                    </span>
-
-                    <strong id="editor-y">
-
-                        —
-
-                    </strong>
-
-                </div>
-
-
-                <div class="coordinate-divider">
-
-                </div>
-
+                <div class="coordinate-divider"></div>
 
                 <div
-
                     id="coordinate-label"
-
                     class="coordinate-label"
-
                 >
-
                     {currentTexts.ready_for_leaflet}
-
                 </div>
-
 
                 <div
-
                     id="editor-array"
-
                     class="coordinate-array"
-
                 >
-
                     [Y, X]
-
                 </div>
-
 
                 <button
-
                     id="copy-coordinates"
-
                     class="copy-button"
-
                     onclick={copyCoordinates}
-
                     disabled
-
                 >
-
                     {currentTexts.copy}
-
                 </button>
 
-
                 <div
-
                     id="copy-status"
-
                     class="copy-status"
-
-                >
-
-                </div>
+                ></div>
 
             </div>
-
         </div>
-
     </div>
 
 
     <div
-
         id="editor-status"
-
         class="editor-status"
-
     >
-
-        <span class="editor-status-dot">
-
-        </span>
-
-
+        <span class="editor-status-dot"></span>
         {currentTexts.editor_status}
-
     </div>
 
 
     <!-- CONTEÚDO PRINCIPAL -->
 
-
     <div class="body-container">
 
+        <!-- SIDEBAR DESKTOP -->
 
         <aside class="desktop-sidebar">
 
-
             <div class="sidebar-content">
 
+                <h2>{currentTexts.filters}</h2>
 
-                <h2>
+                <!-- SHOW ALL / HIDE ALL -->
 
-                    {currentTexts.filters}
+                <div
+                    class="filter-actions"
+                    role="group"
+                    aria-label={currentTexts.filters}
+                >
+                    <button
+                        type="button"
+                        class="filter-action"
+                        onclick={() => setAllCategoryVisibility(true)}
+                    >
+                        {currentTexts.show_all}
+                    </button>
 
-                </h2>
-
-
-                <div class="filter-group">
-
-
-                    <h3>
-
-                        {currentTexts.locations}
-
-                    </h3>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.site_of_grace
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'site_of_grace',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.sites_of_grace}
-
-                    </label>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.dungeon
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'dungeon',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.dungeons_caverns}
-
-                    </label>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.boss
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'boss',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.bosses}
-
-                    </label>
-
+                    <button
+                        type="button"
+                        class="filter-action"
+                        onclick={() => setAllCategoryVisibility(false)}
+                    >
+                        {currentTexts.hide_all}
+                    </button>
                 </div>
 
 
-                <div class="filter-group">
+                <!-- CATEGORIAS -->
 
+                {#each filterGroups as group (group.id)}
 
-                    <h3>
+                    <div class="filter-group">
 
-                        {currentTexts.collectibles}
+                        <h3>
+                            {currentTexts[group.labelKey]}
+                        </h3>
 
-                    </h3>
+                        {#each group.categories as category (category.id)}
 
+                            <button
+                                type="button"
+                                class="filter-row"
+                                class:inactive={categoryVisibility[category.id] === false}
+                                aria-pressed={categoryVisibility[category.id] !== false}
+                                onclick={() => toggleCategory(category.id)}
+                            >
 
-                    <label>
+                                <span
+                                    class="filter-icon"
+                                    style={`--category-color: ${category.color};`}
+                                    aria-hidden="true"
+                                >
+                                    {#if category.icon}
 
-                        <input
+                                        <img
+                                            src={category.icon}
+                                            alt=""
+                                        />
 
-                            type="checkbox"
+                                    {:else}
 
-                            checked={
+                                        <span class="filter-icon-placeholder"></span>
 
-                                categoryVisibility.weapon_equipment
+                                    {/if}
+                                </span>
 
-                            }
+                                <span class="filter-text">
+                                    {currentTexts[category.labelKey] ?? category.labelKey}
+                                </span>
 
-                            onchange={(event) =>
+                            </button>
 
-                                setCategoryVisibility(
+                        {/each}
 
-                                    'weapon_equipment',
+                    </div>
 
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.weapons_equipment}
-
-                    </label>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.stonesword_key
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'stonesword_key',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.stonesword_keys}
-
-                    </label>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.talisman
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'talisman',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.talismans}
-
-                    </label>
-
-                </div>
+                {/each}
 
             </div>
-
         </aside>
 
+
+        <!-- MAPA -->
 
         <main class="map-wrapper">
 
             <div
-
                 bind:this={mapContainer}
-
                 class="map-element"
-
-            >
-
-            </div>
+            ></div>
 
         </main>
 
     </div>
 
 
-    <!-- MENU MOBILE -->
-
-    <!-- É controlado pelo checkbox através de CSS -->
-
+    <!-- MENU MOBILE — ESTRUTURA ORIGINAL -->
 
     <div class="mobile-menu-layer">
 
-
         <label
-
             for="mobile-menu-toggle"
-
             class="mobile-backdrop"
-
             aria-label={currentTexts.close_menu}
-
-        >
-
-        </label>
+        ></label>
 
 
         <aside class="mobile-sidebar">
 
-
             <div class="mobile-sidebar-header">
 
-
-                <h2>
-
-                    {currentTexts.filters}
-
-                </h2>
-
+                <h2>{currentTexts.filters}</h2>
 
                 <label
-
                     for="mobile-menu-toggle"
-
                     class="mobile-close"
-
                     aria-label={currentTexts.close_menu}
-
                 >
-
                     ✕
-
                 </label>
 
             </div>
@@ -2408,215 +982,83 @@ marker.on('click', () => {
 
             <div class="sidebar-content">
 
+                <!-- SHOW ALL / HIDE ALL MOBILE -->
 
-                <div class="filter-group">
+                <div
+                    class="filter-actions"
+                    role="group"
+                    aria-label={currentTexts.filters}
+                >
 
+                    <button
+                        type="button"
+                        class="filter-action"
+                        onclick={() => setAllCategoryVisibility(true)}
+                    >
+                        {currentTexts.show_all}
+                    </button>
 
-                    <h3>
-
-                        {currentTexts.locations}
-
-                    </h3>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.site_of_grace
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'site_of_grace',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.sites_of_grace}
-
-                    </label>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.dungeon
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'dungeon',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.dungeons_caverns}
-
-                    </label>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.boss
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'boss',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.bosses}
-
-                    </label>
+                    <button
+                        type="button"
+                        class="filter-action"
+                        onclick={() => setAllCategoryVisibility(false)}
+                    >
+                        {currentTexts.hide_all}
+                    </button>
 
                 </div>
 
 
-                <div class="filter-group">
+                <!-- CATEGORIAS MOBILE -->
 
+                {#each filterGroups as group (group.id)}
 
-                    <h3>
+                    <div class="filter-group">
 
-                        {currentTexts.collectibles}
+                        <h3>
+                            {currentTexts[group.labelKey]}
+                        </h3>
 
-                    </h3>
+                        {#each group.categories as category (category.id)}
 
+                            <button
+                                type="button"
+                                class="filter-row"
+                                class:inactive={categoryVisibility[category.id] === false}
+                                aria-pressed={categoryVisibility[category.id] !== false}
+                                onclick={() => toggleCategory(category.id)}
+                            >
 
-                    <label>
+                                <span
+                                    class="filter-icon"
+                                    style={`--category-color: ${category.color};`}
+                                    aria-hidden="true"
+                                >
+                                    {#if category.icon}
 
-                        <input
+                                        <img
+                                            src={category.icon}
+                                            alt=""
+                                        />
 
-                            type="checkbox"
+                                    {:else}
 
-                            checked={
+                                        <span class="filter-icon-placeholder"></span>
 
-                                categoryVisibility.weapon_equipment
+                                    {/if}
+                                </span>
 
-                            }
+                                <span class="filter-text">
+                                    {currentTexts[category.labelKey] ?? category.labelKey}
+                                </span>
 
-                            onchange={(event) =>
+                            </button>
 
-                                setCategoryVisibility(
+                        {/each}
 
-                                    'weapon_equipment',
+                    </div>
 
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.weapons_equipment}
-
-                    </label>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.stonesword_key
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'stonesword_key',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.stonesword_keys}
-
-                    </label>
-
-
-                    <label>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={
-
-                                categoryVisibility.talisman
-
-                            }
-
-                            onchange={(event) =>
-
-                                setCategoryVisibility(
-
-                                    'talisman',
-
-                                    event.currentTarget.checked
-
-                                )
-
-                            }
-
-                        />
-
-                        {currentTexts.talismans}
-
-                    </label>
-
-                </div>
+                {/each}
 
             </div>
 
@@ -2629,1486 +1071,1001 @@ marker.on('click', () => {
 
 <style>
 
+    /* ==========================================
+       BASE
+       ========================================== */
+
     :global(html),
-
     :global(body) {
-
         margin: 0;
-
         padding: 0;
-
         width: 100%;
-
         height: 100%;
-
         overflow: hidden;
-
         background-color: #0b0b0e;
 
         font-family:
-
             'Segoe UI',
-
             Roboto,
-
             Helvetica,
-
             Arial,
-
             sans-serif;
 
         color: #e0e0e0;
-
     }
 
-
     .app-container {
-
         width: 100vw;
-
         height: 100vh;
-
         height: 100dvh;
-
         overflow: hidden;
-
         background: #0b0b0e;
-
     }
 
 
     /* ==========================================
-
        HEADER
-
        ========================================== */
 
     .header {
-
         position: fixed;
-
         top: 0;
-
         left: 0;
-
         right: 0;
 
         height: 56px;
 
         background: #16161a;
-
-        border-bottom:
-
-            1px solid #2a2a30;
+        border-bottom: 1px solid #2a2a30;
 
         display: flex;
-
         align-items: center;
-
-        justify-content:
-
-            space-between;
+        justify-content: space-between;
 
         padding: 0 16px;
-
         box-sizing: border-box;
 
         z-index: 10000;
-
     }
-
 
     .brand {
-
         display: flex;
-
         align-items: center;
-
         gap: 12px;
-
     }
-
 
     .logo-img {
-
         height: 32px;
-
         width: auto;
-
     }
-
 
     .game-title {
-
         font-size: 1.2rem;
-
         font-weight: 700;
-
         color: #c8a355;
-
         letter-spacing: 1px;
-
     }
 
-
     .version-tag {
-
         font-size: 0.75rem;
-
         color: #888899;
-
         background: #22222a;
 
         padding: 2px 6px;
-
         border-radius: 4px;
-
-        border:
-
-            1px solid #333340;
-
+        border: 1px solid #333340;
     }
-
 
     .header-actions {
-
         display: flex;
-
         align-items: center;
-
         gap: 12px;
-
     }
 
-
     .language-selector {
-
         background: #22222a;
-
-        border:
-
-            1px solid #3a3a45;
-
+        border: 1px solid #3a3a45;
         border-radius: 5px;
 
         color: #c8a355;
-
         padding: 5px 7px;
 
         font-weight: 700;
-
         cursor: pointer;
-
         outline: none;
-
     }
-
 
     .language-selector:hover {
-
         border-color: #c8a355;
-
     }
-
 
     .checklist-status {
-
         font-size: 0.9rem;
-
         color: #a0a0a0;
-
     }
 
-
     .checklist-status span {
-
         color: #c8a355;
-
         font-weight: 600;
-
     }
 
 
     /* ==========================================
-
        BOTÃO MOBILE
-
        ========================================== */
 
     .mobile-menu-checkbox {
-
         display: none;
-
     }
 
-
     .mobile-toggle {
-
         display: none;
-
         align-items: center;
-
         justify-content: center;
 
         width: 48px;
-
         height: 48px;
-
         padding: 0;
 
         background: transparent;
-
         border: 0;
 
         color: #c8a355;
-
         font-size: 28px;
 
         cursor: pointer;
-
         touch-action: manipulation;
-
         z-index: 10001;
-
     }
-
 
     .menu-icon,
-
     .close-icon {
-
         display: block;
-
         line-height: 1;
-
     }
 
-
     .close-icon {
-
         display: none;
-
     }
 
 
     /* ==========================================
-
        EDITOR DE COORDENADAS
-
        ========================================== */
 
     .editor-ui {
-
         position: fixed !important;
-
         top: 68px !important;
-
         right: 16px !important;
 
         width: 280px;
 
         z-index: 999999 !important;
-
         pointer-events: none;
-
     }
 
-
     .editor-toggle {
-
         display: block;
-
         margin-left: auto;
 
         padding: 10px 16px;
 
         background: #16161a;
-
-        border:
-
-            1px solid #c8a355;
-
+        border: 1px solid #c8a355;
         border-radius: 6px;
 
         color: #c8a355;
-
         font-size: 0.78rem;
-
         font-weight: 700;
-
         letter-spacing: 0.5px;
 
         cursor: pointer;
 
         box-shadow:
-
-            0 4px 15px
-
-            rgba(0, 0, 0, 0.4);
+            0 4px 15px rgba(0, 0, 0, 0.4);
 
         pointer-events: auto;
 
         transition:
-
             background 0.2s,
-
             color 0.2s,
-
             box-shadow 0.2s;
-
     }
-
 
     .editor-toggle:hover {
-
         background: #22222a;
-
     }
 
-
     .editor-toggle.active {
-
         background: #c8a355;
-
         color: #111116;
 
         box-shadow:
-
-            0 0 0 2px
-
-                rgba(200, 163, 85, 0.15),
-
-            0 5px 20px
-
-                rgba(0, 0, 0, 0.5);
-
+            0 0 0 2px rgba(200, 163, 85, 0.15),
+            0 5px 20px rgba(0, 0, 0, 0.5);
     }
 
-
     .coordinate-panel {
-
         display: none;
-
         margin-top: 10px;
 
-        background:
-
-            rgba(22, 22, 26, 0.97);
-
-        border:
-
-            1px solid #c8a355;
-
+        background: rgba(22, 22, 26, 0.97);
+        border: 1px solid #c8a355;
         border-radius: 8px;
 
         padding: 16px;
-
         box-sizing: border-box;
 
         box-shadow:
+            0 8px 30px rgba(0, 0, 0, 0.65);
 
-            0 8px 30px
-
-            rgba(0, 0, 0, 0.65);
-
-        backdrop-filter:
-
-            blur(8px);
-
+        backdrop-filter: blur(8px);
         pointer-events: auto;
-
     }
 
-
     .coordinate-title {
-
         color: #c8a355;
-
         font-size: 0.8rem;
-
         font-weight: 700;
-
         letter-spacing: 0.6px;
 
         margin-bottom: 14px;
-
         padding-bottom: 10px;
 
-        border-bottom:
-
-            1px solid #2a2a30;
-
+        border-bottom: 1px solid #2a2a30;
     }
-
 
     .editor-instruction {
-
         font-size: 0.85rem;
-
         color: #b0b0b8;
-
         line-height: 1.5;
-
     }
-
 
     .coordinates-content {
-
         display: none;
-
     }
-
 
     .coordinate-row {
-
         display: flex;
-
         align-items: center;
-
-        justify-content:
-
-            space-between;
+        justify-content: space-between;
 
         margin-bottom: 8px;
-
         font-size: 0.95rem;
-
     }
-
 
     .coordinate-row span {
-
         color: #9999a5;
-
     }
-
 
     .coordinate-row strong {
-
         color: #ffffff;
-
         font-size: 1rem;
-
     }
-
 
     .coordinate-divider {
-
         height: 1px;
-
         background: #2a2a30;
-
         margin: 14px 0;
-
     }
-
 
     .coordinate-label {
-
         color: #888899;
-
         font-size: 0.75rem;
-
-        text-transform:
-
-            uppercase;
-
+        text-transform: uppercase;
         letter-spacing: 0.5px;
-
         margin-bottom: 7px;
-
     }
 
-
     .coordinate-array {
-
         background: #0b0b0e;
-
-        border:
-
-            1px solid #333340;
-
+        border: 1px solid #333340;
         border-radius: 5px;
 
         padding: 10px;
-
         margin-bottom: 10px;
 
         text-align: center;
-
         font-family: monospace;
-
         font-size: 1rem;
-
         font-weight: 700;
-
         color: #ffb640;
 
         user-select: all;
-
     }
 
-
     .copy-button {
-
         width: 100%;
-
         padding: 9px;
 
         background: #c8a355;
-
         border: 0;
-
         border-radius: 5px;
 
         color: #111116;
-
         font-size: 0.78rem;
-
         font-weight: 800;
 
         cursor: pointer;
-
     }
-
 
     .copy-button:disabled {
-
         opacity: 0.35;
-
         cursor: not-allowed;
-
     }
 
-
     .copy-status {
-
         min-height: 18px;
-
         margin-top: 7px;
 
         color: #7edc98;
-
         font-size: 0.75rem;
-
         font-weight: 600;
-
         text-align: center;
-
     }
 
-
     .editor-status {
-
         display: none;
 
         position: fixed !important;
-
         top: 68px !important;
-
         left: 50% !important;
 
-        transform:
-
-            translateX(-50%);
+        transform: translateX(-50%);
 
         align-items: center;
-
         gap: 8px;
 
         padding: 8px 14px;
 
-        background:
-
-            rgba(22, 22, 26, 0.96);
-
-        border:
-
-            1px solid #ff9f1c;
-
+        background: rgba(22, 22, 26, 0.96);
+        border: 1px solid #ff9f1c;
         border-radius: 6px;
 
         color: #ffb340;
-
         font-size: 0.76rem;
-
         font-weight: 800;
-
         letter-spacing: 0.4px;
 
         box-shadow:
+            0 5px 20px rgba(0, 0, 0, 0.55);
 
-            0 5px 20px
-
-            rgba(0, 0, 0, 0.55);
-
-        z-index:
-
-            999999 !important;
-
+        z-index: 999999 !important;
         pointer-events: none;
-
     }
 
-
     .editor-status-dot {
-
         width: 8px;
-
         height: 8px;
-
         border-radius: 50%;
 
         background: #ff9f1c;
 
         box-shadow:
-
-            0 0 8px
-
-            rgba(255, 159, 28, 0.8);
-
+            0 0 8px rgba(255, 159, 28, 0.8);
     }
 
 
     /* ==========================================
-
        BODY / MAPA
-
        ========================================== */
 
     .body-container {
-
         position: fixed;
 
         top: 56px;
-
         left: 0;
-
         right: 0;
-
         bottom: 0;
 
         overflow: hidden;
-
         display: flex;
-
     }
 
 
     /* ==========================================
-
        SIDEBAR DESKTOP
-
        ========================================== */
 
     .desktop-sidebar {
-
         position: fixed;
 
         top: 56px;
-
         left: 0;
-
         bottom: 0;
 
         width: 300px;
 
         background: #16161a;
-
-        border-right:
-
-            1px solid #2a2a30;
+        border-right: 1px solid #2a2a30;
 
         box-sizing: border-box;
-
         z-index: 9000;
-
         overflow: hidden;
-
     }
 
-
     .sidebar-content {
-
         padding: 20px;
 
         overflow-y: auto;
-
         height: 100%;
 
         box-sizing: border-box;
-
     }
 
-
     .desktop-sidebar h2 {
-
         font-size: 1.1rem;
-
         color: #c8a355;
 
         margin-top: 0;
-
-        border-bottom:
-
-            1px solid #2a2a30;
-
+        border-bottom: 1px solid #2a2a30;
         padding-bottom: 8px;
-
     }
-
 
     .filter-group {
-
         margin-bottom: 20px;
-
     }
 
-
     .filter-group h3 {
-
         font-size: 0.9rem;
-
         color: #888;
 
-        text-transform:
-
-            uppercase;
-
+        text-transform: uppercase;
         letter-spacing: 0.5px;
 
         margin-bottom: 10px;
-
     }
 
 
-    .filter-group label {
+    /* ==========================================
+       FILTROS — v1.0.28
+       ========================================== */
 
+    .filter-actions {
         display: flex;
+        gap: 8px;
+        margin: 0 0 22px;
+    }
 
-        align-items: center;
+    .filter-action {
+        flex: 1;
+        min-width: 0;
 
-        gap: 10px;
+        padding: 8px 6px;
 
-        margin-bottom: 8px;
+        background: #22222a;
+        border: 1px solid #353541;
+        border-radius: 5px;
 
-        font-size: 0.95rem;
+        color: #c8a355;
+
+        font: inherit;
+        font-size: 0.78rem;
+        font-weight: 700;
 
         cursor: pointer;
 
+        transition:
+            background 0.15s ease,
+            border-color 0.15s ease;
     }
 
+    .filter-action:hover {
+        background: #2c2c37;
+        border-color: #c8a355;
+    }
 
-    .filter-group input[type='checkbox'] {
+    .filter-row {
+        width: 100%;
+        min-height: 36px;
 
-        accent-color: #c8a355;
+        display: flex;
+        align-items: center;
+        gap: 10px;
 
-        width: 16px;
+        margin-bottom: 3px;
+        padding: 5px 7px;
 
-        height: 16px;
+        background: transparent;
+        border: 0;
+        border-radius: 5px;
 
+        color: #e0e0e0;
+        text-align: left;
+
+        font: inherit;
+        font-size: 0.92rem;
+        line-height: 1.35;
+
+        cursor: pointer;
+
+        transition:
+            background 0.15s ease,
+            opacity 0.15s ease;
+    }
+
+    .filter-row:hover {
+        background: #25252d;
+    }
+
+    .filter-action:focus-visible,
+    .filter-row:focus-visible {
+        outline: 2px solid #c8a355;
+        outline-offset: 2px;
+    }
+
+    .filter-icon {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .filter-icon img {
+        display: block;
+        width: 23px;
+        height: 23px;
+        object-fit: contain;
+    }
+
+    /* Substituto provisório para categorias sem PNG. */
+
+    .filter-icon-placeholder {
+        width: 10px;
+        height: 10px;
+
+        border-radius: 50%;
+        background: var(--category-color, #888899);
+
+        box-shadow:
+            0 0 0 2px rgba(255, 255, 255, 0.07);
+    }
+
+    .filter-row.inactive {
+        opacity: 0.38;
+    }
+
+    .filter-row.inactive .filter-text {
+        text-decoration: line-through;
     }
 
 
     /* ==========================================
-
        MAPA
-
        ========================================== */
 
     .map-wrapper {
-
         position: absolute;
 
         top: 0;
-
         left: 300px;
-
         right: 0;
-
         bottom: 0;
 
         background: #0b0b0e;
-
     }
-
 
     .map-element {
-
         position: absolute;
 
         top: 0;
-
         left: 0;
-
         right: 0;
-
         bottom: 0;
 
         background: #0b0b0e;
-
     }
 
 
     /* ==========================================
-
-       ÍCONES DOS MARCADORES
-
+       MARCADORES SVG
        ========================================== */
 
-  :global(.deepmap-marker-wrapper) {
-    background: transparent !important;
-    border: 0 !important;
-}
+    :global(.deepmap-marker-wrapper) {
+        background: transparent !important;
+        border: 0 !important;
+    }
 
-:global(.deepmap-marker) {
-    width: var(--marker-width);
-    height: var(--marker-height);
+    :global(.deepmap-marker) {
+        width: var(--marker-width);
+        height: var(--marker-height);
 
-    transition:
-        transform 0.15s ease;
-}
+        transition: transform 0.15s ease;
+    }
 
-:global(.deepmap-marker-shape) {
-    width: 100%;
-    height: 100%;
+    :global(.deepmap-marker-shape) {
+        width: 100%;
+        height: 100%;
 
-    display: block;
+        display: block;
+        overflow: visible;
 
-    overflow: visible;
+        filter:
+            drop-shadow(
+                0 1px 2px rgba(0, 0, 0, 0.8)
+            );
+    }
 
-    filter:
-        drop-shadow(
-            0 3px 4px
-            rgba(0, 0, 0, 0.5)
-        );
-}
+    :global(.deepmap-marker:hover) {
+        transform: scale(1.12);
+    }
 
-:global(.deepmap-marker:hover) {
-    transform:
-        scale(1.12);
-}
 
-:global(.deepmap-marker-tooltip) {
-    background: #16161a;
-    color: #ffffff;
-
-    border: 1px solid #2a2a30;
-    border-radius: 5px;
-
-    padding: 5px 8px;
-
-    font-size: 0.78rem;
-    font-weight: 600;
-
-    box-shadow:
-        0 3px 8px
-        rgba(0, 0, 0, 0.45);
-}
-
-:global(.deepmap-marker-tooltip::before) {
-    border-top-color: #16161a;
-}
     /* ==========================================
+       TOOLTIP
+       ========================================== */
 
+    :global(.deepmap-marker-tooltip) {
+        background: #16161a;
+        color: #ffffff;
+
+        border: 1px solid #2a2a30;
+        border-radius: 5px;
+
+        padding: 5px 8px;
+
+        font-size: 0.78rem;
+        font-weight: 600;
+
+        box-shadow:
+            0 3px 8px rgba(0, 0, 0, 0.45);
+    }
+
+    :global(.deepmap-marker-tooltip::before) {
+        border-top-color: #16161a;
+    }
+
+
+    /* ==========================================
        POPUP DE LOCALIZAÇÕES
-
        ========================================== */
 
     :global(.deepmap-leaflet-popup .leaflet-popup-content-wrapper) {
-
         background: #16161a;
-
         color: #e7e7ea;
 
         padding: 0;
-
         border-radius: 10px;
 
         border:
-
-            1px solid
-
-            rgba(200, 163, 85, 0.45);
+            1px solid rgba(200, 163, 85, 0.45);
 
         overflow: hidden;
 
         box-shadow:
-
-            0 12px 35px
-
-            rgba(0, 0, 0, 0.7);
-
+            0 12px 35px rgba(0, 0, 0, 0.7);
     }
-
 
     :global(.deepmap-leaflet-popup .leaflet-popup-content) {
-
         margin: 0;
-
         width: auto !important;
-
     }
-
 
     :global(.deepmap-leaflet-popup .leaflet-popup-tip) {
-
         background: #16161a;
-
     }
 
-
     :global(.deepmap-leaflet-popup .leaflet-popup-close-button) {
+        color: #ffffff !important;
+        background: rgba(0, 0, 0, 0.55) !important;
 
-        color:
-
-            #ffffff !important;
-
-        background:
-
-            rgba(0, 0, 0, 0.55) !important;
-
-        width:
-
-            28px !important;
-
-        height:
-
-            28px !important;
-
-        line-height:
-
-            27px !important;
+        width: 28px !important;
+        height: 28px !important;
+        line-height: 27px !important;
 
         border-radius: 50%;
 
-        top:
-
-            7px !important;
-
-        right:
-
-            7px !important;
+        top: 7px !important;
+        right: 7px !important;
 
         z-index: 5;
-
-        font-size:
-
-            18px !important;
-
+        font-size: 18px !important;
     }
-
 
     :global(.deepmap-popup) {
-
         width: 310px;
-
         max-width: 100%;
-
     }
 
-
     :global(.deepmap-popup-image-wrapper) {
-
         width: 100%;
-
         height: 165px;
 
         overflow: hidden;
-
         background: #0b0b0e;
-
     }
 
-
     :global(.deepmap-popup-image) {
-
         width: 100%;
-
         height: 100%;
 
         display: block;
-
         object-fit: cover;
-
     }
-
 
     :global(.deepmap-popup-body) {
-
-        padding:
-
-            15px 16px 17px;
-
+        padding: 15px 16px 17px;
     }
 
-
     :global(.deepmap-popup-category) {
-
         color: #c8a355;
 
         font-size: 0.69rem;
-
         font-weight: 800;
 
         letter-spacing: 0.8px;
-
-        text-transform:
-
-            uppercase;
+        text-transform: uppercase;
 
         margin-bottom: 4px;
-
     }
 
-
     :global(.deepmap-popup-title) {
-
-        margin:
-
-            0 0 12px;
-
+        margin: 0 0 12px;
         padding: 0;
 
         color: #ffffff;
-
         font-size: 1.15rem;
-
         line-height: 1.25;
-
     }
-
 
     :global(.deepmap-popup-info) {
-
         margin-bottom: 12px;
-
-        padding:
-
-            8px 10px;
+        padding: 8px 10px;
 
         background: #111115;
-
         border-radius: 6px;
-
-        border:
-
-            1px solid #292930;
-
+        border: 1px solid #292930;
     }
 
-
     :global(.deepmap-popup-info-row) {
-
         display: flex;
-
-        justify-content:
-
-            space-between;
+        justify-content: space-between;
 
         gap: 14px;
-
         padding: 3px 0;
 
         font-size: 0.78rem;
-
     }
-
 
     :global(.deepmap-popup-info-label) {
-
         color: #888894;
-
     }
-
 
     :global(.deepmap-popup-info-value) {
-
         color: #d8d8dd;
-
         text-align: right;
-
         font-weight: 600;
-
     }
 
-
     :global(.deepmap-popup-description) {
-
         margin: 0;
-
         color: #ababaf;
 
         font-size: 0.82rem;
-
         line-height: 1.5;
-
     }
 
 
+    /* ==========================================
+       MARCA D'ÁGUA
+       ========================================== */
+
     :global(.map-watermark) {
-
         display: flex;
-
         align-items: center;
-
         justify-content: center;
 
-        background:
-
-            rgba(22, 22, 26, 0.5);
+        background: rgba(22, 22, 26, 0.5);
 
         padding: 6px;
-
         border-radius: 8px;
 
         border:
+            1px solid rgba(200, 163, 85, 0.2);
 
-            1px solid
-
-            rgba(200, 163, 85, 0.2);
-
-        backdrop-filter:
-
-            blur(4px);
+        backdrop-filter: blur(4px);
 
         margin-bottom: 12px;
-
         margin-right: 12px;
 
         opacity: 0.6;
-
         pointer-events: none;
-
     }
 
-
     :global(.map-watermark img) {
-
         height: 28px;
-
         width: auto;
-
         display: block;
-
     }
 
 
     /* ==========================================
-
        MENU MOBILE
-
        ========================================== */
 
     .mobile-menu-layer {
-
         display: none;
-
     }
 
 
     /* ==========================================
-
        MOBILE
-
        ========================================== */
 
     @media (max-width: 768px) {
 
-
         .header {
-
             padding: 0 8px;
-
         }
-
 
         .mobile-toggle {
-
             display: flex;
-
         }
-
 
         .brand {
-
             flex: 1;
-
             margin-left: 4px;
-
             gap: 8px;
-
         }
-
 
         .logo-img {
-
             height: 30px;
-
         }
-
 
         .game-title {
-
             font-size: 1rem;
-
         }
-
 
         .version-tag {
-
             font-size: 0.65rem;
-
         }
-
 
         .header-actions {
-
             gap: 6px;
-
         }
-
 
         .language-selector {
-
             font-size: 0.7rem;
-
             padding: 4px 4px;
-
         }
-
 
         .checklist-status {
-
             display: none;
-
         }
-
 
         .editor-ui,
-
         .editor-status {
-
             display: none !important;
-
         }
-
 
         .desktop-sidebar {
-
             display: none;
-
         }
-
 
         .map-wrapper {
-
             left: 0;
-
             width: 100%;
-
         }
-
 
         :global(.deepmap-popup) {
-
             width: 275px;
-
         }
-
 
         :global(.deepmap-popup-image-wrapper) {
-
             height: 145px;
-
         }
 
 
-        /* ==========================================
-
-           MENU MOBILE INDEPENDENTE
-
-           ========================================== */
+        /* MENU MOBILE INDEPENDENTE — NÃO ALTERAR ESTRUTURA */
 
         .mobile-menu-layer {
-
             display: none;
 
             position: fixed;
 
             top: 56px;
-
             left: 0;
-
             right: 0;
-
             bottom: 0;
 
             z-index: 20000;
-
             pointer-events: none;
-
         }
-
 
         .mobile-menu-checkbox:checked ~ .mobile-menu-layer {
-
             display: block;
-
             pointer-events: auto;
-
         }
-
 
         .mobile-menu-checkbox:checked ~ .header .mobile-toggle .menu-icon {
-
             display: none;
-
         }
-
 
         .mobile-menu-checkbox:checked ~ .header .mobile-toggle .close-icon {
-
             display: block;
-
         }
-
 
         .mobile-backdrop {
-
             display: block;
 
             position: absolute;
 
             top: 0;
-
             left: 0;
-
             right: 0;
-
             bottom: 0;
 
-            background:
-
-                rgba(0, 0, 0, 0.65);
-
+            background: rgba(0, 0, 0, 0.65);
         }
-
 
         .mobile-sidebar {
-
             display: block;
 
             position: absolute;
 
             top: 0;
-
             left: 0;
-
             bottom: 0;
 
-            width:
-
-                min(300px, 85vw);
+            width: min(300px, 85vw);
 
             background: #16161a;
-
-            border-right:
-
-                1px solid #2a2a30;
+            border-right: 1px solid #2a2a30;
 
             box-shadow:
-
-                8px 0 30px
-
-                    rgba(0, 0, 0, 0.6);
+                8px 0 30px rgba(0, 0, 0, 0.6);
 
             box-sizing: border-box;
-
             z-index: 1;
-
             overflow-y: auto;
-
         }
 
-
         .mobile-sidebar-header {
-
             height: 56px;
 
             display: flex;
-
             align-items: center;
+            justify-content: space-between;
 
-            justify-content:
+            padding: 0 12px 0 20px;
 
-                space-between;
-
-            padding:
-
-                0 12px 0 20px;
-
-            border-bottom:
-
-                1px solid #2a2a30;
-
-            box-sizing:
-
-                border-box;
-
+            border-bottom: 1px solid #2a2a30;
+            box-sizing: border-box;
         }
-
 
         .mobile-sidebar-header h2 {
-
             margin: 0;
-
             font-size: 1.1rem;
-
             color: #c8a355;
-
         }
 
-
         .mobile-close {
-
             width: 40px;
-
             height: 40px;
 
             display: flex;
-
             align-items: center;
-
             justify-content: center;
 
             padding: 0;
 
             background: transparent;
-
             border: 0;
 
             color: #c8a355;
-
             font-size: 24px;
 
             cursor: pointer;
-
-            touch-action:
-
-                manipulation;
-
+            touch-action: manipulation;
         }
-
 
         .mobile-sidebar .sidebar-content {
-
             height: auto;
-
             padding: 20px;
-
         }
-
     }
 
 </style>

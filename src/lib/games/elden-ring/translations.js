@@ -1,173 +1,180 @@
+
 export const translations = {
 
-	en: {
+    en: {
 
-		/* Interface */
+        /* Interface */
 
-		filters: 'Filters',
-		locations: 'Locations',
-		collectibles: 'Collectibles',
+        filters: 'Filters',
+        locations: 'Locations',
+        collectibles: 'Collectibles',
 
-		sites_of_grace: 'Sites of Grace',
-		dungeons_caverns: 'Dungeons & Caverns',
-		bosses: 'Bosses',
+        show_all: 'Show All',
+        hide_all: 'Hide All',
 
-		weapons_equipment: 'Weapons & Equipment',
-		stonesword_keys: 'Stonesword Keys',
-		talismans: 'Talismans',
+        sites_of_grace: 'Sites of Grace',
+        dungeons_caverns: 'Dungeons & Caverns',
+        bosses: 'Bosses',
 
-		checklist: 'Checklist',
+        weapons_equipment: 'Weapons & Equipment',
+        stonesword_keys: 'Stonesword Keys',
+        talismans: 'Talismans',
 
+        checklist: 'Checklist',
 
-		/* Categorias */
 
-		site_of_grace: 'Site of Grace',
+        /* Categorias */
 
+        site_of_grace: 'Site of Grace',
 
-		/* Regiões */
 
-		limgrave: 'Limgrave',
+        /* Regiões */
 
+        limgrave: 'Limgrave',
 
-		/* Locais */
 
-		church_of_elleh: 'Church of Elleh',
+        /* Locais */
 
-		church_of_elleh_description:
-			'A ruined church located in Limgrave. It contains a Site of Grace and is one of the first notable locations encountered when exploring the region.',
+        church_of_elleh: 'Church of Elleh',
 
+        church_of_elleh_description:
+            'A ruined church located in Limgrave. It contains a Site of Grace and is one of the first notable locations encountered when exploring the region.',
 
-		/* Labels opcionais do popup */
 
-		region: 'Region',
-		npcs: 'NPCs',
-		items: 'Items',
-		quests: 'Quests',
-		notes: 'Notes',
+        /* Labels opcionais do popup */
 
+        region: 'Region',
+        npcs: 'NPCs',
+        items: 'Items',
+        quests: 'Quests',
+        notes: 'Notes',
 
-		/* Editor */
 
-		editor: '⚙️ EDITOR',
+        /* Editor */
 
-		editor_active:
-			'🛠️ EDITOR ACTIVE',
+        editor: '⚙️ EDITOR',
 
-		coordinate_editor:
-			'🛠️ COORDINATE EDITOR',
+        editor_active:
+            '🛠️ EDITOR ACTIVE',
 
-		editor_instruction:
-			'Click a point on the map to get its coordinates.',
+        coordinate_editor:
+            '🛠️ COORDINATE EDITOR',
 
-		editor_status:
-			'EDITOR MODE ACTIVE — Click on the map',
+        editor_instruction:
+            'Click a point on the map to get its coordinates.',
 
-		ready_for_leaflet:
-			'Ready for Leaflet:',
+        editor_status:
+            'EDITOR MODE ACTIVE — Click on the map',
 
-		copy:
-			'📋 COPY',
+        ready_for_leaflet:
+            'Ready for Leaflet:',
 
-		copied:
-			'✓ Copied!',
+        copy:
+            '📋 COPY',
 
+        copied:
+            '✓ Copied!',
 
-		/* Acessibilidade */
 
-		open_menu:
-			'Open Menu',
+        /* Acessibilidade */
 
-		close_menu:
-			'Close Menu',
+        open_menu:
+            'Open Menu',
 
-		language:
-			'Language'
-	},
+        close_menu:
+            'Close Menu',
 
+        language:
+            'Language'
+    },
 
-	pt: {
 
-		/* Interface */
+    pt: {
 
-		filters: 'Filtros',
-		locations: 'Locais',
-		collectibles: 'Colecionáveis',
+        /* Interface */
 
-		sites_of_grace: 'Locais de Graça',
-		dungeons_caverns: 'Masmorras e Cavernas',
-		bosses: 'Chefes',
+        filters: 'Filtros',
+        locations: 'Locais',
+        collectibles: 'Colecionáveis',
 
-		weapons_equipment: 'Armas e Equipamento',
-		stonesword_keys: 'Chaves de Espada de Pedra',
-		talismans: 'Talismãs',
+        show_all: 'Mostrar tudo',
+        hide_all: 'Ocultar tudo',
 
-		checklist: 'Progresso',
+        sites_of_grace: 'Locais de Graça',
+        dungeons_caverns: 'Masmorras e Cavernas',
+        bosses: 'Chefes',
 
+        weapons_equipment: 'Armas e Equipamento',
+        stonesword_keys: 'Chaves de Espada de Pedra',
+        talismans: 'Talismãs',
 
-		/* Categorias */
+        checklist: 'Progresso',
 
-		site_of_grace: 'Local de Graça',
 
+        /* Categorias */
 
-		/* Regiões */
+        site_of_grace: 'Local de Graça',
 
-		limgrave: 'Limgrave',
 
+        /* Regiões */
 
-		/* Locais */
+        limgrave: 'Limgrave',
 
-		church_of_elleh:
-			'Igreja de Elleh',
 
-		church_of_elleh_description:
-			'Uma igreja em ruínas situada em Limgrave. Contém um Local de Graça e é um dos primeiros locais importantes encontrados ao explorar a região.',
+        /* Locais */
 
+        church_of_elleh:
+            'Igreja de Elleh',
 
-		/* Labels opcionais do popup */
+        church_of_elleh_description:
+            'Uma igreja em ruínas situada em Limgrave. Contém um Local de Graça e é um dos primeiros locais importantes encontrados ao explorar a região.',
 
-		region: 'Região',
-		npcs: 'NPCs',
-		items: 'Itens',
-		quests: 'Missões',
-		notes: 'Notas',
 
+        /* Labels opcionais do popup */
 
-		/* Editor */
+        region: 'Região',
+        npcs: 'NPCs',
+        items: 'Itens',
+        quests: 'Missões',
+        notes: 'Notas',
 
-		editor:
-			'⚙️ EDITOR',
 
-		editor_active:
-			'🛠️ EDITOR ATIVO',
+        /* Editor */
 
-		coordinate_editor:
-			'🛠️ EDITOR DE COORDENADAS',
+        editor:
+            '⚙️ EDITOR',
 
-		editor_instruction:
-			'Clica num ponto do mapa para obter as coordenadas.',
+        editor_active:
+            '🛠️ EDITOR ATIVO',
 
-		editor_status:
-			'MODO EDITOR ATIVO — Clica no mapa',
+        coordinate_editor:
+            '🛠️ EDITOR DE COORDENADAS',
 
-		ready_for_leaflet:
-			'Pronto para Leaflet:',
+        editor_instruction:
+            'Clica num ponto do mapa para obter as coordenadas.',
 
-		copy:
-			'📋 COPIAR',
+        editor_status:
+            'MODO EDITOR ATIVO — Clica no mapa',
 
-		copied:
-			'✓ Copiado!',
+        ready_for_leaflet:
+            'Pronto para Leaflet:',
 
+        copy:
+            '📋 COPIAR',
 
-		/* Acessibilidade */
+        copied:
+            '✓ Copiado!',
 
-		open_menu:
-			'Abrir Menu',
 
-		close_menu:
-			'Fechar Menu',
+        /* Acessibilidade */
 
-		language:
-			'Idioma'
-	}
+        open_menu:
+            'Abrir Menu',
+
+        close_menu:
+            'Fechar Menu',
+
+        language:
+            'Idioma'
+    }
 };

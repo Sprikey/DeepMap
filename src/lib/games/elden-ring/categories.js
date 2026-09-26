@@ -1,3 +1,4 @@
+
 /* ==========================================
    CATEGORIAS — ELDEN RING
    ==========================================
@@ -5,7 +6,7 @@
    Aqui ficam as categorias específicas
    deste jogo.
 
-   Mais tarde cada categoria controla:
+   Cada categoria controla:
    - tradução
    - ícone
    - cor do pino
@@ -15,95 +16,84 @@
 
 export const categories = {
 
-	site_of_grace: {
-    id: 'site_of_grace',
-    labelKey: 'sites_of_grace',
-    group: 'locations',
+    site_of_grace: {
+        id: 'site_of_grace',
+        labelKey: 'sites_of_grace',
+        group: 'locations',
 
-    icon: '/icons/site-of-grace.png',
+        icon: '/icons/site-of-grace.png',
 
-    color: '#2e2e48',
+        color: '#23233a',
 
-    markerWidth: 30,
-    markerHeight: 39,
+        markerWidth: 30,
+        markerHeight: 39,
 
-    symbolSize: 20
-},
-
-	dungeon: {
-
-		id: 'dungeon',
-
-		labelKey: 'dungeons_caverns',
-
-		group: 'locations',
-
-		icon: null,
-
-		color:
-			'#7b6b91'
-	},
+        symbolSize: 22
+    },
 
 
-	boss: {
+    dungeon: {
+        id: 'dungeon',
+        labelKey: 'dungeons_caverns',
+        group: 'locations',
 
-		id: 'boss',
+        icon: null,
 
-		labelKey: 'bosses',
-
-		group: 'locations',
-
-		icon: null,
-
-		color:
-			'#8f4f4f'
-	},
+        color: '#7b6b91'
+    },
 
 
-	weapon_equipment: {
+    boss: {
+        id: 'boss',
+        labelKey: 'bosses',
+        group: 'locations',
 
-		id: 'weapon_equipment',
+        icon: null,
 
-		labelKey: 'weapons_equipment',
-
-		group: 'collectibles',
-
-		icon: null,
-
-		color:
-			'#557a8f'
-	},
+        color: '#8f4f4f'
+    },
 
 
-	stonesword_key: {
+    weapon_equipment: {
+        id: 'weapon_equipment',
+        labelKey: 'weapons_equipment',
+        group: 'collectibles',
 
-		id: 'stonesword_key',
+        icon: null,
 
-		labelKey: 'stonesword_keys',
-
-		group: 'collectibles',
-
-		icon: null,
-
-		color:
-			'#777777'
-	},
+        color: '#557a8f'
+    },
 
 
-	talisman: {
+    stonesword_key: {
+        id: 'stonesword_key',
+        labelKey: 'stonesword_keys',
+        group: 'collectibles',
 
-		id: 'talisman',
+        icon: null,
 
-		labelKey: 'talismans',
+        color: '#777777'
+    },
 
-		group: 'collectibles',
 
-		icon: null,
+    talisman: {
+        id: 'talisman',
+        labelKey: 'talismans',
+        group: 'collectibles',
 
-		color:
-			'#8b7545'
-	}
+        icon: null,
+
+        color: '#8b7545'
+    }
 };
+
+
+/* Grupos exibidos na sidebar, pela ordem definida para este jogo. */
+
+export const categoryGroups = [
+    { id: 'locations', labelKey: 'locations' },
+    { id: 'collectibles', labelKey: 'collectibles' }
+];
 
 
 /* ==========================================
@@ -112,15 +102,15 @@ export const categories = {
 
 export const defaultCategoryVisibility = {
 
-	site_of_grace: true,
+    site_of_grace: true,
 
-	dungeon: true,
+    dungeon: true,
 
-	boss: true,
+    boss: true,
 
-	weapon_equipment: true,
+    weapon_equipment: true,
 
-	stonesword_key: true,
+    stonesword_key: true,
 
-	talisman: true
+    talisman: true
 };
