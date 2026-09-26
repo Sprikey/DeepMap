@@ -627,7 +627,7 @@
 
                 div.innerHTML = `
                     <img
-                        src="/logo.png"
+                        src="/brand/logo.png"
                         alt="DeepMap Logo"
                     />
                 `;
@@ -718,7 +718,7 @@
         <div class="brand">
 
             <img
-                src="/logo.png"
+                src="/brand/logo.png"
                 alt="DeepMap"
                 class="logo-img"
             />

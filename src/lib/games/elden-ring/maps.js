@@ -17,7 +17,7 @@ export const mapDefinitions = {
 			'surface',
 
 		image:
-			'/mapa-elden-ring.jpg',
+			'/games/elden-ring/maps/surface.jpg',
 
 		width:
 			8000,

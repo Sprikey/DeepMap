@@ -21,7 +21,7 @@ export const categories = {
         labelKey: 'sites_of_grace',
         group: 'locations',
 
-        icon: '/icons/site-of-grace.png',
+        icon: '/games/elden-ring/icons/site-of-grace.png',
 
         color: '#23233a',
 

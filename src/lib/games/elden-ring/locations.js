@@ -59,13 +59,13 @@ export const locations = [
 		*/
 
 		icon:
-			'/icons/site-of-grace.png',
+			'/games/elden-ring/icons/site-of-grace.png',
 
 
 		/* Imagem do popup */
 
 		image:
-			'/locations/church-of-elleh.jpg',
+			'/games/elden-ring/locations/church-of-elleh.jpg',
 
 
 		/* Campos opcionais */
