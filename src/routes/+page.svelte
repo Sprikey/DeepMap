@@ -1,6 +1,7 @@
 
 <script>
     import { onMount } from 'svelte';
+    import AuthHeader from '$lib/components/AuthHeader.svelte';
 
     import { translations } from '$lib/games/elden-ring/translations.js';
 
@@ -750,6 +751,8 @@
                 {currentTexts.checklist}
                 <span>(0%)</span>
             </div>
+
+            <AuthHeader language={currentLanguage} />
 
         </div>
 
