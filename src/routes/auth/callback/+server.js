@@ -14,8 +14,7 @@ export const GET = async ({ url, locals }) => {
             ? next
             : '/';
 
-    // Recuperação por token_hash: não depende do navegador onde foi pedido o email.
-    // A sessão é criada no servidor e guardada nos cookies pelo cliente SSR.
+    // Recuperação entre navegadores: mantém o fluxo já testado.
     if (type === 'recovery') {
         if (!tokenHash) {
             redirect(303, '/login?auth_error=missing_code&reason=invalid_recovery_link');
@@ -32,15 +31,38 @@ export const GET = async ({ url, locals }) => {
                 status: error.status,
                 message: error.message
             });
+
             redirect(303, '/login?auth_error=callback&reason=recovery_failed');
         }
 
-        // Destino fixo: um link de recuperação nunca deve terminar no mapa.
         redirect(303, '/reset-password');
     }
 
-    // Não aceitar outros tipos de token neste callback.
-    // A confirmação de email continua em /auth/confirm.
+    // Confirmação de conta, mesmo que o email seja aberto noutro navegador.
+    if (type === 'email') {
+        if (!tokenHash) {
+            redirect(303, '/login?email_error=invalid_link');
+        }
+
+        const { error } = await locals.supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: 'email'
+        });
+
+        if (error) {
+            console.error('Erro na confirmação de email Supabase:', {
+                reason: error.code,
+                status: error.status,
+                message: error.message
+            });
+
+            redirect(303, '/login?email_error=confirmation_failed');
+        }
+
+        redirect(303, '/login?email_confirmed=1');
+    }
+
+    // Rejeitar tipos de token desconhecidos.
     if (tokenHash) {
         redirect(303, '/login?auth_error=missing_code&reason=invalid_link_type');
     }
