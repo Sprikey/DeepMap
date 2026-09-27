@@ -1,5 +1,6 @@
 <script>
     import { onMount } from 'svelte';
+    import { goto } from '$app/navigation';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
 
     // Sessão
@@ -19,6 +20,40 @@
     let errorMessage = $state('');
     let successMessage = $state('');
 
+    // Destino interno para regressar após iniciar sessão.
+    let returnTo = $state('/');
+    let hasReturnTarget = $state(false);
+
+    function safeReturnPath(raw) {
+        if (
+            typeof raw !== 'string' ||
+            !raw.startsWith('/') ||
+            raw.startsWith('//') ||
+            raw.includes('\\') ||
+            /[\u0000-\u001f\u007f]/.test(raw)
+        ) {
+            return '/';
+        }
+
+        try {
+            const target = new URL(raw, window.location.origin);
+
+            // Nunca redirecionar para outro domínio ou para uma rota de autenticação.
+            if (
+                target.origin !== window.location.origin ||
+                target.pathname === '/login' ||
+                target.pathname === '/reset-password' ||
+                target.pathname.startsWith('/auth/')
+            ) {
+                return '/';
+            }
+
+            return target.pathname + target.search + target.hash;
+        } catch {
+            return '/';
+        }
+    }
+
     // ==========================================
     // VERIFICAR SESSÃO
     // ==========================================
@@ -28,6 +63,8 @@
         let active = true;
 
         const params = new URLSearchParams(window.location.search);
+        hasReturnTarget = params.has('next');
+        returnTo = safeReturnPath(params.get('next'));
 
         if (params.get('email_confirmed') === '1') {
             successMessage = 'Email confirmado! Já podes iniciar sessão.';
@@ -48,6 +85,17 @@
 
             userEmail = error ? null : (data.user?.email ?? null);
             checkingSession = false;
+
+            // Se a pessoa já tinha sessão ao clicar em Entrar, regressa à origem.
+            // Links de confirmação/recuperação continuam na página para mostrar mensagens.
+            if (
+                !error && data.user && hasReturnTarget &&
+                !params.has('email_confirmed') &&
+                !params.has('password_reset') &&
+                !params.has('auth_error')
+            ) {
+                await goto(returnTo, { replaceState: true });
+            }
         }
 
         checkSession();
@@ -111,6 +159,9 @@
 
         userEmail = data.user?.email ?? null;
         password = '';
+
+        // Entrar com email: regressar à página de onde veio.
+        await goto(returnTo, { replaceState: true });
     }
 
     // ==========================================
@@ -207,7 +258,7 @@
             provider: 'google',
             options: {
                 redirectTo:
-                    `${window.location.origin}/auth/callback?next=%2Flogin`,
+                    `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnTo)}`,
                 queryParams: {
                     prompt: 'select_account'
                 }
@@ -472,21 +523,14 @@
             </p>
         {/if}
 
-        <a href="/" class="back-link">
-            ← Voltar ao mapa
+        <a href={returnTo} class="back-link">
+            {hasReturnTarget ? '← Voltar à página anterior' : '← Voltar ao mapa'}
         </a>
 
     </div>
 </main>
 
 <style>
-    /* O mapa bloqueia o scroll global. Libertá-lo só na rota de login. */
-    :global(html:has(.auth-page)),
-    :global(body:has(.auth-page)) {
-        height: auto !important;
-        overflow-y: auto !important;
-    }
-
     .auth-page {
         min-height: 100vh;
         min-height: 100dvh;

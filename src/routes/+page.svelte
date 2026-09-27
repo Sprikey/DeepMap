@@ -1078,23 +1078,11 @@
        BASE
        ========================================== */
 
-    :global(html),
-    :global(body) {
-        margin: 0;
-        padding: 0;
-        width: 100%;
+    /* Bloquear o scroll EXCLUSIVAMENTE quando o mapa está nesta rota. */
+    :global(html:has(.app-container)),
+    :global(body:has(.app-container)) {
         height: 100%;
         overflow: hidden;
-        background-color: #0b0b0e;
-
-        font-family:
-            'Segoe UI',
-            Roboto,
-            Helvetica,
-            Arial,
-            sans-serif;
-
-        color: #e0e0e0;
     }
 
     .app-container {

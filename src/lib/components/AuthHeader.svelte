@@ -1,5 +1,6 @@
 <script>
     import { onMount } from 'svelte';
+    import { page } from '$app/state';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
 
     // Componente reutilizável: podemos usá-lo no mapa e, mais tarde, na homepage.
@@ -66,9 +67,9 @@
 {#if checkingSession}
     <span class="auth-placeholder" aria-label={language === 'pt' ? 'A verificar sessão' : 'Checking session'}></span>
 {:else if user}
-    <!-- Enquanto /profile não existir, /login mostra a conta e permite terminar sessão. -->
+    <!-- Avatar: abrir o perfil do utilizador autenticado. -->
     <a
-        href="/login"
+        href="/profile"
         class="avatar-link"
         title={accountLabel}
         aria-label={`${accountLabel}: ${displayName}`}
@@ -85,7 +86,10 @@
         {/if}
     </a>
 {:else}
-    <a class="login-link" href="/login">{loginLabel}</a>
+    <a
+        class="login-link"
+        href={`/login?next=${encodeURIComponent(page.url.pathname + page.url.search + page.url.hash)}`}
+    >{loginLabel}</a>
 {/if}
 
 <style>

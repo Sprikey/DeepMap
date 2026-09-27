@@ -8,6 +8,23 @@
 
 		<link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/brand/favicon.svg?v=3" />
 
+		<!-- Base visual global: impede flashes brancos e mantém scroll normal fora do mapa. -->
+		<meta name="theme-color" content="#0b0b0e" />
+		<style>
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				width: 100%;
+				min-height: 100%;
+				background-color: #0b0b0e;
+				color: #e0e0e0;
+				font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+			}
+			html { color-scheme: dark; }
+			body { min-height: 100dvh; }
+		</style>
+
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
