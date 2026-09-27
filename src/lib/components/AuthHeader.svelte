@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { page } from '$app/state';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
+    import { getDisplayName, getAvatarPresentation } from '$lib/avatar/avatars.js';
 
     // Componente reutilizável: podemos usá-lo no mapa e, mais tarde, na homepage.
     let { language = 'en' } = $props();
@@ -13,26 +14,10 @@
     let accountLabel = $derived(language === 'pt' ? 'A minha conta' : 'My account');
     let loginLabel = $derived(language === 'pt' ? 'Entrar' : 'Log in');
 
-    let displayName = $derived(
-        String(
-            user?.user_metadata?.full_name ||
-            user?.user_metadata?.name ||
-            user?.email ||
-            ''
-        )
-    );
-
-    let initials = $derived(
-        displayName.trim().charAt(0).toUpperCase() || '?'
-    );
-
-    let avatarUrl = $derived(
-        !avatarFailed &&
-        typeof user?.user_metadata?.avatar_url === 'string' &&
-        /^https:\/\//i.test(user.user_metadata.avatar_url)
-            ? user.user_metadata.avatar_url
-            : null
-    );
+    let displayName = $derived(getDisplayName(user));
+    let avatarPresentation = $derived(getAvatarPresentation(user));
+    let initials = $derived(avatarPresentation.symbol);
+    let avatarUrl = $derived(avatarFailed ? null : avatarPresentation.image);
 
     onMount(() => {
         const supabase = getSupabaseBrowserClient();

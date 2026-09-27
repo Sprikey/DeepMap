@@ -2,6 +2,7 @@
 <script>
     import { onMount } from 'svelte';
     import AuthHeader from '$lib/components/AuthHeader.svelte';
+    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
 
     import { translations } from '$lib/games/elden-ring/translations.js';
 
@@ -39,7 +40,7 @@
     }
 
     function changeLanguage(event) {
-        currentLanguage = event.currentTarget.value;
+        currentLanguage = setSiteLanguage(event.currentTarget.value);
 
         renderLocationMarkers();
         updateEditorInterface();
@@ -585,6 +586,9 @@
        ========================================== */
 
     onMount(async () => {
+        // A língua escolhida mantém-se ao navegar entre mapa e perfil.
+        currentLanguage = setSiteLanguage(getSiteLanguage());
+
         const L = await import('leaflet');
 
         await import('leaflet/dist/leaflet.css');
