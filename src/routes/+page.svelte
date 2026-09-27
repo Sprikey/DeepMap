@@ -733,7 +733,7 @@
             </span>
 
             <span class="version-tag">
-                v1.0.29
+                v1.0.30
             </span>
 
         </div>
