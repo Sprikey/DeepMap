@@ -1,31 +1,32 @@
-
 <script>
     import { onMount } from 'svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
+    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
+    import { authTranslations } from '$lib/i18n/auth.js';
+
+    let currentLanguage = $state('en');
+    let texts = $derived(authTranslations[currentLanguage] ?? authTranslations.en);
 
     let checkingSession = $state(true);
     let canReset = $state(false);
     let working = $state(false);
     let finished = $state(false);
-
     let password = $state('');
     let confirmPassword = $state('');
+    let errorKey = $state('');
+    let successKey = $state('');
 
-    let errorMessage = $state('');
-    let successMessage = $state('');
-
-    // ==========================================
-    // VALIDAR SESSÃO RECEBIDA PELO LINK
-    // ==========================================
+    function changeLanguage(event) {
+        currentLanguage = setSiteLanguage(event.currentTarget.value);
+    }
 
     onMount(() => {
+        currentLanguage = getSiteLanguage();
         let active = true;
 
         async function checkSession() {
             const supabase = getSupabaseBrowserClient();
-
             const { data, error } = await supabase.auth.getUser();
-
             if (!active) return;
 
             canReset = !error && !!data.user;
@@ -33,172 +34,103 @@
         }
 
         checkSession();
-
-        return () => {
-            active = false;
-        };
+        return () => { active = false; };
     });
-
-    // ==========================================
-    // DEFINIR NOVA PALAVRA-PASSE
-    // ==========================================
 
     async function updatePassword(event) {
         event.preventDefault();
-
-        errorMessage = '';
-        successMessage = '';
+        if (working) return;
+        errorKey = '';
+        successKey = '';
 
         if (password.length < 8) {
-            errorMessage = 'A palavra-passe deve ter pelo menos 8 caracteres.';
+            errorKey = 'password_too_short';
             return;
         }
-
         if (password !== confirmPassword) {
-            errorMessage = 'As palavras-passe não coincidem.';
+            errorKey = 'password_mismatch';
             return;
         }
 
         working = true;
-
         const supabase = getSupabaseBrowserClient();
-
-        const { error } = await supabase.auth.updateUser({
-            password
-        });
+        const { error } = await supabase.auth.updateUser({ password });
 
         if (error) {
-            errorMessage = error.message;
+            errorKey = error.status === 429 ? 'rate_limit' : 'reset_update_error';
             working = false;
             return;
         }
 
-        // Limpar os campos após a alteração.
         password = '';
         confirmPassword = '';
         finished = true;
 
-        // Depois da alteração, pedir novo login.
         const { error: logoutError } = await supabase.auth.signOut();
-
         working = false;
 
         if (logoutError) {
-            successMessage =
-                'Palavra-passe alterada! Termina a sessão atual antes de voltares a entrar.';
+            successKey = 'reset_signout_error';
             return;
         }
 
-        // Regressar ao login, já sem sessão iniciada.
         window.location.replace('/login?password_reset=1');
     }
 </script>
 
 <svelte:head>
-    <title>Nova palavra-passe — DeepMap</title>
+    <title>{texts.reset_page_title}</title>
 </svelte:head>
 
 <main class="auth-page">
     <div class="auth-card">
+        <div class="language-row">
+            <label for="reset-language" class="language-label">{texts.language}</label>
+            <select id="reset-language" value={currentLanguage} onchange={changeLanguage} aria-label={texts.language}>
+                <option value="en">EN</option>
+                <option value="pt">PT</option>
+            </select>
+        </div>
 
-        <img
-            src="/brand/logo.png"
-            alt="DeepMap"
-            class="auth-logo"
-        />
-
-        <h1>Nova palavra-passe</h1>
+        <img src="/brand/logo.png" alt="DeepMap" class="auth-logo" />
+        <h1>{texts.reset_heading}</h1>
 
         {#if checkingSession}
-
-            <p>A verificar o link de recuperação...</p>
-
+            <p>{texts.checking_recovery}</p>
         {:else if !canReset}
-
-            <p class="error-message">
-                Não foi possível validar a sessão de recuperação.
-                O link pode ter expirado ou já ter sido utilizado.
-            </p>
-
-            <a href="/login" class="back-link">
-                Voltar ao login
-            </a>
-
+            <p class="error-message" role="alert">{texts.invalid_recovery}</p>
+            <a href="/login" class="back-link">{texts.login_link}</a>
         {:else if finished}
-
-            <p class="success-message">
-                {successMessage || 'Palavra-passe alterada com sucesso!'}
-            </p>
-
-            <a href="/login" class="back-link">
-                Voltar ao login
-            </a>
-
+            <p class="success-message" role="status">{successKey ? texts[successKey] : texts.reset_success}</p>
+            <a href="/login" class="back-link">{texts.login_link}</a>
         {:else}
-
-            <p>
-                Escolhe uma nova palavra-passe para a tua conta DeepMap.
-            </p>
-
+            <p>{texts.reset_instruction}</p>
             <form onsubmit={updatePassword}>
+                <label for="new-password">{texts.new_password}</label>
+                <input id="new-password" type="password" bind:value={password}
+                    autocomplete="new-password" placeholder={texts.password_new_hint}
+                    minlength="8" required disabled={working} />
 
-                <label for="new-password">
-                    Nova palavra-passe
-                </label>
+                <label for="confirm-password">{texts.confirm_password}</label>
+                <input id="confirm-password" type="password" bind:value={confirmPassword}
+                    autocomplete="new-password" placeholder={texts.repeat_new_password}
+                    minlength="8" required disabled={working} />
 
-                <input
-                    id="new-password"
-                    type="password"
-                    bind:value={password}
-                    autocomplete="new-password"
-                    placeholder="Mínimo de 8 caracteres"
-                    minlength="8"
-                    required
-                    disabled={working}
-                />
-
-                <label for="confirm-password">
-                    Confirmar palavra-passe
-                </label>
-
-                <input
-                    id="confirm-password"
-                    type="password"
-                    bind:value={confirmPassword}
-                    autocomplete="new-password"
-                    placeholder="Repete a nova palavra-passe"
-                    minlength="8"
-                    required
-                    disabled={working}
-                />
-
-                <button
-                    type="submit"
-                    disabled={working}
-                >
-                    {working
-                        ? 'A guardar...'
-                        : 'Guardar nova palavra-passe'}
+                <button type="submit" disabled={working}>
+                    {working ? texts.saving : texts.save_new_password}
                 </button>
-
             </form>
 
-            {#if errorMessage}
-                <p class="error-message" role="alert">
-                    {errorMessage}
-                </p>
+            {#if errorKey}
+                <p class="error-message" role="alert">{texts[errorKey] ?? texts.reset_update_error}</p>
             {/if}
-
-            <a href="/login" class="back-link">
-                ← Voltar ao login
-            </a>
-
+            <a href="/login" class="back-link">{texts.back_to_login}</a>
         {/if}
-
     </div>
 </main>
 
 <style>
+
     .auth-page {
         min-height: 100dvh;
         display: flex;
@@ -306,5 +238,39 @@
 
     .back-link:hover {
         text-decoration: underline;
+    }
+
+    /* Scroll correto em janelas baixas, como na página de login. */
+    .auth-page {
+        min-height: 100vh;
+        min-height: 100dvh;
+        flex-direction: column;
+        padding: 24px 16px;
+    }
+    .auth-card {
+        flex-shrink: 0;
+        margin-block: auto;
+    }
+    .language-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    .language-label {
+        margin: 0;
+        color: #a0a0aa;
+        font-size: 0.76rem;
+    }
+    .language-row select {
+        padding: 5px 7px;
+        border: 1px solid #41414d;
+        border-radius: 5px;
+        background: #22222a;
+        color: #c8a355;
+        font: inherit;
+        font-size: 0.78rem;
+        cursor: pointer;
     }
 </style>

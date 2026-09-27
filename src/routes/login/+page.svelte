@@ -2,27 +2,29 @@
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
+    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
+    import { authTranslations } from '$lib/i18n/auth.js';
 
-    // Sessão
+    let currentLanguage = $state('en');
+    let texts = $derived(authTranslations[currentLanguage] ?? authTranslations.en);
+
     let userEmail = $state(null);
     let checkingSession = $state(true);
     let working = $state(false);
+    let authMode = $state('login'); // login | register | recover
 
-    // login | register | recover
-    let authMode = $state('login');
-
-    // Formulário
     let email = $state('');
     let password = $state('');
     let confirmPassword = $state('');
+    let errorKey = $state('');
+    let successKey = $state('');
 
-    // Mensagens
-    let errorMessage = $state('');
-    let successMessage = $state('');
-
-    // Destino interno para regressar após iniciar sessão.
     let returnTo = $state('/');
     let hasReturnTarget = $state(false);
+
+    function changeLanguage(event) {
+        currentLanguage = setSiteLanguage(event.currentTarget.value);
+    }
 
     function safeReturnPath(raw) {
         if (
@@ -31,22 +33,16 @@
             raw.startsWith('//') ||
             raw.includes('\\') ||
             /[\u0000-\u001f\u007f]/.test(raw)
-        ) {
-            return '/';
-        }
+        ) return '/';
 
         try {
             const target = new URL(raw, window.location.origin);
-
-            // Nunca redirecionar para outro domínio ou para uma rota de autenticação.
             if (
                 target.origin !== window.location.origin ||
                 target.pathname === '/login' ||
                 target.pathname === '/reset-password' ||
                 target.pathname.startsWith('/auth/')
-            ) {
-                return '/';
-            }
+            ) return '/';
 
             return target.pathname + target.search + target.hash;
         } catch {
@@ -54,58 +50,49 @@
         }
     }
 
-    // ==========================================
-    // VERIFICAR SESSÃO
-    // ==========================================
+    function authErrorKey(error, fallback) {
+        if (error?.code === 'invalid_credentials') return 'invalid_credentials';
+        if (error?.code === 'email_not_confirmed') return 'email_not_confirmed';
+        if (
+            error?.status === 429 ||
+            ['over_email_send_rate_limit', 'over_request_rate_limit', 'too_many_requests'].includes(error?.code)
+        ) return 'rate_limit';
+        return fallback;
+    }
 
     onMount(() => {
+        currentLanguage = getSiteLanguage();
         const supabase = getSupabaseBrowserClient();
+        const params = new URLSearchParams(window.location.search);
         let active = true;
 
-        const params = new URLSearchParams(window.location.search);
         hasReturnTarget = params.has('next');
         returnTo = safeReturnPath(params.get('next'));
 
-        if (params.get('email_confirmed') === '1') {
-            successMessage = 'Email confirmado! Já podes iniciar sessão.';
-        }
-
-        if (params.get('password_reset') === '1') {
-            successMessage = 'Palavra-passe alterada! Já podes entrar com a nova palavra-passe.';
-        }
-
-        if (params.has('auth_error')) {
-            errorMessage = 'Não foi possível concluir a autenticação. Tenta novamente.';
-        }
+        if (params.get('email_confirmed') === '1') successKey = 'email_confirmed';
+        if (params.get('password_reset') === '1') successKey = 'password_reset_done';
+        if (params.has('auth_error')) errorKey = 'auth_error';
 
         async function checkSession() {
             const { data, error } = await supabase.auth.getUser();
-
             if (!active) return;
 
             userEmail = error ? null : (data.user?.email ?? null);
             checkingSession = false;
 
-            // Se a pessoa já tinha sessão ao clicar em Entrar, regressa à origem.
-            // Links de confirmação/recuperação continuam na página para mostrar mensagens.
             if (
                 !error && data.user && hasReturnTarget &&
                 !params.has('email_confirmed') &&
                 !params.has('password_reset') &&
                 !params.has('auth_error')
-            ) {
-                await goto(returnTo, { replaceState: true });
-            }
+            ) await goto(returnTo, { replaceState: true });
         }
 
         checkSession();
 
-        const { data: { subscription } } =
-            supabase.auth.onAuthStateChange((_event, session) => {
-                if (active) {
-                    userEmail = session?.user?.email ?? null;
-                }
-            });
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (active) userEmail = session?.user?.email ?? null;
+        });
 
         return () => {
             active = false;
@@ -113,179 +100,121 @@
         };
     });
 
-    // ==========================================
-    // MUDAR MODO
-    // ==========================================
-
     function changeAuthMode(mode) {
         authMode = mode;
         password = '';
         confirmPassword = '';
-        errorMessage = '';
-        successMessage = '';
+        errorKey = '';
+        successKey = '';
     }
-
-    // ==========================================
-    // LOGIN POR EMAIL
-    // ==========================================
 
     async function loginWithEmail(event) {
         event.preventDefault();
-
+        if (working) return;
         working = true;
-        errorMessage = '';
-        successMessage = '';
+        errorKey = '';
+        successKey = '';
 
         const supabase = getSupabaseBrowserClient();
-
         const { data, error } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password
+            email: email.trim(), password
         });
-
         working = false;
 
         if (error) {
-            if (error.code === 'invalid_credentials') {
-                errorMessage = 'Email ou palavra-passe incorretos.';
-            } else if (error.code === 'email_not_confirmed') {
-                errorMessage = 'Tens de confirmar o email antes de entrar.';
-            } else {
-                errorMessage = error.message;
-            }
-
+            errorKey = authErrorKey(error, 'sign_in_error');
             return;
         }
 
         userEmail = data.user?.email ?? null;
         password = '';
-
-        // Entrar com email: regressar à página de onde veio.
         await goto(returnTo, { replaceState: true });
     }
 
-    // ==========================================
-    // REGISTO POR EMAIL
-    // ==========================================
-
     async function registerWithEmail(event) {
         event.preventDefault();
-
-        errorMessage = '';
-        successMessage = '';
+        if (working) return;
+        errorKey = '';
+        successKey = '';
 
         if (password !== confirmPassword) {
-            errorMessage = 'As palavras-passe não coincidem.';
+            errorKey = 'password_mismatch';
             return;
         }
-
         if (password.length < 8) {
-            errorMessage = 'A palavra-passe deve ter pelo menos 8 caracteres.';
+            errorKey = 'password_too_short';
             return;
         }
 
         working = true;
-
         const supabase = getSupabaseBrowserClient();
-
         const { error } = await supabase.auth.signUp({
-            email: email.trim(),
-            password,
+            email: email.trim(), password,
             options: {
-                emailRedirectTo:
-                    `${window.location.origin}/auth/callback?next=%2Flogin%3Femail_confirmed%3D1`
+                emailRedirectTo: `${window.location.origin}/auth/callback?next=%2Flogin%3Femail_confirmed%3D1`
             }
         });
-
         working = false;
 
         if (error) {
-            errorMessage = error.message;
+            errorKey = authErrorKey(error, 'registration_error');
             return;
         }
 
-        successMessage =
-            'Se o endereço puder ser registado, receberás um email de confirmação. Verifica também o spam.';
-
+        successKey = 'registration_sent';
         password = '';
         confirmPassword = '';
     }
 
-    // ==========================================
-    // RECUPERAR PALAVRA-PASSE
-    // ==========================================
-
     async function recoverPassword(event) {
         event.preventDefault();
-
+        if (working) return;
         working = true;
-        errorMessage = '';
-        successMessage = '';
+        errorKey = '';
+        successKey = '';
 
         const supabase = getSupabaseBrowserClient();
-
-        const redirectTo =
-            `${window.location.origin}/auth/callback?next=%2Freset-password`;
-
-        const { error } = await supabase.auth.resetPasswordForEmail(
-            email.trim(),
-            { redirectTo }
-        );
-
+        const redirectTo = `${window.location.origin}/auth/callback?next=%2Freset-password`;
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
         working = false;
 
         if (error) {
-            errorMessage = error.message;
+            errorKey = authErrorKey(error, 'recovery_error');
             return;
         }
-
-        successMessage =
-            'Se existir uma conta associada a esse email, receberás um link para alterar a palavra-passe. Verifica também o spam.';
+        successKey = 'recovery_sent';
     }
 
-    // ==========================================
-    // LOGIN GOOGLE
-    // ==========================================
-
     async function loginWithGoogle() {
+        if (working) return;
         working = true;
-        errorMessage = '';
-        successMessage = '';
+        errorKey = '';
+        successKey = '';
 
         const supabase = getSupabaseBrowserClient();
-
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo:
-                    `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnTo)}`,
-                queryParams: {
-                    prompt: 'select_account'
-                }
+                redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnTo)}`,
+                queryParams: { prompt: 'select_account' }
             }
         });
-
         if (error) {
-            errorMessage = error.message;
+            errorKey = 'google_error';
             working = false;
         }
     }
 
-    // ==========================================
-    // LOGOUT
-    // ==========================================
-
     async function logout() {
+        if (working) return;
         working = true;
-        errorMessage = '';
-        successMessage = '';
-
+        errorKey = '';
+        successKey = '';
         const supabase = getSupabaseBrowserClient();
-
         const { error } = await supabase.auth.signOut();
 
         if (error) {
-            errorMessage = error.message;
+            errorKey = 'sign_out_error';
         } else {
             userEmail = null;
             authMode = 'login';
@@ -293,244 +222,106 @@
             password = '';
             confirmPassword = '';
         }
-
         working = false;
     }
 </script>
 
 <svelte:head>
-    <title>Entrar — DeepMap</title>
+    <title>{texts.page_title}</title>
 </svelte:head>
 
 <main class="auth-page">
     <div class="auth-card">
+        <div class="language-row">
+            <label for="auth-language" class="language-label">{texts.language}</label>
+            <select id="auth-language" value={currentLanguage} onchange={changeLanguage} aria-label={texts.language}>
+                <option value="en">EN</option>
+                <option value="pt">PT</option>
+            </select>
+        </div>
 
-        <img
-            src="/brand/logo.png"
-            alt="DeepMap"
-            class="auth-logo"
-        />
-
-        <h1>Conta DeepMap</h1>
+        <img src="/brand/logo.png" alt="DeepMap" class="auth-logo" />
+        <h1>{texts.account}</h1>
 
         {#if checkingSession}
-
-            <p>A verificar sessão...</p>
-
+            <p>{texts.checking_session}</p>
         {:else if userEmail}
-
-            <!-- SESSÃO INICIADA -->
-
-            <p>Sessão iniciada como:</p>
-
-            <div class="user-email">
-                {userEmail}
-            </div>
-
-            <button
-                type="button"
-                class="logout-button"
-                onclick={logout}
-                disabled={working}
-            >
-                {working ? 'A terminar sessão...' : 'Terminar sessão'}
+            <p>{texts.signed_in_as}</p>
+            <div class="user-email">{userEmail}</div>
+            <button type="button" class="logout-button" onclick={logout} disabled={working}>
+                {working ? texts.signing_out : texts.sign_out}
             </button>
-
         {:else if authMode === 'recover'}
-
-            <!-- RECUPERAÇÃO -->
-
-            <p>
-                Introduz o email da tua conta.
-                Vamos enviar-te um link para definires uma nova palavra-passe.
-            </p>
-
+            <p>{texts.recover_explanation}</p>
             <form onsubmit={recoverPassword}>
-
-                <label for="recover-email">Email</label>
-
-                <input
-                    id="recover-email"
-                    type="email"
-                    bind:value={email}
-                    autocomplete="email"
-                    placeholder="O teu email"
-                    required
-                    disabled={working}
-                />
-
-                <button
-                    type="submit"
-                    class="submit-button"
-                    disabled={working}
-                >
-                    {working
-                        ? 'A enviar...'
-                        : 'Enviar link de recuperação'}
+                <label for="recover-email">{texts.email}</label>
+                <input id="recover-email" type="email" bind:value={email} autocomplete="email"
+                    placeholder={texts.email_placeholder} required disabled={working} />
+                <button type="submit" class="submit-button" disabled={working}>
+                    {working ? texts.sending : texts.send_recovery}
                 </button>
-
             </form>
-
-            <button
-                type="button"
-                class="text-button"
-                onclick={() => changeAuthMode('login')}
-                disabled={working}
-            >
-                ← Voltar ao login
+            <button type="button" class="text-button" onclick={() => changeAuthMode('login')} disabled={working}>
+                {texts.back_to_login}
             </button>
-
         {:else}
-
-            <!-- GOOGLE -->
-
-            <p>Entra ou cria a tua conta DeepMap.</p>
-
-            <button
-                type="button"
-                class="google-button"
-                onclick={loginWithGoogle}
-                disabled={working}
-            >
-                <span class="google-logo">G</span>
-                Continuar com Google
+            <p>{texts.intro}</p>
+            <button type="button" class="google-button" onclick={loginWithGoogle} disabled={working}>
+                <span class="google-logo">G</span>{texts.continue_google}
             </button>
-
-            <div class="separator">ou</div>
-
-            <!-- SEPARADORES -->
+            <div class="separator">{texts.or}</div>
 
             <div class="auth-tabs">
-                <button
-                    type="button"
-                    class:active={authMode === 'login'}
-                    onclick={() => changeAuthMode('login')}
-                    disabled={working}
-                >
-                    Entrar
-                </button>
-
-                <button
-                    type="button"
-                    class:active={authMode === 'register'}
-                    onclick={() => changeAuthMode('register')}
-                    disabled={working}
-                >
-                    Criar conta
-                </button>
+                <button type="button" class:active={authMode === 'login'}
+                    onclick={() => changeAuthMode('login')} disabled={working}>{texts.sign_in}</button>
+                <button type="button" class:active={authMode === 'register'}
+                    onclick={() => changeAuthMode('register')} disabled={working}>{texts.create_account}</button>
             </div>
 
-            <h2>
-                {authMode === 'login'
-                    ? 'Entrar com email'
-                    : 'Criar conta com email'}
-            </h2>
+            <h2>{authMode === 'login' ? texts.sign_in_email : texts.create_account_email}</h2>
+            <form onsubmit={authMode === 'login' ? loginWithEmail : registerWithEmail}>
+                <label for="auth-email">{texts.email}</label>
+                <input id="auth-email" type="email" bind:value={email} autocomplete="email"
+                    placeholder={texts.email_placeholder} required disabled={working} />
 
-            <!-- FORMULÁRIO EMAIL -->
-
-            <form
-                onsubmit={authMode === 'login'
-                    ? loginWithEmail
-                    : registerWithEmail}
-            >
-
-                <label for="auth-email">Email</label>
-
-                <input
-                    id="auth-email"
-                    type="email"
-                    bind:value={email}
-                    autocomplete="email"
-                    placeholder="O teu email"
-                    required
-                    disabled={working}
-                />
-
-                <label for="auth-password">Palavra-passe</label>
-
-                <input
-                    id="auth-password"
-                    type="password"
-                    bind:value={password}
-                    autocomplete={authMode === 'login'
-                        ? 'current-password'
-                        : 'new-password'}
-                    placeholder={authMode === 'login'
-                        ? 'A tua palavra-passe'
-                        : 'Mínimo de 8 caracteres'}
-                    minlength={authMode === 'register' ? 8 : undefined}
-                    required
-                    disabled={working}
-                />
+                <label for="auth-password">{texts.password}</label>
+                <input id="auth-password" type="password" bind:value={password}
+                    autocomplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                    placeholder={authMode === 'login' ? texts.password_placeholder : texts.password_new_hint}
+                    minlength={authMode === 'register' ? 8 : undefined} required disabled={working} />
 
                 {#if authMode === 'register'}
-
-                    <label for="auth-confirm">
-                        Confirmar palavra-passe
-                    </label>
-
-                    <input
-                        id="auth-confirm"
-                        type="password"
-                        bind:value={confirmPassword}
-                        autocomplete="new-password"
-                        placeholder="Repete a palavra-passe"
-                        minlength="8"
-                        required
-                        disabled={working}
-                    />
-
+                    <label for="auth-confirm">{texts.confirm_password}</label>
+                    <input id="auth-confirm" type="password" bind:value={confirmPassword}
+                        autocomplete="new-password" placeholder={texts.confirm_password_placeholder}
+                        minlength="8" required disabled={working} />
                 {/if}
 
-                <button
-                    type="submit"
-                    class="submit-button"
-                    disabled={working}
-                >
-                    {working
-                        ? 'A processar...'
-                        : authMode === 'login'
-                            ? 'Entrar'
-                            : 'Criar conta'}
+                <button type="submit" class="submit-button" disabled={working}>
+                    {working ? texts.processing : authMode === 'login' ? texts.sign_in : texts.create_account}
                 </button>
-
             </form>
 
             {#if authMode === 'login'}
-                <button
-                    type="button"
-                    class="text-button"
-                    onclick={() => changeAuthMode('recover')}
-                    disabled={working}
-                >
-                    Esqueci-me da palavra-passe
-                </button>
+                <button type="button" class="text-button" onclick={() => changeAuthMode('recover')}
+                    disabled={working}>{texts.forgot_password}</button>
             {/if}
-
         {/if}
 
-        <!-- MENSAGENS -->
-
-        {#if errorMessage}
-            <p class="error-message" role="alert">
-                {errorMessage}
-            </p>
+        {#if errorKey}
+            <p class="error-message" role="alert">{texts[errorKey] ?? texts.auth_error}</p>
         {/if}
-
-        {#if successMessage}
-            <p class="success-message" role="status">
-                {successMessage}
-            </p>
+        {#if successKey}
+            <p class="success-message" role="status">{texts[successKey] ?? ''}</p>
         {/if}
-
         <a href={returnTo} class="back-link">
-            {hasReturnTarget ? '← Voltar à página anterior' : '← Voltar ao mapa'}
+            {hasReturnTarget ? texts.back_previous : texts.back_map}
         </a>
-
     </div>
 </main>
 
 <style>
+
     .auth-page {
         min-height: 100vh;
         min-height: 100dvh;
@@ -715,5 +506,29 @@
 
     .back-link:hover {
         text-decoration: underline;
+    }
+
+    /* Idioma disponível também fora do mapa. */
+    .language-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    .language-label {
+        margin: 0;
+        color: #a0a0aa;
+        font-size: 0.76rem;
+    }
+    .language-row select {
+        padding: 5px 7px;
+        border: 1px solid #41414d;
+        border-radius: 5px;
+        background: #22222a;
+        color: #c8a355;
+        font: inherit;
+        font-size: 0.78rem;
+        cursor: pointer;
     }
 </style>
