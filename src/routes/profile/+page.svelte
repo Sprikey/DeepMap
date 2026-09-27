@@ -16,6 +16,11 @@
 
     const MAX_DISPLAY_NAME = 40;
     const MAX_BIO_LENGTH = 200;
+    const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
+    const RESERVED_USERNAMES = new Set([
+        'admin', 'administrator', 'deepmap', 'official', 'moderator',
+        'support', 'staff', 'system', 'root', 'contact', 'help'
+    ]);
     const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
     const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -34,6 +39,28 @@
     let nameInput = $state('');
     let editingBio = $state(false);
     let bioInput = $state('');
+
+    // @username público: associado ao UUID em public.profiles, não ao nome editável.
+    let username = $state(null);
+    let usernameLoading = $state(true);
+    let usernameLoadError = $state('');
+    let editingUsername = $state(false);
+    let usernameInput = $state('');
+    let usernameError = $state('');
+    let usernameCheckStatus = $state('idle');
+    let usernameUserId = null;
+    let usernameLoadVersion = 0;
+    let usernameCheckVersion = 0;
+    let usernameCheckTimer = null;
+
+    let usernameStatusMessage = $derived({
+        checking: t.username_checking,
+        available: t.username_available,
+        taken: t.username_taken,
+        invalid: t.username_format_error,
+        reserved: t.username_reserved,
+        check_error: t.username_check_error
+    }[usernameCheckStatus] ?? '');
 
     let displayName = $derived(getDisplayName(user));
     let bio = $derived(
@@ -83,6 +110,11 @@
             }
 
             user = error ? null : data.user;
+            if (user && user.id !== usernameUserId) {
+                void loadUsername(user.id);
+            } else if (!user) {
+                resetUsernameState();
+            }
             checkingSession = false;
         }
 
@@ -92,17 +124,198 @@
             supabase.auth.onAuthStateChange((event, session) => {
                 if (!active || event === 'INITIAL_SESSION') return;
                 user = session?.user ?? null;
+                if (!user) {
+                    resetUsernameState();
+                } else if (user.id !== usernameUserId) {
+                    void loadUsername(user.id);
+                }
                 avatarFailed = false;
                 checkingSession = false;
             });
 
         return () => {
             active = false;
+            usernameLoadVersion++;
+            stopUsernameCheck();
             fileSelectionVersion++;
             clearAvatarFile();
             subscription.unsubscribe();
         };
     });
+
+
+    // ==========================================
+    // @USERNAME — TABELA PUBLIC.PROFILES
+    // ==========================================
+
+    function stopUsernameCheck() {
+        usernameCheckVersion++;
+        if (usernameCheckTimer !== null) clearTimeout(usernameCheckTimer);
+        usernameCheckTimer = null;
+    }
+
+    function resetUsernameState() {
+        usernameLoadVersion++;
+        stopUsernameCheck();
+        usernameUserId = null;
+        username = null;
+        usernameLoading = false;
+        usernameLoadError = '';
+        editingUsername = false;
+        usernameInput = '';
+        usernameError = '';
+        usernameCheckStatus = 'idle';
+    }
+
+    async function loadUsername(userId) {
+        const ticket = ++usernameLoadVersion;
+        usernameUserId = userId;
+        username = null;
+        usernameLoading = true;
+        usernameLoadError = '';
+        editingUsername = false;
+        stopUsernameCheck();
+
+        try {
+            const { data, error } = await getSupabaseBrowserClient()
+                .from('profiles')
+                .select('username')
+                .eq('id', userId)
+                .maybeSingle();
+
+            if (ticket !== usernameLoadVersion) return;
+            if (error) {
+                usernameLoadError = t.username_load_error;
+                return;
+            }
+            username = data?.username ?? null;
+        } catch {
+            if (ticket === usernameLoadVersion) usernameLoadError = t.username_load_error;
+        } finally {
+            if (ticket === usernameLoadVersion) usernameLoading = false;
+        }
+    }
+
+    function startEditingUsername() {
+        if (working || !user || usernameLoading || usernameLoadError) return;
+        stopUsernameCheck();
+        usernameInput = username ?? '';
+        usernameCheckStatus = 'idle';
+        usernameError = '';
+        errorMessage = '';
+        successMessage = '';
+        editingUsername = true;
+    }
+
+    function cancelEditingUsername() {
+        if (working) return;
+        stopUsernameCheck();
+        editingUsername = false;
+        usernameInput = '';
+        usernameCheckStatus = 'idle';
+        usernameError = '';
+    }
+
+    async function checkUsernameAvailability(candidate, ticket) {
+        if (ticket !== usernameCheckVersion || !user || !editingUsername) return;
+        try {
+            const { data, error } = await getSupabaseBrowserClient()
+                .from('profiles')
+                .select('id')
+                .eq('username', candidate)
+                .maybeSingle();
+
+            if (ticket !== usernameCheckVersion || !editingUsername) return;
+            if (error) {
+                usernameCheckStatus = 'check_error';
+                return;
+            }
+            usernameCheckStatus = data && data.id !== user.id ? 'taken' : 'available';
+        } catch {
+            if (ticket === usernameCheckVersion && editingUsername) {
+                usernameCheckStatus = 'check_error';
+            }
+        }
+    }
+
+    function handleUsernameInput(event) {
+        const value = event.currentTarget.value.toLowerCase();
+        event.currentTarget.value = value;
+        usernameInput = value;
+        usernameError = '';
+        stopUsernameCheck();
+
+        if (!value || value === username) {
+            usernameCheckStatus = 'idle';
+        } else if (!USERNAME_PATTERN.test(value)) {
+            usernameCheckStatus = 'invalid';
+        } else if (RESERVED_USERNAMES.has(value)) {
+            usernameCheckStatus = 'reserved';
+        } else {
+            usernameCheckStatus = 'checking';
+            const ticket = usernameCheckVersion;
+            usernameCheckTimer = setTimeout(
+                () => void checkUsernameAvailability(value, ticket),
+                400
+            );
+        }
+    }
+
+    async function saveUsername(event) {
+        event.preventDefault();
+        if (working || !user || usernameLoading || usernameLoadError) return;
+        usernameError = '';
+        errorMessage = '';
+        successMessage = '';
+
+        const candidate = usernameInput.trim().toLowerCase();
+        if (!USERNAME_PATTERN.test(candidate)) {
+            usernameCheckStatus = 'invalid';
+            return;
+        }
+        if (RESERVED_USERNAMES.has(candidate)) {
+            usernameCheckStatus = 'reserved';
+            return;
+        }
+        if (candidate === username) {
+            cancelEditingUsername();
+            return;
+        }
+        if (usernameCheckStatus === 'taken') return;
+
+        stopUsernameCheck();
+        working = true;
+        const supabase = getSupabaseBrowserClient();
+
+        try {
+            // Evita upsert: as permissões SQL só autorizam UPDATE da coluna username.
+            const query = username
+                ? supabase.from('profiles').update({ username: candidate }).eq('id', user.id)
+                : supabase.from('profiles').insert({ id: user.id, username: candidate });
+            const { data, error } = await query.select('username').single();
+
+            if (error || !data) {
+                if (error?.code === '23505') {
+                    usernameCheckStatus = 'taken';
+                } else if (error?.code === '23514') {
+                    usernameError = t.username_format_error;
+                } else {
+                    usernameError = t.username_save_error;
+                }
+                return;
+            }
+
+            username = data.username;
+            editingUsername = false;
+            usernameInput = '';
+            usernameCheckStatus = 'idle';
+            successMessage = t.username_saved;
+        } catch {
+            usernameError = t.username_save_error;
+        } finally {
+            working = false;
+        }
+    }
 
     function startEditingName() {
         if (working) return;
@@ -586,6 +799,70 @@
                             >
                                 <span aria-hidden="true">✎</span>
                             </button>
+                        {/if}
+                    </div>
+
+                    <!-- @USERNAME PÚBLICO (o email permanece privado) -->
+                    <div class="username-area">
+                        {#if usernameLoading}
+                            <span class="username-muted">{t.username_loading}</span>
+                        {:else if usernameLoadError}
+                            <div class="username-load-error" role="alert">
+                                <span>{usernameLoadError}</span>
+                                <button type="button" class="username-retry" onclick={() => void loadUsername(user.id)}>
+                                    {t.retry}
+                                </button>
+                            </div>
+                        {:else if editingUsername}
+                            
+                                <form class="username-form" onsubmit={saveUsername} novalidate>
+                                <label for="profile-username" class="username-label">{t.username_label}</label>
+                                <div class="username-input-wrap">
+                                    <span aria-hidden="true">@</span>
+                                    <input
+                                        id="profile-username"
+                                        type="text"
+                                        value={usernameInput}
+                                        oninput={handleUsernameInput}
+                                        maxlength="20"
+                                        autocapitalize="none"
+                                        autocomplete="off"
+                                        spellcheck="false"
+                                        disabled={working}
+                                    />
+                                </div>
+                                <span class="username-hint">{t.username_hint}</span>
+                                {#if usernameStatusMessage}
+                                    <span class:username-positive={usernameCheckStatus === 'available'}
+                                        class:username-negative={usernameCheckStatus === 'taken' || usernameCheckStatus === 'invalid' || usernameCheckStatus === 'reserved' || usernameCheckStatus === 'check_error'}
+                                        class="username-feedback" aria-live="polite">
+                                        {usernameStatusMessage}
+                                    </span>
+                                {/if}
+                                {#if usernameError}
+                                    <span class="username-feedback username-negative" role="alert">{usernameError}</span>
+                                {/if}
+                                <div class="name-buttons username-actions">
+                                    <button type="submit" class="save-name-button" disabled={working || usernameCheckStatus === 'taken' || usernameCheckStatus === 'reserved' || usernameCheckStatus === 'invalid'}>
+                                        {working ? t.saving : t.save}
+                                    </button>
+                                    <button type="button" class="cancel-name-button" onclick={cancelEditingUsername} disabled={working}>
+                                        {t.cancel}
+                                    </button>
+                                </div>
+                            </form>
+                        {:else}
+                            <div class="username-display">
+                                <span class:username-muted={!username} class="username-handle">
+                                    {username ? `@${username}` : t.username_not_set}
+                                </span>
+                                <button type="button" class="username-edit-button" onclick={startEditingUsername}
+                                    aria-label={`${t.edit} — ${t.username_label}`}
+                                    title={`${t.edit} — ${t.username_label}`}
+                                    disabled={working}>
+                                    <span aria-hidden="true">✎</span>
+                                </button>
+                            </div>
                         {/if}
                     </div>
 
@@ -1133,6 +1410,77 @@
 
     .heading-name-form { width: min(100%, 340px); text-align: left; }
     .heading-name-form .name-buttons { justify-content: center; }
+
+    /* @username público sob o nome. */
+    .username-area {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 0 13px;
+        min-width: 0;
+    }
+    .username-display { display: flex; align-items: center; gap: 8px; max-width: 100%; }
+    .username-handle {
+        font-size: 0.92rem;
+        color: #c8a355;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+    }
+    .username-muted { color: #92929e; font-size: 0.85rem; }
+    .username-edit-button {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 27px;
+        height: 27px;
+        border: 1px solid #60533e;
+        border-radius: 6px;
+        background: #292933;
+        color: #c8a355;
+        cursor: pointer;
+    }
+    .username-edit-button:hover { border-color: #c8a355; }
+    .username-edit-button:focus-visible { outline: 2px solid #c8a355; outline-offset: 3px; }
+    .username-edit-button:disabled { opacity: 0.55; cursor: wait; }
+    .username-form {
+        width: min(100%, 300px);
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        text-align: left;
+    }
+    .username-label { font-size: 0.83rem; color: #bdbdc6; }
+    .username-input-wrap {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 12px;
+        border: 1px solid #525264;
+        border-radius: 6px;
+        background: #22222a;
+        color: #c8a355;
+    }
+    .username-input-wrap:focus-within { outline: 2px solid #c8a355; outline-offset: 2px; }
+    .username-input-wrap input {
+        min-width: 0;
+        width: 100%;
+        padding: 10px 0;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: #fff;
+        font: inherit;
+        font-size: 0.9rem;
+    }
+    .username-hint { color: #92929e; font-size: 0.76rem; line-height: 1.5; }
+    .username-feedback { font-size: 0.81rem; color: #bfc0cc; }
+    .username-positive { color: #9ee0ac; }
+    .username-negative { color: #ff8585; }
+    .username-actions { justify-content: center; }
+    .username-load-error { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; color: #ff8585; font-size: 0.82rem; }
+    .username-retry { background: #292933; color: #c8a355; border: 1px solid #60533e; border-radius: 6px; padding: 5px 9px; cursor: pointer; }
 
     .account-badge {
         display: inline-block;
