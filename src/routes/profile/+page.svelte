@@ -833,6 +833,16 @@
                                     </div>
                                     <span class="visibility-status">{profileIsPublic ? t.visibility_public : t.visibility_private}</span>
                                     <p class="visibility-private-note">{t.visibility_email_private}</p>
+                                    {#if username && !usernameLoadError}
+                                        <a class="visitor-preview-link" href={`/u/${encodeURIComponent(username)}?view=visitor`}>
+                                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+                                                <circle cx="12" cy="12" r="3" />
+                                            </svg>
+                                            {t.view_as_visitor}
+                                        </a>
+                                        <p class="visitor-preview-note">{t.view_as_visitor_note}</p>
+                                    {/if}
                                     {#if !username && !usernameLoading && !usernameLoadError}
                                         <p class="visibility-message">{t.visibility_requires_username}</p>
                                     {/if}
@@ -2541,4 +2551,10 @@
     .settings-information-body .visibility-error { color: #ffaaa8; }
     .settings-information-body .visibility-success { color: #a8dfba; }
 
+
+    .visitor-preview-link { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 13px; padding: 10px 11px; border-radius: 7px; border: 1px solid #665438; background: #332a21; color: #e7c985; font-weight: 650; font-size: .81rem; text-decoration: none; transition: background .2s, border-color .2s; }
+    .visitor-preview-link svg { flex: none; }
+    .visitor-preview-link:hover { background: #443521; border-color: #c8a355; }
+    .visitor-preview-link:focus-visible { outline: 2px solid #c8a355; outline-offset: 3px; }
+    .settings-information-body .visitor-preview-note { margin: 2px 0 0; font-size: .72rem; color: #aaa5a7; text-align: center; }
 </style>

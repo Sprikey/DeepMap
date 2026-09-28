@@ -1,0 +1,45 @@
+// DeepMap: apenas textos da página pública. Não contém dados privados da conta.
+export const publicProfileTranslations = {
+    en: {
+        back_map: '← Back to map',
+        language: 'Language',
+        not_found_title: 'Explorer not found',
+        not_found_message: 'This explorer does not exist or their username is no longer available.',
+        private_badge: 'Private',
+        private_title: 'Private profile',
+        private_message: 'This explorer keeps their profile private. Their full profile is not available to visitors.',
+        visitor_preview_title: 'Viewing your profile as a visitor',
+        visitor_preview_message: 'This preview does not change your privacy settings.',
+        exit_preview: 'Exit preview',
+        back_home: 'Back to DeepMap',
+        member_since: 'Member since',
+        explorer: 'DeepMap Explorer',
+        about_empty: 'This explorer has not added a bio yet.',
+        private_preview: 'Private profile — visible only to you',
+        private_preview_message: 'Other visitors cannot see this profile while it is private.',
+        edit_your_profile: 'Manage my profile',
+        future_section: 'More from this explorer',
+        future_description: 'Contributions, badges and community activity will appear here in future updates.'
+    },
+    pt: {
+        back_map: '← Voltar ao mapa',
+        language: 'Idioma',
+        not_found_title: 'Explorador não encontrado',
+        not_found_message: 'Este explorador não existe ou o seu @username já não está disponível.',
+        private_badge: 'Privado',
+        private_title: 'Perfil privado',
+        private_message: 'Este explorador mantém o perfil privado. As suas informações completas não estão disponíveis para visitantes.',
+        visitor_preview_title: 'Estás a ver o teu perfil como visitante',
+        visitor_preview_message: 'Esta pré-visualização não altera as tuas definições de privacidade.',
+        exit_preview: 'Sair da pré-visualização',
+        back_home: 'Voltar ao DeepMap',
+        member_since: 'Membro desde',
+        explorer: 'Explorador DeepMap',
+        about_empty: 'Este explorador ainda não adicionou uma descrição.',
+        private_preview: 'Perfil privado — visível apenas para ti',
+        private_preview_message: 'Os outros visitantes não conseguem consultar este perfil enquanto estiver privado.',
+        edit_your_profile: 'Gerir o meu perfil',
+        future_section: 'Mais sobre este explorador',
+        future_description: 'As contribuições, medalhas e atividade da comunidade aparecerão aqui em futuras atualizações.'
+    }
+};
