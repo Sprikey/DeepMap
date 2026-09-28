@@ -43,6 +43,11 @@
     // @username público: associado ao UUID em public.profiles, não ao nome editável.
     let username = $state(null);
     let usernameChangedAt = $state(null);
+    // A privacidade do perfil é guardada na coluna public.profiles.is_public.
+    let profileIsPublic = $state(true);
+    let privacySaving = $state(false);
+    let privacyError = $state('');
+    let privacySuccess = $state('');
     let usernameLoading = $state(true);
     let usernameLoadError = $state('');
     let editingUsername = $state(false);
@@ -187,6 +192,10 @@
         usernameUserId = null;
         username = null;
         usernameChangedAt = null;
+        profileIsPublic = true;
+        privacySaving = false;
+        privacyError = '';
+        privacySuccess = '';
         usernameLoading = false;
         usernameLoadError = '';
         editingUsername = false;
@@ -201,6 +210,9 @@
         usernameUserId = userId;
         username = null;
         usernameChangedAt = null;
+        profileIsPublic = true;
+        privacyError = '';
+        privacySuccess = '';
         usernameLoading = true;
         usernameLoadError = '';
         editingUsername = false;
@@ -210,7 +222,7 @@
         try {
             const { data, error } = await getSupabaseBrowserClient()
                 .from('profiles')
-                .select('username, username_changed_at')
+                .select('username, username_changed_at, is_public')
                 .eq('id', userId)
                 .maybeSingle();
 
@@ -221,10 +233,44 @@
             }
             username = data?.username ?? null;
             usernameChangedAt = data?.username_changed_at ?? null;
+            profileIsPublic = data?.is_public ?? true;
         } catch {
             if (ticket === usernameLoadVersion) usernameLoadError = t.username_load_error;
         } finally {
             if (ticket === usernameLoadVersion) usernameLoading = false;
+        }
+    }
+
+    async function toggleProfileVisibility() {
+        // Sem @username ainda não existe registo na tabela profiles.
+        if (!user || !username || usernameLoading || usernameLoadError || privacySaving || working) return;
+
+        const userId = user.id;
+        const nextIsPublic = !profileIsPublic;
+        privacySaving = true;
+        privacyError = '';
+        privacySuccess = '';
+
+        try {
+            const { data, error } = await getSupabaseBrowserClient()
+                .from('profiles')
+                .update({ is_public: nextIsPublic })
+                .eq('id', userId)
+                .select('is_public')
+                .single();
+
+            if (user?.id !== userId) return;
+            if (error || !data || data.is_public !== nextIsPublic) {
+                privacyError = t.visibility_save_error;
+                return;
+            }
+
+            profileIsPublic = data.is_public;
+            privacySuccess = t.visibility_saved;
+        } catch {
+            if (user?.id === userId) privacyError = t.visibility_save_error;
+        } finally {
+            privacySaving = false;
         }
     }
 
@@ -755,7 +801,54 @@
                                     <strong>{user.app_metadata?.provider === 'google' ? 'Google' : 'Email'}</strong>
                                 </div>
                             </details>
-                            <button type="button" class="settings-logout" onclick={logout} disabled={working}>
+                            <details class="settings-information settings-privacy">
+                                <summary>
+                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+                                        <path d="M9 12l2 2 4-4" />
+                                    </svg>
+                                    <span>{t.privacy_settings}</span>
+                                    <span class="settings-chevron" aria-hidden="true">⌄</span>
+                                </summary>
+                                <div class="settings-information-body">
+                                    {#if usernameLoading}
+                                        <p class="visibility-message" role="status">{t.visibility_loading}</p>
+                                    {:else}
+                                    <div class="visibility-row">
+                                        <div class="visibility-copy">
+                                            <strong>{t.profile_visibility_toggle}</strong>
+                                            <p>{profileIsPublic ? t.visibility_public_explanation : t.visibility_private_explanation}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="visibility-switch"
+                                            class:enabled={profileIsPublic}
+                                            role="switch"
+                                            aria-label={t.profile_visibility_toggle}
+                                            aria-checked={profileIsPublic}
+                                            title={profileIsPublic ? t.visibility_public : t.visibility_private}
+                                            onclick={toggleProfileVisibility}
+                                            disabled={privacySaving || working || usernameLoading || !!usernameLoadError || !username}
+                                        ><span class="visibility-switch-thumb" aria-hidden="true"></span></button>
+                                    </div>
+                                    <span class="visibility-status">{profileIsPublic ? t.visibility_public : t.visibility_private}</span>
+                                    <p class="visibility-private-note">{t.visibility_email_private}</p>
+                                    {#if !username && !usernameLoading && !usernameLoadError}
+                                        <p class="visibility-message">{t.visibility_requires_username}</p>
+                                    {/if}
+                                    {#if privacySaving}
+                                        <p class="visibility-message" role="status">{t.visibility_saving}</p>
+                                    {/if}
+                                    {#if privacyError}
+                                        <p class="visibility-message visibility-error" role="alert">{privacyError}</p>
+                                    {/if}
+                                    {#if privacySuccess}
+                                        <p class="visibility-message visibility-success" role="status">{privacySuccess}</p>
+                                    {/if}
+                                    {/if}
+                                </div>
+                            </details>
+                            <button type="button" class="settings-logout" onclick={logout} disabled={working || privacySaving}>
                                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5m5 5H9" />
                                 </svg>
@@ -927,7 +1020,6 @@
                                             {#if username}
                                                 <strong>{t.username_change_notice_title}</strong>
                                                 <span>{t.username_change_notice}</span>
-                                                <span>{t.username_old_handle_notice}</span>
                                             {:else}
                                                 <span>{t.username_first_choice_notice}</span>
                                             {/if}
@@ -2419,5 +2511,34 @@
             box-shadow: 0 0 0 28px rgba(200,163,85,.025), 0 0 0 55px rgba(200,163,85,.018);
         }
     }
+
+
+    /* v1.0.31 — interruptor real de visibilidade nas Definições. */
+    .settings-privacy { margin-top: 9px; }
+    .visibility-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .visibility-copy { min-width: 0; flex: 1; }
+    .settings-information-body .visibility-copy strong { font-size: .84rem; }
+    .settings-information-body .visibility-copy p { margin: 7px 0 2px; }
+    .visibility-switch {
+        position: relative; flex: none; width: 45px; height: 26px; padding: 2px;
+        border: 1px solid #66616a; border-radius: 999px; background: #4a4851;
+        cursor: pointer; transition: background .2s, border-color .2s;
+    }
+    .visibility-switch.enabled { background: #92733e; border-color: #c8a355; }
+    .visibility-switch-thumb {
+        display: block; width: 20px; height: 20px; border-radius: 50%;
+        background: #f3efe7; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+        transition: transform .2s;
+    }
+    .visibility-switch.enabled .visibility-switch-thumb { transform: translateX(19px); }
+    .visibility-switch:disabled { opacity: .5; cursor: not-allowed; }
+    .visibility-switch:focus-visible { outline: 2px solid #d1ad6c; outline-offset: 3px; }
+    .settings-information-body .visibility-status {
+        align-self: flex-start; color: #d7b573; font-size: .75rem; font-weight: 700;
+    }
+    .settings-information-body .visibility-private-note { margin: 6px 0 0; }
+    .settings-information-body .visibility-message { margin: 8px 0 0; font-size: .76rem; }
+    .settings-information-body .visibility-error { color: #ffaaa8; }
+    .settings-information-body .visibility-success { color: #a8dfba; }
 
 </style>
