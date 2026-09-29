@@ -60,6 +60,9 @@
     let usernameLoadVersion = 0;
     let usernameCheckVersion = 0;
     let usernameCheckTimer = null;
+    // Feedback local do botão de partilha no cabeçalho.
+    let profileLinkStatus = $state('');
+    let profileLinkFeedbackTimer = null;
 
     // O bloqueio é imposto pelo trigger no Supabase. Aqui apenas o apresentamos.
     let usernameAvailableAfter = $derived(
@@ -171,6 +174,7 @@
             stopUsernameCheck();
             fileSelectionVersion++;
             clearAvatarFile();
+            if (profileLinkFeedbackTimer !== null) clearTimeout(profileLinkFeedbackTimer);
             subscription.unsubscribe();
         };
     });
@@ -203,6 +207,9 @@
         usernameInput = '';
         usernameError = '';
         usernameCheckStatus = 'idle';
+        profileLinkStatus = '';
+        if (profileLinkFeedbackTimer !== null) clearTimeout(profileLinkFeedbackTimer);
+        profileLinkFeedbackTimer = null;
     }
 
     async function loadUsername(userId) {
@@ -238,6 +245,44 @@
             if (ticket === usernameLoadVersion) usernameLoadError = t.username_load_error;
         } finally {
             if (ticket === usernameLoadVersion) usernameLoading = false;
+        }
+    }
+
+    async function copyPermanentProfileLink() {
+        if (!user?.id || !username || usernameLoading || usernameLoadError) return;
+        const accountId = user.id;
+        const url = `${window.location.origin}/p/${encodeURIComponent(accountId)}`;
+        if (profileLinkFeedbackTimer !== null) clearTimeout(profileLinkFeedbackTimer);
+        profileLinkFeedbackTimer = null;
+        profileLinkStatus = '';
+
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(url);
+            } else {
+                // Fallback para browsers que não disponibilizam Clipboard API.
+                const input = document.createElement('textarea');
+                input.value = url;
+                input.setAttribute('readonly', '');
+                input.style.position = 'fixed';
+                input.style.opacity = '0';
+                document.body.appendChild(input);
+                try {
+                    input.select();
+                    if (!document.execCommand('copy')) throw new Error('Copy unavailable');
+                } finally {
+                    input.remove();
+                }
+            }
+            if (user?.id === accountId) profileLinkStatus = 'copied';
+        } catch {
+            if (user?.id === accountId) profileLinkStatus = 'error';
+        }
+        if (user?.id === accountId) {
+            profileLinkFeedbackTimer = setTimeout(() => {
+                profileLinkStatus = '';
+                profileLinkFeedbackTimer = null;
+            }, 3000);
         }
     }
 
@@ -1058,6 +1103,17 @@
                                         <span class:username-muted={!username} class="username-handle">
                                             {username ? `@${username}` : t.username_not_set}
                                         </span>
+                                        {#if username}
+                                            <button type="button" class="username-copy-button" onclick={copyPermanentProfileLink}
+                                                aria-label={t.copy_profile_link}
+                                                title={t.copy_profile_link}
+                                                disabled={working || usernameLoading || !!usernameLoadError}>
+                                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                                </svg>
+                                            </button>
+                                        {/if}
                                         <button type="button" class="username-edit-button" onclick={startEditingUsername}
                                             aria-label={`${t.edit} — ${t.username_label}`}
                                             title={`${t.edit} — ${t.username_label}`}
@@ -1066,6 +1122,11 @@
                                             <span aria-hidden="true">✎</span>
                                         </button>
                                     </div>
+                                    {#if profileLinkStatus}
+                                        <span class:username-negative={profileLinkStatus === 'error'} class="profile-link-feedback" role="status" aria-live="polite">
+                                            {profileLinkStatus === 'copied' ? t.profile_link_copied : t.profile_link_copy_error}
+                                        </span>
+                                    {/if}
                                 {/if}
                             </div>
                             {#if !usernameLoading && !usernameLoadError && usernameOnCooldown && usernameCooldownNotice}
@@ -1638,6 +1699,23 @@
         color: #c8a355;
         cursor: pointer;
     }
+    .username-copy-button {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border: 1px solid #60533e;
+        border-radius: 6px;
+        background: #292933;
+        color: #c8a355;
+        cursor: pointer;
+    }
+    .username-copy-button:hover { border-color: #c8a355; background: #353039; }
+    .username-copy-button:focus-visible { outline: 2px solid #c8a355; outline-offset: 3px; }
+    .username-copy-button:disabled { opacity: 0.55; cursor: wait; }
+    .profile-link-feedback { display: block; margin-top: 5px; color: #a8d9b5; font-size: 0.78rem; }
     .username-edit-button:hover { border-color: #c8a355; }
     .username-edit-button:focus-visible { outline: 2px solid #c8a355; outline-offset: 3px; }
     .username-edit-button:disabled { opacity: 0.55; cursor: wait; }

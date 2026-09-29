@@ -16,6 +16,8 @@
     let email = $state('');
     let password = $state('');
     let confirmPassword = $state('');
+    let showPassword = $state(false);
+    let showConfirmPassword = $state(false);
     let errorKey = $state('');
     let successKey = $state('');
 
@@ -104,6 +106,8 @@
         authMode = mode;
         password = '';
         confirmPassword = '';
+        showPassword = false;
+        showConfirmPassword = false;
         errorKey = '';
         successKey = '';
     }
@@ -128,6 +132,7 @@
 
         userEmail = data.user?.email ?? null;
         password = '';
+        showPassword = false;
         await goto(returnTo, { replaceState: true });
     }
 
@@ -164,6 +169,8 @@
         successKey = 'registration_sent';
         password = '';
         confirmPassword = '';
+        showPassword = false;
+        showConfirmPassword = false;
     }
 
     async function recoverPassword(event) {
@@ -221,6 +228,8 @@
             email = '';
             password = '';
             confirmPassword = '';
+            showPassword = false;
+            showConfirmPassword = false;
         }
         working = false;
     }
@@ -285,16 +294,56 @@
                     placeholder={texts.email_placeholder} required disabled={working} />
 
                 <label for="auth-password">{texts.password}</label>
-                <input id="auth-password" type="password" bind:value={password}
-                    autocomplete={authMode === 'login' ? 'current-password' : 'new-password'}
-                    placeholder={authMode === 'login' ? texts.password_placeholder : texts.password_new_hint}
-                    minlength={authMode === 'register' ? 8 : undefined} required disabled={working} />
+                <div class="password-field">
+                    <input id="auth-password" type={showPassword ? 'text' : 'password'} bind:value={password}
+                        autocomplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                        placeholder={authMode === 'login' ? texts.password_placeholder : texts.password_new_hint}
+                        minlength={authMode === 'register' ? 8 : undefined} required disabled={working} />
+                    <button type="button" class="password-toggle" onclick={() => showPassword = !showPassword}
+                        aria-label={currentLanguage === 'pt' ? (showPassword ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe') : (showPassword ? 'Hide password' : 'Show password')}
+                        title={currentLanguage === 'pt' ? (showPassword ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe') : (showPassword ? 'Hide password' : 'Show password')}
+                        aria-pressed={showPassword} disabled={working}>
+                        {#if showPassword}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M3 3l18 18" />
+                                <path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a14.5 14.5 0 0 1-3.1 3.8" />
+                                <path d="M6.5 6.5C3.5 8.5 2 12 2 12s3.6 7 10 7c1.7 0 3.3-.5 4.6-1.2" />
+                                <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                            </svg>
+                        {:else}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                        {/if}
+                    </button>
+                </div>
 
                 {#if authMode === 'register'}
                     <label for="auth-confirm">{texts.confirm_password}</label>
-                    <input id="auth-confirm" type="password" bind:value={confirmPassword}
-                        autocomplete="new-password" placeholder={texts.confirm_password_placeholder}
-                        minlength="8" required disabled={working} />
+                    <div class="password-field">
+                        <input id="auth-confirm" type={showConfirmPassword ? 'text' : 'password'} bind:value={confirmPassword}
+                            autocomplete="new-password" placeholder={texts.confirm_password_placeholder}
+                            minlength="8" required disabled={working} />
+                        <button type="button" class="password-toggle" onclick={() => showConfirmPassword = !showConfirmPassword}
+                            aria-label={currentLanguage === 'pt' ? (showConfirmPassword ? 'Ocultar confirmação da palavra-passe' : 'Mostrar confirmação da palavra-passe') : (showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation')}
+                            title={currentLanguage === 'pt' ? (showConfirmPassword ? 'Ocultar confirmação da palavra-passe' : 'Mostrar confirmação da palavra-passe') : (showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation')}
+                            aria-pressed={showConfirmPassword} disabled={working}>
+                            {#if showConfirmPassword}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M3 3l18 18" />
+                                    <path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a14.5 14.5 0 0 1-3.1 3.8" />
+                                    <path d="M6.5 6.5C3.5 8.5 2 12 2 12s3.6 7 10 7c1.7 0 3.3-.5 4.6-1.2" />
+                                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                                </svg>
+                            {:else}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            {/if}
+                        </button>
+                    </div>
                 {/if}
 
                 <button type="submit" class="submit-button" disabled={working}>
@@ -306,6 +355,12 @@
                 <button type="button" class="text-button" onclick={() => changeAuthMode('recover')}
                     disabled={working}>{texts.forgot_password}</button>
             {/if}
+        {/if}
+
+        {#if !checkingSession && !userEmail && authMode !== 'recover'}
+            <a href="/privacy" class="privacy-link">
+                {currentLanguage === 'pt' ? 'Política de Privacidade' : 'Privacy Policy'}
+            </a>
         {/if}
 
         {#if errorKey}
@@ -456,6 +511,36 @@
         outline-offset: 1px;
     }
 
+    .password-field {
+        position: relative;
+        width: 100%;
+    }
+
+    .password-field input {
+        padding-right: 52px;
+    }
+
+    .password-toggle {
+        position: absolute;
+        top: 50%;
+        right: 4px;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        padding: 0;
+        background: transparent;
+        color: #bdbdc6;
+        border: 0;
+        border-radius: 6px;
+    }
+
+    .password-toggle:hover:not(:disabled) { color: #c8a355; }
+    .password-toggle:focus-visible { outline: 2px solid #c8a355; outline-offset: 1px; }
+    .password-toggle svg { width: 21px; height: 21px; }
+
     .submit-button {
         margin-top: 15px;
         background: #c8a355;
@@ -495,6 +580,18 @@
     .success-message {
         color: #9ee0ac;
     }
+
+    .privacy-link {
+        display: inline-block;
+        margin-top: 19px;
+        color: #c8a355;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        font-size: 0.83rem;
+    }
+
+    .privacy-link:hover { color: #e5c894; }
+    .privacy-link:focus-visible { outline: 2px solid #c8a355; outline-offset: 4px; }
 
     .back-link {
         display: inline-block;
