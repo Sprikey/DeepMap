@@ -1,2070 +1,533 @@
-
 <script>
     import { onMount } from 'svelte';
-    import AuthHeader from '$lib/components/AuthHeader.svelte';
     import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
-
-    import { translations } from '$lib/games/elden-ring/translations.js';
-
-    import {
-        categories,
-        categoryGroups,
-        defaultCategoryVisibility
-    } from '$lib/games/elden-ring/categories.js';
-
-    import { locations } from '$lib/games/elden-ring/locations.js';
-    import { mapDefinitions } from '$lib/games/elden-ring/maps.js';
-
-    let mapContainer;
-    let map;
-    let Leaflet;
-    let mapImageOverlay = null;
-
-
-    /* ==========================================
-       IDIOMAS / TRADUÇÕES — SVELTE 5
-       ========================================== */
+    import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
+    import { getDisplayName, getAvatarPresentation } from '$lib/avatar/avatars.js';
 
     let currentLanguage = $state('en');
+    let accountUser = $state(null);
+    let checkingSession = $state(true);
+    let profileUsername = $state(null);
+    let avatarFailed = $state(false);
+    let accountDisplayName = $derived(accountUser ? getDisplayName(accountUser) : '');
+    let accountAvatar = $derived(accountUser ? getAvatarPresentation(accountUser).image : null);
+    let accountName = $derived(profileUsername ? `@${profileUsername}` : accountDisplayName || accountUser?.email?.split('@')[0] || 'Explorer');
+    let accountInitial = $derived(accountName.replace(/^@/, '').charAt(0).toLocaleUpperCase('pt-PT') || 'D');
 
-    let currentTexts = $derived(
-        translations[currentLanguage] ?? translations.en
-    );
+    const copy = {
+        en: {
+            language: 'Language',
+            metaTitle: 'DeepMap — Your Journey’s Companion',
+            metaDescription: 'DeepMap is growing into a home for interactive gaming maps and a community of explorers. Join us at the beginning of the journey.',
+            signIn: 'Sign in',
+            account: 'Log in / Create account',
+            myProfile: 'My profile',
+            signedIn: 'SIGNED IN',
+            checkingAccount: 'Checking account…',
+            supportingSignedIn: 'You’re already part of the journey. Your explorer profile is ready whenever you want to visit it.',
+            communityTextSignedIn: 'You’re already part of the explorers shaping our next chapter. Thanks for joining the journey!',
+            navJourney: 'Our first world',
+            navVision: 'Our vision',
+            navFollow: 'Follow us',
+            exploreVision: 'Explore our vision',
+            socialSoon: 'Coming soon',
+            join: 'Join the community',
+            badge: 'A new adventure is taking shape',
+            heroStart: 'Every explorer',
+            heroEnd: 'belongs here.',
+            mottoLabel: 'OUR MOTTO',
+            slogan: 'Your Journey’s Companion.',
+            introduction: 'DeepMap is becoming a home for interactive game maps, discoveries and the people who love exploring every corner of a world.',
+            supporting: 'We’re building the experience, one location at a time. Create your account and be part of the community from the start.',
+            statusLabel: 'Currently in development',
+            statusTitle: 'The journey starts with Elden Ring.',
+            statusDescription: 'Our first interactive map is being developed. More games and community features are planned for the road ahead.',
+            pathLabel: 'THE ROAD AHEAD',
+            pathTitle: 'Built for curious explorers.',
+            feature1Tag: '01 / FIND',
+            feature1Title: 'Discover the world',
+            feature1Description: 'Interactive maps designed to make finding locations and collectibles easier.',
+            feature2Tag: '02 / CONTRIBUTE',
+            feature2Title: 'Share discoveries',
+            feature2Description: 'Tools for suggesting locations and helping maps grow, with community moderation planned.',
+            feature3Tag: '03 / CONNECT',
+            feature3Title: 'Explore together',
+            feature3Description: 'Profiles, conversations and new ways to connect explorers are part of our vision.',
+            futureNotice: 'These features are part of our development roadmap and are not all available yet.',
+            communityLabel: 'BE HERE FROM THE BEGINNING',
+            communityTitle: 'Your journey is part of ours.',
+            communityText: 'The world is still being mapped. Make yourself at home and join the explorers helping shape what comes next.',
+            communityButton: 'Create an account or sign in',
+            socialsLabel: 'FOLLOW THE JOURNEY',
+            socialsText: 'Keep up with the project and be part of the journey from the beginning.',
+            privacy: 'Privacy Policy',
+            contact: 'Contact',
+            copyright: 'DeepMap. Made for explorers.',
+            comingSoon: 'Coming soon'
+        },
+        pt: {
+            language: 'Idioma',
+            metaTitle: 'DeepMap — O teu companheiro de aventura',
+            metaDescription: 'O DeepMap está a crescer como espaço de mapas interativos de videojogos e de uma comunidade de exploradores. Junta-te ao início da jornada.',
+            signIn: 'Iniciar sessão',
+            account: 'Entrar / Criar conta',
+            myProfile: 'O meu perfil',
+            signedIn: 'SESSÃO INICIADA',
+            checkingAccount: 'A verificar conta…',
+            supportingSignedIn: 'Já fazes parte da jornada. O teu perfil de explorador está à tua espera.',
+            communityTextSignedIn: 'Já fazes parte dos exploradores que vão ajudar a construir o que vem a seguir. Obrigado por te juntares a nós!',
+            navJourney: 'Primeiro mundo',
+            navVision: 'A nossa visão',
+            navFollow: 'Segue-nos',
+            exploreVision: 'Conhece a nossa visão',
+            socialSoon: 'Brevemente',
+            join: 'Juntar-me à comunidade',
+            badge: 'Uma nova aventura está a ganhar forma',
+            heroStart: 'Há lugar para',
+            heroEnd: 'cada explorador.',
+            mottoLabel: 'O NOSSO LEMA',
+            slogan: 'O teu companheiro de aventura.',
+            introduction: 'O DeepMap está a tornar-se um espaço para mapas interativos de videojogos, descobertas e pessoas que gostam de explorar cada canto de um mundo.',
+            supporting: 'Estamos a construir a experiência, uma localização de cada vez. Cria a tua conta e faz parte da comunidade desde o início.',
+            statusLabel: 'Em desenvolvimento',
+            statusTitle: 'A jornada começa com Elden Ring.',
+            statusDescription: 'O nosso primeiro mapa interativo está em desenvolvimento. Há mais jogos e funcionalidades comunitárias planeados para o futuro.',
+            pathLabel: 'O QUE VEM A SEGUIR',
+            pathTitle: 'Criado para exploradores curiosos.',
+            feature1Tag: '01 / DESCOBRIR',
+            feature1Title: 'Descobre o mundo',
+            feature1Description: 'Mapas interativos pensados para facilitar a procura de localizações e colecionáveis.',
+            feature2Tag: '02 / CONTRIBUIR',
+            feature2Title: 'Partilha descobertas',
+            feature2Description: 'Ferramentas para sugerir localizações e fazer crescer os mapas, com moderação comunitária planeada.',
+            feature3Tag: '03 / LIGAR',
+            feature3Title: 'Explora em conjunto',
+            feature3Description: 'Perfis, conversas e novas formas de ligar exploradores fazem parte da nossa visão.',
+            futureNotice: 'Estas funcionalidades fazem parte do roadmap e ainda não estão todas disponíveis.',
+            communityLabel: 'FAZ PARTE DESDE O INÍCIO',
+            communityTitle: 'A tua jornada faz parte da nossa.',
+            communityText: 'O mundo ainda está a ser mapeado. Sente-te em casa e junta-te aos exploradores que vão ajudar a construir o que vem a seguir.',
+            communityButton: 'Criar conta ou iniciar sessão',
+            socialsLabel: 'ACOMPANHA A JORNADA',
+            socialsText: 'Acompanha o projeto e faz parte desta jornada desde o início.',
+            privacy: 'Política de Privacidade',
+            contact: 'Contacto',
+            copyright: 'DeepMap. Criado para exploradores.',
+            comingSoon: 'Brevemente'
+        }
+    };
 
-    function t(key) {
-        return (
-            translations[currentLanguage]?.[key] ??
-            translations.en?.[key] ??
-            key
-        );
-    }
+    let t = $derived(copy[currentLanguage] ?? copy.en);
+
+    // Só ligar perfis com endereço conhecido; não criar URLs fictícios.
+    const socials = [
+        { key: 'instagram', name: 'Instagram', url: 'https://www.instagram.com/deepmap.cc/' },
+        { key: 'tiktok', name: 'TikTok', url: 'https://www.tiktok.com/@deepmap.cc' },
+        { key: 'x', name: 'X', url: 'https://x.com/deepmapcc' },
+        { key: 'youtube', name: 'YouTube', url: 'https://www.youtube.com/@deepmapcc' },
+        { key: 'facebook', name: 'Facebook', url: null }
+    ];
+
+    onMount(() => {
+        currentLanguage = getSiteLanguage();
+        const supabase = getSupabaseBrowserClient();
+        let active = true;
+        let accountVersion = 0;
+        let authEventVersion = 0;
+
+        function applyUser(user) {
+            const version = ++accountVersion;
+            accountUser = user ?? null;
+            profileUsername = null;
+            avatarFailed = false;
+            checkingSession = false;
+
+            if (!user?.id) return;
+
+            // O username público está em public.profiles, não nos metadados de autenticação.
+            void supabase.from('profiles')
+                .select('username')
+                .eq('id', user.id)
+                .maybeSingle()
+                .then(({ data, error }) => {
+                    if (active && version === accountVersion && !error) {
+                        profileUsername = data?.username ?? null;
+                    }
+                })
+                .catch(() => {
+                    // O nome de apresentação continua disponível caso a leitura falhe.
+                });
+        }
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (!active || event === 'INITIAL_SESSION') return;
+            if (['SIGNED_IN', 'SIGNED_OUT', 'USER_UPDATED'].includes(event)) {
+                authEventVersion++;
+                // Evitar operações de BD diretamente dentro do callback de Auth.
+                Promise.resolve().then(() => {
+                    if (active) applyUser(session?.user ?? null);
+                });
+            }
+        });
+
+        const initialAuthVersion = authEventVersion;
+        void supabase.auth.getUser()
+            .then(({ data, error }) => {
+                if (active && initialAuthVersion === authEventVersion) {
+                    applyUser(error ? null : data.user);
+                }
+            })
+            .catch(() => {
+                if (active && initialAuthVersion === authEventVersion) applyUser(null);
+            });
+
+        return () => {
+            active = false;
+            accountVersion++;
+            subscription.unsubscribe();
+        };
+    });
 
     function changeLanguage(event) {
         currentLanguage = setSiteLanguage(event.currentTarget.value);
-
-        renderLocationMarkers();
-        updateEditorInterface();
     }
-
-
-    /* ==========================================
-       FILTROS — v1.0.28
-       ========================================== */
-
-    let categoryVisibility = $state({
-        ...defaultCategoryVisibility
-    });
-
-    // Os mesmos dados alimentam os filtros desktop e mobile.
-    const filterGroups = categoryGroups.map((group) => ({
-        ...group,
-        categories: Object.values(categories).filter(
-            (category) => category.group === group.id
-        )
-    }));
-
-    function setCategoryVisibility(categoryId, visible) {
-        categoryVisibility[categoryId] = visible;
-        renderLocationMarkers();
-    }
-
-    function toggleCategory(categoryId) {
-        setCategoryVisibility(
-            categoryId,
-            categoryVisibility[categoryId] === false
-        );
-    }
-
-    function setAllCategoryVisibility(visible) {
-        for (const categoryId of Object.keys(categories)) {
-            categoryVisibility[categoryId] = visible;
-        }
-
-        renderLocationMarkers();
-    }
-
-
-    /* ==========================================
-       MAPAS / CAMADAS
-       ========================================== */
-
-    let activeMapLayer = 'surface';
-    let markerLayerGroups = {};
-
-    function getMapBounds(mapDefinition) {
-        return [
-            [0, 0],
-            [mapDefinition.height, mapDefinition.width]
-        ];
-    }
-
-    function setupMarkerLayers() {
-        for (const layerId of Object.keys(mapDefinitions)) {
-            markerLayerGroups[layerId] = Leaflet.layerGroup();
-        }
-
-        markerLayerGroups[activeMapLayer].addTo(map);
-    }
-
-    function setActiveMapLayer(layerId) {
-        if (!map) return;
-
-        const definition = mapDefinitions[layerId];
-        if (!definition) return;
-
-        for (const group of Object.values(markerLayerGroups)) {
-            if (map.hasLayer(group)) {
-                map.removeLayer(group);
-            }
-        }
-
-        activeMapLayer = layerId;
-
-        const activeGroup = markerLayerGroups[activeMapLayer];
-
-        if (activeGroup) {
-            activeGroup.addTo(map);
-        }
-
-        if (definition.image) {
-            const bounds = getMapBounds(definition);
-
-            if (mapImageOverlay) {
-                map.removeLayer(mapImageOverlay);
-            }
-
-            mapImageOverlay = Leaflet.imageOverlay(
-                definition.image,
-                bounds
-            ).addTo(map);
-
-            mapImageOverlay.bringToBack();
-            map.setMaxBounds(bounds);
-            map.fitBounds(bounds);
-        }
-    }
-
-
-    /* ==========================================
-       POPUPS
-       ========================================== */
-
-    function escapeHtml(value) {
-        return String(value)
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#039;');
-    }
-
-    function translateList(list) {
-        if (!list || !list.length) return '';
-
-        return list
-            .map((item) => t(item))
-            .join(', ');
-    }
-
-    function createPopupInfoRow(labelKey, value) {
-        if (!value) return '';
-
-        return `
-            <div class="deepmap-popup-info-row">
-                <span class="deepmap-popup-info-label">
-                    ${escapeHtml(t(labelKey))}
-                </span>
-
-                <span class="deepmap-popup-info-value">
-                    ${escapeHtml(value)}
-                </span>
-            </div>
-        `;
-    }
-
-    function buildLocationPopup(location) {
-        let optionalInformation = '';
-
-        if (location.regionKey) {
-            optionalInformation += createPopupInfoRow(
-                'region',
-                t(location.regionKey)
-            );
-        }
-
-        if (location.npcs?.length) {
-            optionalInformation += createPopupInfoRow(
-                'npcs',
-                translateList(location.npcs)
-            );
-        }
-
-        if (location.items?.length) {
-            optionalInformation += createPopupInfoRow(
-                'items',
-                translateList(location.items)
-            );
-        }
-
-        if (location.quests?.length) {
-            optionalInformation += createPopupInfoRow(
-                'quests',
-                translateList(location.quests)
-            );
-        }
-
-        if (location.notesKey) {
-            optionalInformation += createPopupInfoRow(
-                'notes',
-                t(location.notesKey)
-            );
-        }
-
-        const imageHTML = location.image
-            ? `
-                <div class="deepmap-popup-image-wrapper">
-                    <img
-                        src="${escapeHtml(location.image)}"
-                        alt="${escapeHtml(t(location.nameKey))}"
-                        class="deepmap-popup-image"
-                        onerror="this.parentElement.style.display='none'"
-                    />
-                </div>
-            `
-            : '';
-
-        return `
-            <div class="deepmap-popup">
-                ${imageHTML}
-
-                <div class="deepmap-popup-body">
-
-                    <div class="deepmap-popup-category">
-                        ${escapeHtml(t(location.categoryKey))}
-                    </div>
-
-                    <h3 class="deepmap-popup-title">
-                        ${escapeHtml(t(location.nameKey))}
-                    </h3>
-
-                    ${
-                        optionalInformation
-                            ? `
-                                <div class="deepmap-popup-info">
-                                    ${optionalInformation}
-                                </div>
-                            `
-                            : ''
-                    }
-
-                    ${
-                        location.descriptionKey
-                            ? `
-                                <p class="deepmap-popup-description">
-                                    ${escapeHtml(t(location.descriptionKey))}
-                                </p>
-                            `
-                            : ''
-                    }
-
-                </div>
-            </div>
-        `;
-    }
-
-
-    /* ==========================================
-       MARCADORES SVG
-       ========================================== */
-
-    function createLocationIcon(location) {
-        const category = categories[location.categoryId];
-
-        const iconUrl = category?.icon ?? location.icon;
-        const markerColor = category?.color ?? '#22222a';
-
-        const markerWidth = category?.markerWidth ?? 30;
-        const markerHeight = category?.markerHeight ?? 39;
-        const symbolSize = category?.symbolSize ?? 18;
-
-        // Converte o tamanho do símbolo para a escala interna do SVG.
-        const svgSymbolSize = (symbolSize / markerWidth) * 40;
-        const svgSymbolX = (40 - svgSymbolSize) / 2;
-        const svgSymbolY = 8;
-
-        return Leaflet.divIcon({
-            className: 'deepmap-marker-wrapper',
-
-            html: `
-                <div
-                    class="deepmap-marker"
-                    style="
-                        --marker-width: ${markerWidth}px;
-                        --marker-height: ${markerHeight}px;
-                    "
-                >
-                    <svg
-                        class="deepmap-marker-shape"
-                        viewBox="0 0 40 52"
-                        xmlns="http://www.w3.org/2000/svg"
-                    >
-                        <path
-                            d="
-                                M20 1
-                                C9.5 1 1 9.5 1 20
-                                C1 34 20 51 20 51
-                                C20 51 39 34 39 20
-                                C39 9.5 30.5 1 20 1
-                                Z
-                            "
-                            fill="${markerColor}"
-                        />
-
-                        <image
-                            href="${escapeHtml(iconUrl)}"
-                            x="${svgSymbolX}"
-                            y="${svgSymbolY}"
-                            width="${svgSymbolSize}"
-                            height="${svgSymbolSize}"
-                            preserveAspectRatio="xMidYMid meet"
-                        />
-                    </svg>
-                </div>
-            `,
-
-            iconSize: [markerWidth, markerHeight],
-
-            iconAnchor: [
-                markerWidth / 2,
-                markerHeight
-            ],
-
-            popupAnchor: [
-                0,
-                -markerHeight + 4
-            ]
-        });
-    }
-
-    function renderLocationMarkers() {
-        if (
-            !map ||
-            !Leaflet ||
-            !Object.keys(markerLayerGroups).length
-        ) {
-            return;
-        }
-
-        for (const group of Object.values(markerLayerGroups)) {
-            group.clearLayers();
-        }
-
-        for (const location of locations) {
-            if (
-                categoryVisibility[location.categoryId] === false
-            ) {
-                continue;
-            }
-
-            const group = markerLayerGroups[location.mapLayer];
-
-            if (!group) continue;
-
-            const marker = Leaflet.marker(
-                location.coordinates,
-                {
-                    icon: createLocationIcon(location)
-                }
-            );
-
-            marker.bindPopup(
-                buildLocationPopup(location),
-                {
-                    maxWidth: 330,
-                    minWidth: 280,
-                    className: 'deepmap-leaflet-popup'
-                }
-            );
-
-            // Tooltip traduzido ao passar o rato.
-            marker.bindTooltip(
-                t(location.nameKey),
-                {
-                    direction: 'top',
-                    offset: [0, -32],
-                    opacity: 1,
-                    className: 'deepmap-marker-tooltip'
-                }
-            );
-
-            marker.on('click', () => {
-                marker.closeTooltip();
-            });
-
-            marker.addTo(group);
-        }
-    }
-
-
-    /* ==========================================
-       EDITOR DE COORDENADAS
-       ========================================== */
-
-    let editorMode = false;
-    let editorMarker = null;
-    let editorX = null;
-    let editorY = null;
-
-    function updateEditorInterface() {
-        if (typeof document === 'undefined') return;
-
-        const editorButton = document.getElementById('editor-toggle');
-        const editorStatus = document.getElementById('editor-status');
-
-        const coordinatePanel = document.getElementById('coordinate-panel');
-        const coordinateTitle = document.getElementById('coordinate-title');
-
-        const xValue = document.getElementById('editor-x');
-        const yValue = document.getElementById('editor-y');
-        const arrayValue = document.getElementById('editor-array');
-
-        const instruction = document.getElementById('editor-instruction');
-        const coordinatesContent = document.getElementById('coordinates-content');
-        const coordinateLabel = document.getElementById('coordinate-label');
-
-        const copyButton = document.getElementById('copy-coordinates');
-        const copyStatus = document.getElementById('copy-status');
-
-        if (coordinateTitle) {
-            coordinateTitle.textContent = t('coordinate_editor');
-        }
-
-        if (instruction) {
-            instruction.textContent = t('editor_instruction');
-        }
-
-        if (coordinateLabel) {
-            coordinateLabel.textContent = t('ready_for_leaflet');
-        }
-
-        if (copyButton) {
-            copyButton.textContent = t('copy');
-        }
-
-        if (!editorMode) {
-            if (editorButton) {
-                editorButton.textContent = t('editor');
-                editorButton.classList.remove('active');
-            }
-
-            if (editorStatus) {
-                editorStatus.style.display = 'none';
-            }
-
-            if (coordinatePanel) {
-                coordinatePanel.style.display = 'none';
-            }
-
-            return;
-        }
-
-        if (editorButton) {
-            editorButton.textContent = t('editor_active');
-            editorButton.classList.add('active');
-        }
-
-        if (editorStatus) {
-            editorStatus.style.display = 'flex';
-        }
-
-        if (coordinatePanel) {
-            coordinatePanel.style.display = 'block';
-        }
-
-        if (editorX === null || editorY === null) {
-            if (instruction) {
-                instruction.style.display = 'block';
-            }
-
-            if (coordinatesContent) {
-                coordinatesContent.style.display = 'none';
-            }
-
-            if (copyButton) {
-                copyButton.disabled = true;
-            }
-
-            if (copyStatus) {
-                copyStatus.textContent = '';
-            }
-
-            return;
-        }
-
-        if (instruction) {
-            instruction.style.display = 'none';
-        }
-
-        if (coordinatesContent) {
-            coordinatesContent.style.display = 'block';
-        }
-
-        if (xValue) {
-            xValue.textContent = editorX;
-        }
-
-        if (yValue) {
-            yValue.textContent = editorY;
-        }
-
-        // Leaflet utiliza coordenadas [Y, X].
-        if (arrayValue) {
-            arrayValue.textContent = `[${editorY}, ${editorX}]`;
-        }
-
-        if (copyButton) {
-            copyButton.disabled = false;
-        }
-
-        if (copyStatus) {
-            copyStatus.textContent = '';
-        }
-    }
-
-    function toggleEditor() {
-        editorMode = !editorMode;
-
-        if (!editorMode) {
-            if (editorMarker && map) {
-                map.removeLayer(editorMarker);
-            }
-
-            editorMarker = null;
-            editorX = null;
-            editorY = null;
-        }
-
-        updateEditorInterface();
-    }
-
-    async function copyCoordinates() {
-        if (editorX === null || editorY === null) return;
-
-        const coordinates = `[${editorY}, ${editorX}]`;
-
-        const copyStatus = document.getElementById('copy-status');
-
-        try {
-            await navigator.clipboard.writeText(coordinates);
-
-            if (copyStatus) {
-                copyStatus.textContent = t('copied');
-            }
-        } catch (error) {
-            const textarea = document.createElement('textarea');
-
-            textarea.value = coordinates;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-
-            document.body.appendChild(textarea);
-
-            textarea.select();
-            document.execCommand('copy');
-
-            document.body.removeChild(textarea);
-
-            if (copyStatus) {
-                copyStatus.textContent = t('copied');
-            }
-        }
-    }
-
-
-    /* ==========================================
-       INICIALIZAÇÃO DO MAPA
-       ========================================== */
-
-    onMount(async () => {
-        // A língua escolhida mantém-se ao navegar entre mapa e perfil.
-        currentLanguage = setSiteLanguage(getSiteLanguage());
-
-        const L = await import('leaflet');
-
-        await import('leaflet/dist/leaflet.css');
-
-        Leaflet = L;
-
-        const surfaceDefinition = mapDefinitions.surface;
-        const bounds = getMapBounds(surfaceDefinition);
-
-        map = L.map(
-            mapContainer,
-            {
-                crs: L.CRS.Simple,
-                maxBounds: bounds,
-                maxBoundsViscosity: 0.8,
-                attributionControl: false,
-                minZoom: -3,
-                maxZoom: 2,
-                zoomSnap: 0.25
-            }
-        );
-
-        mapImageOverlay = L.imageOverlay(
-            surfaceDefinition.image,
-            bounds
-        ).addTo(map);
-
-
-        /* MARCA D'ÁGUA */
-
-        const LogoWatermark = L.Control.extend({
-            options: {
-                position: 'bottomright'
-            },
-
-            onAdd: function () {
-                const div = L.DomUtil.create(
-                    'div',
-                    'map-watermark'
-                );
-
-                div.innerHTML = `
-                    <img
-                        src="/brand/logo.png"
-                        alt="DeepMap Logo"
-                    />
-                `;
-
-                return div;
-            }
-        });
-
-        map.addControl(new LogoWatermark());
-
-
-        /* LAYERS DOS MARCADORES */
-
-        setupMarkerLayers();
-        renderLocationMarkers();
-
-
-        /* CLIQUE NO MAPA — EDITOR */
-
-        map.on('click', (e) => {
-            if (!editorMode) return;
-
-            const x = Math.round(e.latlng.lng);
-            const y = Math.round(e.latlng.lat);
-
-            editorX = x;
-            editorY = y;
-
-            if (editorMarker) {
-                map.removeLayer(editorMarker);
-            }
-
-            editorMarker = Leaflet.circleMarker(
-                [y, x],
-                {
-                    radius: 9,
-                    color: '#ff9f1c',
-                    weight: 3,
-                    fillColor: '#ff9f1c',
-                    fillOpacity: 0.45
-                }
-            ).addTo(map);
-
-            updateEditorInterface();
-        });
-
-        mapImageOverlay.on('load', () => {
-            map.fitBounds(bounds);
-        });
-
-        map.fitBounds(bounds);
-
-        setTimeout(() => {
-            if (map) {
-                map.invalidateSize();
-            }
-        }, 250);
-    });
 </script>
 
+<svelte:head>
+    <title>{t.metaTitle}</title>
+    <meta name="description" content={t.metaDescription} />
+    <link rel="canonical" href="https://deepmap.cc/" />
+</svelte:head>
 
-<div class="app-container">
-
-    <!-- CONTROLO DO MENU MOBILE -->
-    <!-- Mantém esta estrutura: o CSS controla abrir/fechar. -->
-
-    <input
-        type="checkbox"
-        id="mobile-menu-toggle"
-        class="mobile-menu-checkbox"
-    />
-
-
-    <!-- HEADER -->
-
-    <header class="header">
-
-        <label
-            for="mobile-menu-toggle"
-            class="mobile-toggle"
-            aria-label={currentTexts.open_menu}
-        >
-            <span class="menu-icon">☰</span>
-            <span class="close-icon">✕</span>
-        </label>
-
-
-        <div class="brand">
-
-            <img
-                src="/brand/logo.png"
-                alt="DeepMap"
-                class="logo-img"
-            />
-
-            <span class="game-title">
-                Elden Ring
+{#snippet socialIcons()}
+    {#each socials as social (social.key)}
+        {#if social.url}
+            <a class="social-icon" href={social.url} target="_blank" rel="noopener noreferrer" aria-label={`DeepMap on ${social.name}`} title={social.name}>
+                {#if social.key === 'instagram'}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01" stroke-width="2.8"/></svg>
+                {:else if social.key === 'tiktok'}
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 2c.3 2.4 1.6 3.8 4 4.1V9a9.1 9.1 0 0 1-4-1.1v7.4a6 6 0 1 1-6-6c.4 0 .9 0 1.3.1v3.2A3 3 0 1 0 13 15.4V2h3Z"/></svg>
+                {:else if social.key === 'x'}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M4 3 20 21M20 3 4 21"/><path d="M4 3h4M16 21h4"/></svg>
+                {:else if social.key === 'youtube'}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3Z" fill="currentColor" stroke="none"/></svg>
+                {/if}
+            </a>
+        {:else}
+            <span class="social-icon social-pending" title={`${social.name} — ${t.socialSoon}`} aria-label={`${social.name} — ${t.socialSoon}`}>
+                {#if social.key === 'youtube'}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3Z" fill="currentColor" stroke="none"/></svg>
+                {:else if social.key === 'facebook'}
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 21v-7.6h2.6l.4-3h-3V8.5c0-.9.3-1.5 1.5-1.5h1.6V4.3A21 21 0 0 0 15 4c-2.6 0-4.3 1.6-4.3 4.4v2H8v3h2.7V21h3.5Z"/></svg>
+                {/if}
             </span>
-
-            <span class="version-tag">
-                v1.0.30
-            </span>
-
-        </div>
-
-
-        <div class="header-actions">
-
-            <select
-                class="language-selector"
-                value={currentLanguage}
-                onchange={changeLanguage}
-                aria-label={currentTexts.language}
-            >
-                <option value="en">EN</option>
-                <option value="pt">PT</option>
-            </select>
-
-            <div class="checklist-status">
-                {currentTexts.checklist}
-                <span>(0%)</span>
-            </div>
-
-            <AuthHeader language={currentLanguage} />
-
-        </div>
-
-    </header>
-
-
-    <!-- EDITOR DE COORDENADAS — PC -->
-
-    <div class="editor-ui">
-
-        <button
-            id="editor-toggle"
-            class="editor-toggle"
-            onclick={toggleEditor}
-        >
-            {currentTexts.editor}
-        </button>
-
-        <div
-            id="coordinate-panel"
-            class="coordinate-panel"
-        >
-
-            <div
-                id="coordinate-title"
-                class="coordinate-title"
-            >
-                {currentTexts.coordinate_editor}
-            </div>
-
-            <div
-                id="editor-instruction"
-                class="editor-instruction"
-            >
-                {currentTexts.editor_instruction}
-            </div>
-
-            <div
-                id="coordinates-content"
-                class="coordinates-content"
-            >
-
-                <div class="coordinate-row">
-                    <span>X:</span>
-                    <strong id="editor-x">—</strong>
-                </div>
-
-                <div class="coordinate-row">
-                    <span>Y:</span>
-                    <strong id="editor-y">—</strong>
-                </div>
-
-                <div class="coordinate-divider"></div>
-
-                <div
-                    id="coordinate-label"
-                    class="coordinate-label"
-                >
-                    {currentTexts.ready_for_leaflet}
-                </div>
-
-                <div
-                    id="editor-array"
-                    class="coordinate-array"
-                >
-                    [Y, X]
-                </div>
-
-                <button
-                    id="copy-coordinates"
-                    class="copy-button"
-                    onclick={copyCoordinates}
-                    disabled
-                >
-                    {currentTexts.copy}
-                </button>
-
-                <div
-                    id="copy-status"
-                    class="copy-status"
-                ></div>
-
-            </div>
-        </div>
-    </div>
-
-
-    <div
-        id="editor-status"
-        class="editor-status"
-    >
-        <span class="editor-status-dot"></span>
-        {currentTexts.editor_status}
-    </div>
-
-
-    <!-- CONTEÚDO PRINCIPAL -->
-
-    <div class="body-container">
-
-        <!-- SIDEBAR DESKTOP -->
-
-        <aside class="desktop-sidebar">
-
-            <div class="sidebar-content">
-
-                <h2>{currentTexts.filters}</h2>
-
-                <!-- SHOW ALL / HIDE ALL -->
-
-                <div
-                    class="filter-actions"
-                    role="group"
-                    aria-label={currentTexts.filters}
-                >
-                    <button
-                        type="button"
-                        class="filter-action"
-                        onclick={() => setAllCategoryVisibility(true)}
-                    >
-                        {currentTexts.show_all}
-                    </button>
-
-                    <button
-                        type="button"
-                        class="filter-action"
-                        onclick={() => setAllCategoryVisibility(false)}
-                    >
-                        {currentTexts.hide_all}
-                    </button>
-                </div>
-
-
-                <!-- CATEGORIAS -->
-
-                {#each filterGroups as group (group.id)}
-
-                    <div class="filter-group">
-
-                        <h3>
-                            {currentTexts[group.labelKey]}
-                        </h3>
-
-                        {#each group.categories as category (category.id)}
-
-                            <button
-                                type="button"
-                                class="filter-row"
-                                class:inactive={categoryVisibility[category.id] === false}
-                                aria-pressed={categoryVisibility[category.id] !== false}
-                                onclick={() => toggleCategory(category.id)}
-                            >
-
-                                <span
-                                    class="filter-icon"
-                                    style={`--category-color: ${category.color};`}
-                                    aria-hidden="true"
-                                >
-                                    {#if category.icon}
-
-                                        <img
-                                            src={category.icon}
-                                            alt=""
-                                        />
-
-                                    {:else}
-
-                                        <span class="filter-icon-placeholder"></span>
-
-                                    {/if}
-                                </span>
-
-                                <span class="filter-text">
-                                    {currentTexts[category.labelKey] ?? category.labelKey}
-                                </span>
-
-                            </button>
-
-                        {/each}
-
-                    </div>
-
-                {/each}
-
-            </div>
-        </aside>
-
-
-        <!-- MAPA -->
-
-        <main class="map-wrapper">
-
-            <div
-                bind:this={mapContainer}
-                class="map-element"
-            ></div>
-
-        </main>
-
-    </div>
-
-
-    <!-- MENU MOBILE — ESTRUTURA ORIGINAL -->
-
-    <div class="mobile-menu-layer">
-
-        <label
-            for="mobile-menu-toggle"
-            class="mobile-backdrop"
-            aria-label={currentTexts.close_menu}
-        ></label>
-
-
-        <aside class="mobile-sidebar">
-
-            <div class="mobile-sidebar-header">
-
-                <h2>{currentTexts.filters}</h2>
-
-                <label
-                    for="mobile-menu-toggle"
-                    class="mobile-close"
-                    aria-label={currentTexts.close_menu}
-                >
-                    ✕
+        {/if}
+    {/each}
+{/snippet}
+
+<main class="landing-page">
+    <div class="site-shell">
+        <header class="site-header">
+            <a href="/" class="brand-link" aria-label="DeepMap — Home">
+                <img src="/brand/logo.png" alt="DeepMap" class="brand-logo" />
+            </a>
+            <nav class="header-navigation" aria-label="Site navigation">
+                <a href="#journey">{t.navJourney}</a>
+                <a href="#vision">{t.navVision}</a>
+                <a href="#follow">{t.navFollow}</a>
+            </nav>
+            <div class="header-actions">
+                <label class="language-wrap">
+                    <span class="sr-only">{t.language}</span>
+                    <select value={currentLanguage} onchange={changeLanguage} aria-label={t.language}>
+                        <option value="en">EN</option>
+                        <option value="pt">PT</option>
+                    </select>
                 </label>
-
+                {#if checkingSession}
+                    <span class="header-join account-loading" aria-live="polite">{t.checkingAccount}</span>
+                {:else if accountUser}
+                    <a class="header-join account-link" href="/profile" aria-label={`${t.myProfile} — ${accountName}`} title={t.myProfile}>
+                        <span class="account-avatar" aria-hidden="true">
+                            {#if accountAvatar && !avatarFailed}
+                                <img src={accountAvatar} alt="" referrerpolicy="no-referrer" onerror={() => avatarFailed = true} />
+                            {:else}
+                                <span>{accountInitial}</span>
+                            {/if}
+                        </span>
+                        <span class="account-copy">
+                            <span class="account-status">{t.signedIn}</span>
+                            <strong class="account-name">{accountName}</strong>
+                        </span>
+                        <span class="account-arrow" aria-hidden="true">↗</span>
+                    </a>
+                {:else}
+                    <a class="header-join" href="/login">{t.account}<span aria-hidden="true"> ↗</span></a>
+                {/if}
             </div>
+        </header>
 
-
-            <div class="sidebar-content">
-
-                <!-- SHOW ALL / HIDE ALL MOBILE -->
-
-                <div
-                    class="filter-actions"
-                    role="group"
-                    aria-label={currentTexts.filters}
-                >
-
-                    <button
-                        type="button"
-                        class="filter-action"
-                        onclick={() => setAllCategoryVisibility(true)}
-                    >
-                        {currentTexts.show_all}
-                    </button>
-
-                    <button
-                        type="button"
-                        class="filter-action"
-                        onclick={() => setAllCategoryVisibility(false)}
-                    >
-                        {currentTexts.hide_all}
-                    </button>
-
+        <section class="hero" aria-labelledby="landing-title">
+            <div class="hero-halo" aria-hidden="true"></div>
+            <div class="hero-lines" aria-hidden="true">
+                <span></span><span></span><span></span><span></span>
+            </div>
+            <div class="hero-content">
+                <div class="hero-badge"><span class="badge-dot" aria-hidden="true"></span>{t.badge}</div>
+                <p class="eyebrow">DEEPMAP <span class="eyebrow-line"></span> {t.comingSoon}</p>
+                <h1 id="landing-title">{t.heroStart}<br /><em>{t.heroEnd}</em></h1>
+                <div class="hero-motto">
+                    <span class="motto-label"><span class="motto-diamond" aria-hidden="true">✦</span> {t.mottoLabel}</span>
+                    <p class="hero-slogan">“{t.slogan}”</p>
                 </div>
-
-
-                <!-- CATEGORIAS MOBILE -->
-
-                {#each filterGroups as group (group.id)}
-
-                    <div class="filter-group">
-
-                        <h3>
-                            {currentTexts[group.labelKey]}
-                        </h3>
-
-                        {#each group.categories as category (category.id)}
-
-                            <button
-                                type="button"
-                                class="filter-row"
-                                class:inactive={categoryVisibility[category.id] === false}
-                                aria-pressed={categoryVisibility[category.id] !== false}
-                                onclick={() => toggleCategory(category.id)}
-                            >
-
-                                <span
-                                    class="filter-icon"
-                                    style={`--category-color: ${category.color};`}
-                                    aria-hidden="true"
-                                >
-                                    {#if category.icon}
-
-                                        <img
-                                            src={category.icon}
-                                            alt=""
-                                        />
-
-                                    {:else}
-
-                                        <span class="filter-icon-placeholder"></span>
-
-                                    {/if}
-                                </span>
-
-                                <span class="filter-text">
-                                    {currentTexts[category.labelKey] ?? category.labelKey}
-                                </span>
-
-                            </button>
-
-                        {/each}
-
-                    </div>
-
-                {/each}
-
+                <p class="hero-intro">{t.introduction}</p>
+                <p class="hero-support">{accountUser ? t.supportingSignedIn : t.supporting}</p>
+                <div class="hero-actions">
+                    {#if checkingSession}
+                        <span class="primary-button cta-loading" aria-live="polite">{t.checkingAccount}</span>
+                    {:else}
+                        <a class="primary-button" href={accountUser ? '/profile' : '/login'}>{accountUser ? t.myProfile : t.join}<span aria-hidden="true"> ↗</span></a>
+                    {/if}
+                    <a class="secondary-button" href="#vision">{t.exploreVision}</a>
+                </div>
+                <div class="hero-socials"><span>{t.socialsLabel}</span><div class="social-links">{@render socialIcons()}</div></div>
             </div>
+            <div class="hero-art" aria-hidden="true">
+                <div class="art-halo"></div>
+                <div class="art-ruin ruin-left"></div>
+                <div class="art-ruin ruin-right"></div>
+                <div class="art-ridge ridge-back"></div>
+                <div class="art-ridge ridge-front"></div>
+                <div class="art-compass"><span>✧</span></div>
+            </div>
+            <div class="hero-bottom" aria-hidden="true"><span>✦</span><span class="hero-bottom-line"></span><span>✦</span></div>
+        </section>
 
-        </aside>
+        <section class="status-card" id="journey" aria-label={t.statusLabel}>
+            <div class="status-symbol" aria-hidden="true">✧</div>
+            <div class="status-copy">
+                <span class="section-label">{t.statusLabel}</span>
+                <h2>{t.statusTitle}</h2>
+                <p>{t.statusDescription}</p>
+            </div>
+            <div class="status-pill">{t.comingSoon}</div>
+        </section>
 
+        <section class="roadmap" id="vision" aria-labelledby="roadmap-title">
+            <div class="section-heading">
+                <span class="section-label">{t.pathLabel}</span>
+                <h2 id="roadmap-title">{t.pathTitle}</h2>
+            </div>
+            <div class="feature-grid">
+                <article class="feature-card">
+                    <div class="feature-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="m7 11 11-4 12 4 11-4v30l-11 4-12-4-11 4z"/><path d="M18 7v30M30 11v30"/><circle cx="30" cy="22" r="3"/><path d="m30 25-5 7"/></svg>
+                    </div>
+                    <span class="feature-tag">{t.feature1Tag}</span>
+                    <h3>{t.feature1Title}</h3>
+                    <p>{t.feature1Description}</p>
+                </article>
+                <article class="feature-card">
+                    <div class="feature-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 12h32v23H8zM14 20h20M14 26h13"/><path d="m29 36 8-8 3 3-8 8-5 2z"/></svg>
+                    </div>
+                    <span class="feature-tag">{t.feature2Tag}</span>
+                    <h3>{t.feature2Title}</h3>
+                    <p>{t.feature2Description}</p>
+                </article>
+                <article class="feature-card">
+                    <div class="feature-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="16" cy="16" r="6"/><circle cx="33" cy="18" r="5"/><path d="M5 38v-4c0-6 5-10 11-10s11 4 11 10v4zM29 28c6-2 14 2 14 9v1H30"/></svg>
+                    </div>
+                    <span class="feature-tag">{t.feature3Tag}</span>
+                    <h3>{t.feature3Title}</h3>
+                    <p>{t.feature3Description}</p>
+                </article>
+            </div>
+            <p class="roadmap-note">{t.futureNotice}</p>
+        </section>
+
+        <section class="community" aria-labelledby="community-title">
+            <div class="community-decoration" aria-hidden="true">✦</div>
+            <span class="section-label">{t.communityLabel}</span>
+            <h2 id="community-title">{t.communityTitle}</h2>
+            <p>{accountUser ? t.communityTextSignedIn : t.communityText}</p>
+            {#if checkingSession}
+                <span class="primary-button cta-loading" aria-live="polite">{t.checkingAccount}</span>
+            {:else}
+                <a class="primary-button" href={accountUser ? '/profile' : '/login'}>{accountUser ? t.myProfile : t.communityButton}<span aria-hidden="true"> ↗</span></a>
+            {/if}
+        </section>
+
+        <footer class="site-footer" id="follow">
+            <div class="footer-top">
+                <a href="/" class="footer-logo" aria-label="DeepMap — Home"><img src="/brand/logo.png" alt="DeepMap" /></a>
+                <div class="footer-social">
+                    <span class="section-label">{t.socialsLabel}</span>
+                    <p>{t.socialsText}</p>
+                    <div class="social-links footer-social-links">{@render socialIcons()}</div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <span>© {new Date().getFullYear()} {t.copyright}</span>
+                <div class="footer-links">
+                    <a href="/privacy">{t.privacy}</a>
+                    <a href="mailto:contact@deepmap.cc">{t.contact}</a>
+                </div>
+            </div>
+        </footer>
     </div>
-
-</div>
-
+</main>
 
 <style>
-
-    /* ==========================================
-       BASE
-       ========================================== */
-
-    /* Bloquear o scroll EXCLUSIVAMENTE quando o mapa está nesta rota. */
-    :global(html:has(.app-container)),
-    :global(body:has(.app-container)) {
-        height: 100%;
-        overflow: hidden;
-    }
-
-    .app-container {
-        width: 100vw;
-        height: 100vh;
-        height: 100dvh;
-        overflow: hidden;
-        background: #0b0b0e;
-    }
-
-
-    /* ==========================================
-       HEADER
-       ========================================== */
-
-    .header {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-
-        height: 56px;
-
-        background: #16161a;
-        border-bottom: 1px solid #2a2a30;
-
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-
-        padding: 0 16px;
-        box-sizing: border-box;
-
-        z-index: 10000;
-    }
-
-    .brand {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .logo-img {
-        height: 32px;
-        width: auto;
-    }
-
-    .game-title {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #c8a355;
-        letter-spacing: 1px;
-    }
-
-    .version-tag {
-        font-size: 0.75rem;
-        color: #888899;
-        background: #22222a;
-
-        padding: 2px 6px;
-        border-radius: 4px;
-        border: 1px solid #333340;
-    }
-
-    .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .language-selector {
-        background: #22222a;
-        border: 1px solid #3a3a45;
-        border-radius: 5px;
-
-        color: #c8a355;
-        padding: 5px 7px;
-
-        font-weight: 700;
-        cursor: pointer;
-        outline: none;
-    }
-
-    .language-selector:hover {
-        border-color: #c8a355;
-    }
-
-    .checklist-status {
-        font-size: 0.9rem;
-        color: #a0a0a0;
-    }
-
-    .checklist-status span {
-        color: #c8a355;
-        font-weight: 600;
-    }
-
-
-    /* ==========================================
-       BOTÃO MOBILE
-       ========================================== */
-
-    .mobile-menu-checkbox {
-        display: none;
-    }
-
-    .mobile-toggle {
-        display: none;
-        align-items: center;
-        justify-content: center;
-
-        width: 48px;
-        height: 48px;
-        padding: 0;
-
-        background: transparent;
-        border: 0;
-
-        color: #c8a355;
-        font-size: 28px;
-
-        cursor: pointer;
-        touch-action: manipulation;
-        z-index: 10001;
-    }
-
-    .menu-icon,
-    .close-icon {
-        display: block;
-        line-height: 1;
-    }
-
-    .close-icon {
-        display: none;
-    }
-
-
-    /* ==========================================
-       EDITOR DE COORDENADAS
-       ========================================== */
-
-    .editor-ui {
-        position: fixed !important;
-        top: 68px !important;
-        right: 16px !important;
-
-        width: 280px;
-
-        z-index: 999999 !important;
-        pointer-events: none;
-    }
-
-    .editor-toggle {
-        display: block;
-        margin-left: auto;
-
-        padding: 10px 16px;
-
-        background: #16161a;
-        border: 1px solid #c8a355;
-        border-radius: 6px;
-
-        color: #c8a355;
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-
-        cursor: pointer;
-
-        box-shadow:
-            0 4px 15px rgba(0, 0, 0, 0.4);
-
-        pointer-events: auto;
-
-        transition:
-            background 0.2s,
-            color 0.2s,
-            box-shadow 0.2s;
-    }
-
-    .editor-toggle:hover {
-        background: #22222a;
-    }
-
-    .editor-toggle.active {
-        background: #c8a355;
-        color: #111116;
-
-        box-shadow:
-            0 0 0 2px rgba(200, 163, 85, 0.15),
-            0 5px 20px rgba(0, 0, 0, 0.5);
-    }
-
-    .coordinate-panel {
-        display: none;
-        margin-top: 10px;
-
-        background: rgba(22, 22, 26, 0.97);
-        border: 1px solid #c8a355;
-        border-radius: 8px;
-
-        padding: 16px;
-        box-sizing: border-box;
-
-        box-shadow:
-            0 8px 30px rgba(0, 0, 0, 0.65);
-
-        backdrop-filter: blur(8px);
-        pointer-events: auto;
-    }
-
-    .coordinate-title {
-        color: #c8a355;
-        font-size: 0.8rem;
-        font-weight: 700;
-        letter-spacing: 0.6px;
-
-        margin-bottom: 14px;
-        padding-bottom: 10px;
-
-        border-bottom: 1px solid #2a2a30;
-    }
-
-    .editor-instruction {
-        font-size: 0.85rem;
-        color: #b0b0b8;
-        line-height: 1.5;
-    }
-
-    .coordinates-content {
-        display: none;
-    }
-
-    .coordinate-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-
-        margin-bottom: 8px;
-        font-size: 0.95rem;
-    }
-
-    .coordinate-row span {
-        color: #9999a5;
-    }
-
-    .coordinate-row strong {
-        color: #ffffff;
-        font-size: 1rem;
-    }
-
-    .coordinate-divider {
-        height: 1px;
-        background: #2a2a30;
-        margin: 14px 0;
-    }
-
-    .coordinate-label {
-        color: #888899;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 7px;
-    }
-
-    .coordinate-array {
-        background: #0b0b0e;
-        border: 1px solid #333340;
-        border-radius: 5px;
-
-        padding: 10px;
-        margin-bottom: 10px;
-
-        text-align: center;
-        font-family: monospace;
-        font-size: 1rem;
-        font-weight: 700;
-        color: #ffb640;
-
-        user-select: all;
-    }
-
-    .copy-button {
-        width: 100%;
-        padding: 9px;
-
-        background: #c8a355;
-        border: 0;
-        border-radius: 5px;
-
-        color: #111116;
-        font-size: 0.78rem;
-        font-weight: 800;
-
-        cursor: pointer;
-    }
-
-    .copy-button:disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-    }
-
-    .copy-status {
-        min-height: 18px;
-        margin-top: 7px;
-
-        color: #7edc98;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-align: center;
-    }
-
-    .editor-status {
-        display: none;
-
-        position: fixed !important;
-        top: 68px !important;
-        left: 50% !important;
-
-        transform: translateX(-50%);
-
-        align-items: center;
-        gap: 8px;
-
-        padding: 8px 14px;
-
-        background: rgba(22, 22, 26, 0.96);
-        border: 1px solid #ff9f1c;
-        border-radius: 6px;
-
-        color: #ffb340;
-        font-size: 0.76rem;
-        font-weight: 800;
-        letter-spacing: 0.4px;
-
-        box-shadow:
-            0 5px 20px rgba(0, 0, 0, 0.55);
-
-        z-index: 999999 !important;
-        pointer-events: none;
-    }
-
-    .editor-status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-
-        background: #ff9f1c;
-
-        box-shadow:
-            0 0 8px rgba(255, 159, 28, 0.8);
-    }
-
-
-    /* ==========================================
-       BODY / MAPA
-       ========================================== */
-
-    .body-container {
-        position: fixed;
-
-        top: 56px;
-        left: 0;
-        right: 0;
-        bottom: 0;
-
-        overflow: hidden;
-        display: flex;
-    }
-
-
-    /* ==========================================
-       SIDEBAR DESKTOP
-       ========================================== */
-
-    .desktop-sidebar {
-        position: fixed;
-
-        top: 56px;
-        left: 0;
-        bottom: 0;
-
-        width: 300px;
-
-        background: #16161a;
-        border-right: 1px solid #2a2a30;
-
-        box-sizing: border-box;
-        z-index: 9000;
-        overflow: hidden;
-    }
-
-    .sidebar-content {
-        padding: 20px;
-
-        overflow-y: auto;
-        height: 100%;
-
-        box-sizing: border-box;
-    }
-
-    .desktop-sidebar h2 {
-        font-size: 1.1rem;
-        color: #c8a355;
-
-        margin-top: 0;
-        border-bottom: 1px solid #2a2a30;
-        padding-bottom: 8px;
-    }
-
-    .filter-group {
-        margin-bottom: 20px;
-    }
-
-    .filter-group h3 {
-        font-size: 0.9rem;
-        color: #888;
-
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-
-        margin-bottom: 10px;
-    }
-
-
-    /* ==========================================
-       FILTROS — v1.0.28
-       ========================================== */
-
-    .filter-actions {
-        display: flex;
-        gap: 8px;
-        margin: 0 0 22px;
-    }
-
-    .filter-action {
-        flex: 1;
-        min-width: 0;
-
-        padding: 8px 6px;
-
-        background: #22222a;
-        border: 1px solid #353541;
-        border-radius: 5px;
-
-        color: #c8a355;
-
-        font: inherit;
-        font-size: 0.78rem;
-        font-weight: 700;
-
-        cursor: pointer;
-
-        transition:
-            background 0.15s ease,
-            border-color 0.15s ease;
-    }
-
-    .filter-action:hover {
-        background: #2c2c37;
-        border-color: #c8a355;
-    }
-
-    .filter-row {
-        width: 100%;
-        min-height: 36px;
-
-        display: flex;
-        align-items: center;
-        gap: 10px;
-
-        margin-bottom: 3px;
-        padding: 5px 7px;
-
-        background: transparent;
-        border: 0;
-        border-radius: 5px;
-
-        color: #e0e0e0;
-        text-align: left;
-
-        font: inherit;
-        font-size: 0.92rem;
-        line-height: 1.35;
-
-        cursor: pointer;
-
-        transition:
-            background 0.15s ease,
-            opacity 0.15s ease;
-    }
-
-    .filter-row:hover {
-        background: #25252d;
-    }
-
-    .filter-action:focus-visible,
-    .filter-row:focus-visible {
-        outline: 2px solid #c8a355;
-        outline-offset: 2px;
-    }
-
-    .filter-icon {
-        width: 24px;
-        height: 24px;
-        flex: 0 0 24px;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .filter-icon img {
-        display: block;
-        width: 23px;
-        height: 23px;
-        object-fit: contain;
-    }
-
-    /* Substituto provisório para categorias sem PNG. */
-
-    .filter-icon-placeholder {
-        width: 10px;
-        height: 10px;
-
-        border-radius: 50%;
-        background: var(--category-color, #888899);
-
-        box-shadow:
-            0 0 0 2px rgba(255, 255, 255, 0.07);
-    }
-
-    .filter-row.inactive {
-        opacity: 0.38;
-    }
-
-    .filter-row.inactive .filter-text {
-        text-decoration: line-through;
-    }
-
-
-    /* ==========================================
-       MAPA
-       ========================================== */
-
-    .map-wrapper {
-        position: absolute;
-
-        top: 0;
-        left: 300px;
-        right: 0;
-        bottom: 0;
-
-        background: #0b0b0e;
-    }
-
-    .map-element {
-        position: absolute;
-
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-
-        background: #0b0b0e;
-    }
-
-
-    /* ==========================================
-       MARCADORES SVG
-       ========================================== */
-
-    :global(.deepmap-marker-wrapper) {
-        background: transparent !important;
-        border: 0 !important;
-    }
-
-    :global(.deepmap-marker) {
-        width: var(--marker-width);
-        height: var(--marker-height);
-
-        transition: transform 0.15s ease;
-    }
-
-    :global(.deepmap-marker-shape) {
-        width: 100%;
-        height: 100%;
-
-        display: block;
-        overflow: visible;
-
-        filter:
-            drop-shadow(
-                0 1px 2px rgba(0, 0, 0, 0.8)
-            );
-    }
-
-    :global(.deepmap-marker:hover) {
-        transform: scale(1.12);
-    }
-
-
-    /* ==========================================
-       TOOLTIP
-       ========================================== */
-
-    :global(.deepmap-marker-tooltip) {
-        background: #16161a;
-        color: #ffffff;
-
-        border: 1px solid #2a2a30;
-        border-radius: 5px;
-
-        padding: 5px 8px;
-
-        font-size: 0.78rem;
-        font-weight: 600;
-
-        box-shadow:
-            0 3px 8px rgba(0, 0, 0, 0.45);
-    }
-
-    :global(.deepmap-marker-tooltip::before) {
-        border-top-color: #16161a;
-    }
-
-
-    /* ==========================================
-       POPUP DE LOCALIZAÇÕES
-       ========================================== */
-
-    :global(.deepmap-leaflet-popup .leaflet-popup-content-wrapper) {
-        background: #16161a;
-        color: #e7e7ea;
-
-        padding: 0;
-        border-radius: 10px;
-
-        border:
-            1px solid rgba(200, 163, 85, 0.45);
-
-        overflow: hidden;
-
-        box-shadow:
-            0 12px 35px rgba(0, 0, 0, 0.7);
-    }
-
-    :global(.deepmap-leaflet-popup .leaflet-popup-content) {
-        margin: 0;
-        width: auto !important;
-    }
-
-    :global(.deepmap-leaflet-popup .leaflet-popup-tip) {
-        background: #16161a;
-    }
-
-    :global(.deepmap-leaflet-popup .leaflet-popup-close-button) {
-        color: #ffffff !important;
-        background: rgba(0, 0, 0, 0.55) !important;
-
-        width: 28px !important;
-        height: 28px !important;
-        line-height: 27px !important;
-
-        border-radius: 50%;
-
-        top: 7px !important;
-        right: 7px !important;
-
-        z-index: 5;
-        font-size: 18px !important;
-    }
-
-    :global(.deepmap-popup) {
-        width: 310px;
-        max-width: 100%;
-    }
-
-    :global(.deepmap-popup-image-wrapper) {
-        width: 100%;
-        height: 165px;
-
-        overflow: hidden;
-        background: #0b0b0e;
-    }
-
-    :global(.deepmap-popup-image) {
-        width: 100%;
-        height: 100%;
-
-        display: block;
-        object-fit: cover;
-    }
-
-    :global(.deepmap-popup-body) {
-        padding: 15px 16px 17px;
-    }
-
-    :global(.deepmap-popup-category) {
-        color: #c8a355;
-
-        font-size: 0.69rem;
-        font-weight: 800;
-
-        letter-spacing: 0.8px;
-        text-transform: uppercase;
-
-        margin-bottom: 4px;
-    }
-
-    :global(.deepmap-popup-title) {
-        margin: 0 0 12px;
-        padding: 0;
-
-        color: #ffffff;
-        font-size: 1.15rem;
-        line-height: 1.25;
-    }
-
-    :global(.deepmap-popup-info) {
-        margin-bottom: 12px;
-        padding: 8px 10px;
-
-        background: #111115;
-        border-radius: 6px;
-        border: 1px solid #292930;
-    }
-
-    :global(.deepmap-popup-info-row) {
-        display: flex;
-        justify-content: space-between;
-
-        gap: 14px;
-        padding: 3px 0;
-
-        font-size: 0.78rem;
-    }
-
-    :global(.deepmap-popup-info-label) {
-        color: #888894;
-    }
-
-    :global(.deepmap-popup-info-value) {
-        color: #d8d8dd;
-        text-align: right;
-        font-weight: 600;
-    }
-
-    :global(.deepmap-popup-description) {
-        margin: 0;
-        color: #ababaf;
-
-        font-size: 0.82rem;
-        line-height: 1.5;
-    }
-
-
-    /* ==========================================
-       MARCA D'ÁGUA
-       ========================================== */
-
-    :global(.map-watermark) {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        background: rgba(22, 22, 26, 0.5);
-
-        padding: 6px;
-        border-radius: 8px;
-
-        border:
-            1px solid rgba(200, 163, 85, 0.2);
-
-        backdrop-filter: blur(4px);
-
-        margin-bottom: 12px;
-        margin-right: 12px;
-
-        opacity: 0.6;
-        pointer-events: none;
-    }
-
-    :global(.map-watermark img) {
-        height: 28px;
-        width: auto;
-        display: block;
-    }
-
-
-    /* ==========================================
-       MENU MOBILE
-       ========================================== */
-
-    .mobile-menu-layer {
-        display: none;
-    }
-
-
-    /* ==========================================
-       MOBILE
-       ========================================== */
-
-    @media (max-width: 768px) {
-
-        .header {
-    padding: 0 8px;
-
-    /* Permite gestos normais, mas impede pinch-zoom no header. */
-    touch-action: pan-x pan-y;
-}
-
-        .mobile-toggle {
-            display: flex;
-        }
-
-        .brand {
-            flex: 1;
-            margin-left: 4px;
-            gap: 8px;
-        }
-
-        .logo-img {
-            height: 30px;
-        }
-
-        .game-title {
-            font-size: 1rem;
-        }
-
-        .version-tag {
-            font-size: 0.65rem;
-        }
-
-        .header-actions {
-            gap: 6px;
-        }
-
-        .language-selector {
-            font-size: 0.7rem;
-            padding: 4px 4px;
-        }
-
-        .checklist-status {
-            display: none;
-        }
-
-        .editor-ui,
-        .editor-status {
-            display: none !important;
-        }
-
-        .desktop-sidebar {
-            display: none;
-        }
-
-        .map-wrapper {
-            left: 0;
-            width: 100%;
-        }
-
-        :global(.deepmap-popup) {
-            width: 275px;
-        }
-
-        :global(.deepmap-popup-image-wrapper) {
-            height: 145px;
-        }
-
-
-        /* MENU MOBILE INDEPENDENTE — NÃO ALTERAR ESTRUTURA */
-
-        .mobile-menu-layer {
-            display: none;
-
-            position: fixed;
-
-            top: 56px;
-            left: 0;
-            right: 0;
-            bottom: 0;
-
-            z-index: 20000;
-            pointer-events: none;
-            touch-action: pan-y;
-        }
-
-        .mobile-menu-checkbox:checked ~ .mobile-menu-layer {
-            display: block;
-            pointer-events: auto;
-        }
-
-        .mobile-menu-checkbox:checked ~ .header .mobile-toggle .menu-icon {
-            display: none;
-        }
-
-        .mobile-menu-checkbox:checked ~ .header .mobile-toggle .close-icon {
-            display: block;
-        }
-
-        .mobile-backdrop {
-            display: block;
-
-            position: absolute;
-
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-
-            background: rgba(0, 0, 0, 0.65);
-        }
-
-        .mobile-sidebar {
-            display: block;
-
-            position: absolute;
-
-            top: 0;
-            left: 0;
-            bottom: 0;
-
-            width: min(300px, 85vw);
-
-            background: #16161a;
-            border-right: 1px solid #2a2a30;
-
-            box-shadow:
-                8px 0 30px rgba(0, 0, 0, 0.6);
-
-            box-sizing: border-box;
-            z-index: 1;
-            overflow-y: auto;
-        }
-
-        .mobile-sidebar-header {
-            height: 56px;
-
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-
-            padding: 0 12px 0 20px;
-
-            border-bottom: 1px solid #2a2a30;
-            box-sizing: border-box;
-        }
-
-        .mobile-sidebar-header h2 {
-            margin: 0;
-            font-size: 1.1rem;
-            color: #c8a355;
-        }
-
-        .mobile-close {
-            width: 40px;
-            height: 40px;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            padding: 0;
-
-            background: transparent;
-            border: 0;
-
-            color: #c8a355;
-            font-size: 24px;
-
-            cursor: pointer;
-            touch-action: manipulation;
-        }
-
-        .mobile-sidebar .sidebar-content {
-            height: auto;
-            padding: 20px;
-        }
-    }
-
+    :global(html) { background: #0b0b0e; }
+    :global(body) { margin: 0; }
+    :global(*) { box-sizing: border-box; }
+    .landing-page { min-height: 100vh; min-height: 100dvh; background: #0b0b0e; color: #e9e5dd; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; }
+    .site-shell { max-width: 1440px; margin: auto; }
+    .site-header { position: relative; z-index: 3; min-height: 94px; padding: 20px clamp(20px, 6vw, 86px); display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid #ffffff0d; }
+    .header-navigation { display: flex; gap: clamp(15px, 2vw, 34px); align-items: center; margin-left: auto; }
+    .header-navigation a { color: #c8c1bd; font-size: .85rem; text-decoration: none; white-space: nowrap; }
+    .header-navigation a:hover { color: #d4b77d; }
+    .brand-link { display: flex; align-items: center; flex: none; }
+    .brand-logo { display: block; max-width: 166px; width: auto; height: auto; max-height: 57px; object-fit: contain; }
+    .header-actions { display: flex; align-items: center; gap: 23px; }
+    .language-wrap select { border: 1px solid #46424b; border-radius: 7px; padding: 8px; background: #1d1c22; color: #dbc28c; font: inherit; font-size: .76rem; cursor: pointer; }
+    .header-join, .footer-links a { color: #e1dcd4; text-decoration: none; font-size: .86rem; }
+    .footer-links a:hover { color: #d9b874; }
+    .header-join { border: 1px solid #806947; background: #27221b; padding: 11px 16px; border-radius: 7px; color: #e2c489; }
+    .header-join:hover { background: #373022; }
+    .account-loading, .cta-loading { opacity: .68; cursor: default; }
+    .account-link { display: inline-flex; align-items: center; gap: 10px; min-width: 0; max-width: 235px; }
+    .account-avatar { width: 31px; height: 31px; flex: none; display: grid; place-items: center; overflow: hidden; border: 1px solid #a78a54; border-radius: 50%; background: #343039; color: #e6c88c; font-size: .85rem; font-weight: 800; }
+    .account-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .account-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .account-status { color: #b4a48b; font-size: .56rem; font-weight: 800; letter-spacing: .085em; }
+    .account-name { color: #e8cb93; font-size: .81rem; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-arrow { flex: none; }
+    .hero { isolation: isolate; position: relative; display: flex; justify-content: flex-start; align-items: center; padding: 94px clamp(20px,6vw,86px) 106px; min-height: 670px; border-bottom: 1px solid #343039; background: radial-gradient(ellipse 52% 74% at 83% 46%, #413c30 0%, #25272a 45%, #0b0e12 85%), linear-gradient(110deg,#101116,#0b0b0e); overflow: hidden; text-align: left; }
+    .hero::before { content: ''; position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg,#0b0d12 0%,#0b0d12f5 31%,#0b0d1270 64%,#0b0d1240 100%), repeating-radial-gradient(ellipse at 80% 50%, transparent 0px,transparent 31px,#cfb37615 32px, transparent 33px,transparent 57px); }
+    .hero::after { content: ''; position: absolute; z-index: -1; bottom: -140px; left: -12%; width: 124%; height: 340px; background: radial-gradient(ellipse at center, #161516 5%, #08080b 68%); border-radius: 50% 50% 0 0; box-shadow: 0 -25px 95px #d1b4780b; }
+    .hero-halo { position: absolute; z-index: -1; width: min(580px, 95vw); aspect-ratio: 1; border: 1px solid #c9a6651b; border-radius: 50%; top: 6%; right: 9%; box-shadow: 0 0 0 60px #c9a66506, 0 0 0 125px #c9a66504; }
+    .hero-lines span { position: absolute; width: 1px; height: 140px; background: linear-gradient(transparent,#c6aa6836,transparent); transform: rotate(40deg); }
+    .hero-lines span:nth-child(1) { left: 12%; top: 15%; } .hero-lines span:nth-child(2) { right: 14%; top: 20%; } .hero-lines span:nth-child(3) { left: 23%; bottom: 18%; } .hero-lines span:nth-child(4) { right: 23%; bottom: 15%; }
+    .hero-content { position: relative; z-index: 1; width: 100%; max-width: 620px; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 9px; padding: 9px 14px; border: 1px solid #a388573d; border-radius: 999px; background: #231f1bcc; color: #ddc394; font-size: .77rem; letter-spacing: .02em; }
+    .badge-dot { width: 6px; height: 6px; background: #c8a355; border-radius: 50%; box-shadow: 0 0 10px #d1ad6c; }
+    .eyebrow { display: flex; justify-content: flex-start; align-items: center; gap: 13px; margin: 35px 0 17px; color: #b69a68; font-size: .73rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
+    .eyebrow-line { display: inline-block; width: 28px; height: 1px; background: #a28657; }
+    h1, h2, h3, p { margin-top: 0; }
+    .hero h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -.06em; font-size: clamp(3.2rem, 6.2vw, 6rem); line-height: 1.09; margin: 0 0 15px; color: #f1e8d9; text-wrap: balance; }
+    .hero h1 em { font-weight: 400; color: #d3b476; }
+    .hero-motto { display: block; width: fit-content; max-width: 100%; margin: 24px 0 27px; padding: 13px 21px 14px; border-left: 3px solid #c8a355; background: linear-gradient(90deg, #c8a35512, transparent); }
+    .motto-label { display: flex; align-items: center; gap: 7px; color: #c8a355; font-size: .66rem; letter-spacing: .2em; font-weight: 750; }
+    .motto-diamond { font-size: .8rem; }
+    .hero-slogan { color: #edcf96; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(1.26rem, 2.1vw, 1.7rem); letter-spacing: .01em; line-height: 1.3; margin: 9px 0 0; text-wrap: balance; }
+    .hero-intro { font-size: clamp(1rem, 1.5vw, 1.12rem); line-height: 1.7; color: #dbd5cb; max-width: 600px; margin: 0 0 10px; }
+    .hero-support { font-size: .94rem; line-height: 1.7; max-width: 600px; margin: 0; color: #a9a4a6; }
+    .hero-actions { display: flex; align-items: center; justify-content: flex-start; gap: 13px; flex-wrap: wrap; margin-top: 32px; }
+    .primary-button, .secondary-button { display: inline-flex; align-items: center; justify-content: center; min-height: 47px; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: .87rem; font-weight: 700; transition: background .18s, border-color .18s, transform .18s; }
+    .primary-button { color: #141212; background: #c8a355; border: 1px solid #d6b77b; }
+    .primary-button:hover { background: #e1c48a; transform: translateY(-1px); }
+    .secondary-button { color: #e0d0b5; background: #242124a8; border: 1px solid #6b5a43; }
+    .secondary-button:hover { background: #373028; }
+    .hero-bottom { position: absolute; display: flex; align-items: center; gap: 13px; color: #9b8051; bottom: 33px; left: 50%; transform: translateX(-50%); font-size: .75rem; }
+    .hero-bottom-line { width: 90px; height: 1px; background: linear-gradient(90deg,transparent,#9b8051,transparent); }
+    .status-card { margin: 54px clamp(20px,6vw,86px) 70px; padding: 27px 30px; display: flex; gap: 23px; align-items: center; background: linear-gradient(115deg,#201e20,#18181c); border: 1px solid #484037; border-radius: 13px; }
+    .status-symbol { flex: none; display: grid; place-items: center; width: 64px; height: 64px; color: #dbc083; background: #312b23; border: 1px solid #68583e; border-radius: 12px; font-size: 2rem; }
+    .section-label { color: #bca06e; display: block; text-transform: uppercase; letter-spacing: .14em; font-size: .69rem; font-weight: 700; }
+    .status-copy { flex: 1; }
+    .status-copy h2 { margin: 7px 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: clamp(1.4rem,2.5vw,1.9rem); }
+    .status-copy p { margin: 0; color: #afa9a8; line-height: 1.65; font-size: .86rem; }
+    .status-pill { flex: none; white-space: nowrap; border: 1px solid #715d40; background: #342b20; color: #e1c891; font-size: .75rem; padding: 9px 12px; border-radius: 999px; }
+    .roadmap { padding: 20px clamp(20px,6vw,86px) 86px; }
+    .section-heading { max-width: 650px; margin-bottom: 28px; }
+    .section-heading h2 { margin: 10px 0 0; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(2rem,3.2vw,2.8rem); font-weight: 500; letter-spacing: -.035em; }
+    .feature-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+    .feature-card { min-width: 0; background: linear-gradient(145deg,#1c1b21,#151519); border: 1px solid #34323a; border-radius: 12px; padding: 28px; }
+    .feature-symbol { color: #c8a355; width: 47px; height: 47px; margin-bottom: 26px; }
+    .feature-symbol svg { width: 100%; height: 100%; }
+    .feature-tag { color: #b29765; font-size: .7rem; letter-spacing: .12em; font-weight: 700; }
+    .feature-card h3 { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 1.45rem; color: #efe9df; margin: 10px 0 12px; }
+    .feature-card p { font-size: .88rem; line-height: 1.7; color: #aaa4a7; margin: 0; }
+    .roadmap-note { color: #8d898c; margin: 16px 0 0; font-size: .76rem; }
+    .community { position: relative; isolation: isolate; text-align: center; margin: 0 clamp(20px,6vw,86px) 72px; padding: 60px 25px; overflow: hidden; border-radius: 14px; border: 1px solid #65533b; background: radial-gradient(ellipse at 50% -20%, #3d3124, #242125 51%, #17171b 95%); }
+    .community-decoration { position: absolute; z-index: -1; top: -108px; left: 50%; transform: translateX(-50%); color: #c8a3550a; font-size: 340px; line-height: 1; }
+    .community h2 { font-size: clamp(2rem,3.8vw,3.3rem); letter-spacing: -.045em; font-family: Georgia,'Times New Roman',serif; font-weight: 500; margin: 13px 0 14px; }
+    .community p { max-width: 560px; margin: 0 auto 25px; color: #c0b5aa; line-height: 1.7; font-size: .94rem; }
+    .site-footer { padding: 0 clamp(20px,6vw,86px) 28px; }
+    .footer-top { display: flex; justify-content: space-between; gap: 30px; border-bottom: 1px solid #33323a; padding: 0 0 32px; }
+    .footer-logo img { display: block; width: auto; max-width: 145px; height: auto; max-height: 52px; }
+    .footer-social { max-width: 360px; text-align: right; }
+    .footer-social p { font-size: .79rem; color: #a6a0a5; margin: 8px 0 0; line-height: 1.55; }
+    .social-links { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+    .social-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid #635840; border-radius: 10px; background: #201e20e6; color: #e5c995; text-decoration: none; transition: border-color .15s, background .15s, transform .15s; }
+    .social-icon svg { width: 19px; height: 19px; }
+    a.social-icon:hover { color: #fff1cd; border-color: #c8a355; background: #372b21; transform: translateY(-2px); }
+    .social-pending { opacity: .43; cursor: not-allowed; }
+    .hero-socials { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; margin-top: 28px; }
+    .hero-socials > span { font-size: .7rem; letter-spacing: .12em; font-weight: 700; color: #b99d6b; }
+    .footer-social-links { justify-content: flex-end; margin-top: 13px; }
+    .hero-art { position: absolute; z-index: -1; inset: 0 0 0 41%; pointer-events: none; overflow: hidden; }
+    .art-halo { position: absolute; width: min(520px, 68vw); aspect-ratio: 1; right: 8%; top: 10%; border: 2px solid #cba55945; border-radius: 50%; box-shadow: 0 0 38px #d1ad6c32, 0 0 0 21px #d1ad6c07, 0 0 0 70px #d1ad6c06, inset 0 0 64px #ad8c4820; background: radial-gradient(circle at 50% 46%,#f5ce7840,transparent 58%); }
+    .art-halo::before, .art-halo::after { content: ''; position: absolute; inset: 13%; border: 1px solid #d8b87645; border-radius: 50%; }
+    .art-halo::after { inset: 26%; border-style: dashed; transform: rotate(21deg); }
+    .art-ruin { position: absolute; bottom: 18%; width: 84px; height: 235px; border: 8px solid #1a1a1d; border-bottom: 0; border-radius: 43px 43px 0 0; box-shadow: -17px 9px 0 #262329, 18px 15px 0 #12151a, 0 0 42px #c5a66d1a; }
+    .art-ruin::after { content: ''; position: absolute; inset: 32px 15px 0; border: 5px solid #121317; border-bottom: 0; border-radius: 30px 30px 0 0; }
+    .ruin-left { left: 17%; transform: rotate(-5deg); }
+    .ruin-right { right: 10%; height: 306px; width: 106px; transform: rotate(7deg); }
+    .art-ridge { position: absolute; left: -15%; width: 135%; bottom: -18%; height: 52%; border-radius: 48% 56% 0 0; }
+    .ridge-back { bottom: -10%; background: #262529; transform: rotate(-9deg); box-shadow: 0 -13px 42px #d0b16b19; }
+    .ridge-front { bottom: -27%; background: #111419; transform: rotate(8deg); box-shadow: 0 -12px 36px #0a0d12; }
+    .art-compass { position: absolute; z-index: 1; right: 31%; top: 37%; display: grid; place-items: center; width: 146px; height: 146px; border: 1px solid #f6d99670; border-radius: 50%; background: #b9975426; color: #ebcd88; box-shadow: 0 0 65px #eac47a4a, inset 0 0 30px #dbb87a44; }
+    .art-compass span { font-family: Georgia,serif; font-size: 108px; line-height: 1; margin-top: -5px; }
+    .footer-bottom { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding-top: 25px; color: #89838a; font-size: .78rem; }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: .78rem; }
+    .sr-only { position: absolute; height: 1px; width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    a:focus-visible, select:focus-visible { outline: 2px solid #d6b77b; outline-offset: 4px; }
+    @media (max-width: 770px) {
+        .site-header { min-height: 78px; padding: 16px 20px; }
+        .brand-logo { max-width: 135px; max-height: 48px; }
+        .header-actions { gap: 12px; }
+        .header-join { padding: 9px 11px; font-size: .78rem; }
+        .header-navigation { display: none; }
+        .hero-art { left: 45%; opacity: .72; }
+        .hero { min-height: 600px; padding: 85px 20px 84px; }
+        .feature-grid { grid-template-columns: 1fr; }
+        .feature-card { padding: 25px; }
+        .feature-symbol { margin-bottom: 15px; }
+        .status-card { margin-top: 35px; }
+    }
+    @media (max-width: 500px) {
+        .site-header { gap: 9px; }
+        .brand-logo { max-width: 103px; }
+        .header-actions { gap: 9px; }
+        .header-join { display: inline-flex; padding: 9px 10px; font-size: .72rem; text-align: center; }
+        .account-link { gap: 6px; max-width: min(43vw, 165px); }
+        .account-status { display: none; }
+        .account-avatar { width: 26px; height: 26px; font-size: .72rem; }
+        .account-name { max-width: 88px; font-size: .72rem; }
+        .account-arrow { display: none; }
+        .language-wrap select { padding: 7px 5px; }
+        .hero { min-height: 0; align-items: flex-start; padding: 26px 19px 75px; }
+        .hero-art { inset: 0; opacity: .26; }
+        .hero-halo { right: -40%; top: 13%; }
+        .hero::before { background: linear-gradient(90deg,#0b0d12eb,#0b0d12c9); }
+        .hero-socials { align-items: flex-start; flex-direction: column; gap: 10px; }
+        .footer-social-links { justify-content: flex-start; }
+        .hero h1 { font-size: clamp(2.72rem,12vw,3.8rem); }
+        .hero-badge { font-size: .68rem; }
+        .hero-intro { font-size: .94rem; }
+        .hero-support { font-size: .85rem; }
+        .status-card { padding: 20px; display: block; }
+        .status-symbol { width: 48px; height: 48px; margin-bottom: 14px; font-size: 1.5rem; }
+        .status-pill { display: inline-block; margin-top: 17px; }
+        .roadmap { padding-bottom: 50px; }
+        .community { margin-bottom: 45px; padding: 46px 19px; }
+        .footer-top, .footer-bottom { flex-direction: column; align-items: flex-start; }
+        .footer-social { text-align: left; }
+    }
+    :global(html) { scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) { .primary-button, .secondary-button { transition: none; } }
 </style>

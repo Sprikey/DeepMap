@@ -1,6 +1,6 @@
 <script>
     import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
+    import { goto, afterNavigate } from '$app/navigation';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
     import { authTranslations } from '$lib/i18n/auth.js';
@@ -21,8 +21,40 @@
     let errorKey = $state('');
     let successKey = $state('');
 
-    let returnTo = $state('/');
-    let hasReturnTarget = $state(false);
+    let returnTo = $state('/profile');
+    let previousPage = $state(null);
+    let referrerPage = $state(null);
+    // 'next' define o destino depois do login, nunca o destino do botão Voltar.
+    let backDestination = $derived(previousPage ?? referrerPage ?? '/');
+
+    // Guarda apenas uma página anterior do próprio DeepMap, nunca um site externo.
+    function safePreviousPage(raw, currentPath) {
+        if (!raw) return null;
+        try {
+            const url = new URL(raw, window.location.href);
+            if (
+                url.origin !== window.location.origin ||
+                url.pathname === currentPath ||
+                // Nunca regressar a uma conta privada pelo botão Voltar do login.
+                url.pathname.replace(/\/+$/, '') === '/profile' ||
+                url.pathname === '/reset-password' ||
+                url.pathname.startsWith('/auth/')
+            ) return null;
+            return url.pathname + url.search + url.hash;
+        } catch {
+            return null;
+        }
+    }
+
+    afterNavigate(({ from }) => {
+        const previous = safePreviousPage(from?.url?.href, '/login');
+        if (previous) previousPage = previous;
+    });
+
+    function goBack(event) {
+        event.preventDefault();
+        void goto(backDestination, { replaceState: true });
+    }
 
     function changeLanguage(event) {
         currentLanguage = setSiteLanguage(event.currentTarget.value);
@@ -35,7 +67,7 @@
             raw.startsWith('//') ||
             raw.includes('\\') ||
             /[\u0000-\u001f\u007f]/.test(raw)
-        ) return '/';
+        ) return '/profile';
 
         try {
             const target = new URL(raw, window.location.origin);
@@ -44,11 +76,11 @@
                 target.pathname === '/login' ||
                 target.pathname === '/reset-password' ||
                 target.pathname.startsWith('/auth/')
-            ) return '/';
+            ) return '/profile';
 
             return target.pathname + target.search + target.hash;
         } catch {
-            return '/';
+            return '/profile';
         }
     }
 
@@ -64,11 +96,11 @@
 
     onMount(() => {
         currentLanguage = getSiteLanguage();
+        referrerPage = safePreviousPage(document.referrer, '/login');
         const supabase = getSupabaseBrowserClient();
         const params = new URLSearchParams(window.location.search);
         let active = true;
 
-        hasReturnTarget = params.has('next');
         returnTo = safeReturnPath(params.get('next'));
 
         if (params.get('email_confirmed') === '1') successKey = 'email_confirmed';
@@ -80,14 +112,18 @@
             if (!active) return;
 
             userEmail = error ? null : (data.user?.email ?? null);
-            checkingSession = false;
-
-            if (
-                !error && data.user && hasReturnTarget &&
+            const shouldRedirect = !error && data.user &&
                 !params.has('email_confirmed') &&
                 !params.has('password_reset') &&
-                !params.has('auth_error')
-            ) await goto(returnTo, { replaceState: true });
+                !params.has('auth_error');
+            if (shouldRedirect) {
+                try {
+                    await goto(returnTo, { replaceState: true });
+                } catch {
+                    // Se a navegação falhar, manter o acesso manual ao perfil.
+                }
+            }
+            if (active) checkingSession = false;
         }
 
         checkSession();
@@ -123,9 +159,9 @@
         const { data, error } = await supabase.auth.signInWithPassword({
             email: email.trim(), password
         });
-        working = false;
 
         if (error) {
+            working = false;
             errorKey = authErrorKey(error, 'sign_in_error');
             return;
         }
@@ -133,7 +169,12 @@
         userEmail = data.user?.email ?? null;
         password = '';
         showPassword = false;
-        await goto(returnTo, { replaceState: true });
+        // Manter o formulário em estado de processamento até sair da rota.
+        try {
+            await goto(returnTo, { replaceState: true });
+        } catch {
+            working = false; // Aparece o acesso manual ao perfil se falhar.
+        }
     }
 
     async function registerWithEmail(event) {
@@ -254,9 +295,12 @@
 
         {#if checkingSession}
             <p>{texts.checking_session}</p>
-        {:else if userEmail}
+        {:else if userEmail && !working}
             <p>{texts.signed_in_as}</p>
             <div class="user-email">{userEmail}</div>
+            <a href="/profile" class="submit-button profile-link">
+                {currentLanguage === 'pt' ? 'Ir para o perfil' : 'Go to profile'}
+            </a>
             <button type="button" class="logout-button" onclick={logout} disabled={working}>
                 {working ? texts.signing_out : texts.sign_out}
             </button>
@@ -369,8 +413,8 @@
         {#if successKey}
             <p class="success-message" role="status">{texts[successKey] ?? ''}</p>
         {/if}
-        <a href={returnTo} class="back-link">
-            {hasReturnTarget ? texts.back_previous : texts.back_map}
+        <a href={backDestination} class="back-link" onclick={goBack}>
+            {currentLanguage === 'pt' ? '← Voltar' : '← Back'}
         </a>
     </div>
 </main>
@@ -540,6 +584,13 @@
     .password-toggle:hover:not(:disabled) { color: #c8a355; }
     .password-toggle:focus-visible { outline: 2px solid #c8a355; outline-offset: 1px; }
     .password-toggle svg { width: 21px; height: 21px; }
+
+    .profile-link {
+        display: block;
+        margin-top: 16px;
+        text-align: center;
+        text-decoration: none;
+    }
 
     .submit-button {
         margin-top: 15px;

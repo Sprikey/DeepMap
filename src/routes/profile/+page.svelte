@@ -1,6 +1,6 @@
 <script>
     import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
+    import { goto, afterNavigate } from '$app/navigation';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
     import { profileTranslations } from '$lib/i18n/profile.js';
@@ -24,12 +24,17 @@
     const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
     const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+    let previousPage = $state(null);
+    let referrerPage = $state(null);
+    let backDestination = $derived(previousPage ?? referrerPage ?? '/');
+
     let currentLanguage = $state('en');
     let t = $derived(profileTranslations[currentLanguage] ?? profileTranslations.en);
 
     let user = $state(null);
     let checkingSession = $state(true);
     let working = $state(false);
+    let signingOut = $state(false); // Manter o perfil intacto até a navegação terminar.
     let errorMessage = $state('');
     let successMessage = $state('');
     let avatarFailed = $state(false);
@@ -127,18 +132,48 @@
         (pendingAvatarChoice !== 'custom' || !!pendingAvatarFile || !!customAvatarUrl)
     );
 
+    // Guarda apenas uma página anterior do próprio DeepMap, nunca um site externo.
+    function safePreviousPage(raw, currentPath) {
+        if (!raw) return null;
+        try {
+            const url = new URL(raw, window.location.href);
+            if (
+                url.origin !== window.location.origin ||
+                url.pathname === currentPath ||
+                url.pathname === '/login' && currentPath === '/profile' ||
+                url.pathname === '/reset-password' ||
+                url.pathname.startsWith('/auth/')
+            ) return null;
+            return url.pathname + url.search + url.hash;
+        } catch {
+            return null;
+        }
+    }
+
+    // afterNavigate recebe a origem nas navegações internas do SvelteKit.
+    afterNavigate(({ from }) => {
+        const previous = safePreviousPage(from?.url?.href, '/profile');
+        if (previous) previousPage = previous;
+    });
+
+    function goBack(event) {
+        event.preventDefault();
+        void goto(backDestination, { replaceState: true });
+    }
+
     function changeLanguage(event) {
         currentLanguage = setSiteLanguage(event.currentTarget.value);
     }
 
     onMount(() => {
         currentLanguage = setSiteLanguage(getSiteLanguage());
+        referrerPage = safePreviousPage(document.referrer, '/profile');
         const supabase = getSupabaseBrowserClient();
         let active = true;
 
         async function checkSession() {
             const { data, error } = await supabase.auth.getUser();
-            if (!active) return;
+            if (!active || signingOut) return;
 
             if (error && error.name !== 'AuthSessionMissingError') {
                 errorMessage = t.session_error;
@@ -157,7 +192,7 @@
 
         const { data: { subscription } } =
             supabase.auth.onAuthStateChange((event, session) => {
-                if (!active || event === 'INITIAL_SESSION') return;
+                if (!active || signingOut || event === 'INITIAL_SESSION') return;
                 user = session?.user ?? null;
                 if (!user) {
                     resetUsernameState();
@@ -774,13 +809,29 @@
         working = true;
         errorMessage = '';
 
-        const { error } = await getSupabaseBrowserClient().auth.signOut();
+        // Captura a origem antes do signOut alterar o estado da sessão.
+        // Só aceita páginas internas validadas por safePreviousPage; acesso direto cai em '/'.
+        const logoutDestination = backDestination;
+        signingOut = true;
+        let error;
+        try {
+            ({ error } = await getSupabaseBrowserClient().auth.signOut());
+        } catch (caught) {
+            error = caught;
+        }
         if (error) {
-            errorMessage = error.message;
+            signingOut = false;
+            errorMessage = error.message || t.session_error;
             working = false;
             return;
         }
-        await goto('/login');
+        // SIGNED_OUT não mostra o estado de visitante neste intervalo.
+        // Substituir o perfil no histórico e preservar o destino de origem.
+        try {
+            await goto(logoutDestination, { replaceState: true });
+        } catch {
+            window.location.assign(logoutDestination);
+        }
     }
 </script>
 
@@ -794,10 +845,12 @@
 
     <div class="profile-container">
 
-        <!-- VOLTAR AO MAPA -->
+        <!-- Voltar à página interna anterior ou, em acesso direto, à homepage. -->
 
         <div class="top-navigation">
-            <a href="/" class="back-link">{t.back_map}</a>
+            <a href={backDestination} class="back-link" onclick={goBack}>
+                {currentLanguage === 'pt' ? '← Voltar' : '← Back'}
+            </a>
             <select
                 class="profile-language"
                 value={currentLanguage}
@@ -917,8 +970,9 @@
 
             {#if checkingSession}
 
-                <div class="status-message">
-                    {t.loading}
+                <div class="status-message" role="status" aria-live="polite">
+                    <span class="profile-spinner" aria-hidden="true"></span>
+                    <span class="visually-hidden">{t.loading}</span>
                 </div>
 
             {:else if !user}
@@ -1535,8 +1589,24 @@
     }
 
     .status-message {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         color: #a0a0aa;
-        padding: 40px 0;
+        padding: 22px 0;
+    }
+    .profile-spinner {
+        display: block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(200, 163, 85, .20);
+        border-top-color: #c8a355;
+        border-radius: 50%;
+        animation: profile-spin .7s linear infinite;
+    }
+    @keyframes profile-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+        .profile-spinner { animation: none; }
     }
 
     /* ==========================================
