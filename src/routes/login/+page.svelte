@@ -18,8 +18,23 @@
     let confirmPassword = $state('');
     let showPassword = $state(false);
     let showConfirmPassword = $state(false);
+    let acceptedTerms = $state(false);
     let errorKey = $state('');
     let successKey = $state('');
+
+    let legalTexts = $derived(currentLanguage === 'pt' ? {
+        agree_prefix: 'Concordo com os',
+        terms: 'Termos de Utilização',
+        and_acknowledge: 'e declaro que tomei conhecimento da',
+        privacy: 'Política de Privacidade',
+        terms_required: 'Tens de aceitar os Termos de Utilização e tomar conhecimento da Política de Privacidade para criar a conta.'
+    } : {
+        agree_prefix: 'I agree to the',
+        terms: 'Terms of Use',
+        and_acknowledge: 'and acknowledge the',
+        privacy: 'Privacy Policy',
+        terms_required: 'You must agree to the Terms of Use and acknowledge the Privacy Policy to create an account.'
+    });
 
     let returnTo = $state('/profile');
     let previousPage = $state(null);
@@ -146,6 +161,7 @@
         showConfirmPassword = false;
         errorKey = '';
         successKey = '';
+        if (mode !== 'register') acceptedTerms = false;
     }
 
     async function loginWithEmail(event) {
@@ -183,6 +199,11 @@
         errorKey = '';
         successKey = '';
 
+        if (!acceptedTerms) {
+            errorKey = 'terms_required';
+            return;
+        }
+
         if (password !== confirmPassword) {
             errorKey = 'password_mismatch';
             return;
@@ -212,6 +233,7 @@
         confirmPassword = '';
         showPassword = false;
         showConfirmPassword = false;
+        acceptedTerms = false;
     }
 
     async function recoverPassword(event) {
@@ -282,12 +304,18 @@
 
 <main class="auth-page">
     <div class="auth-card">
-        <div class="language-row">
-            <label for="auth-language" class="language-label">{texts.language}</label>
-            <select id="auth-language" value={currentLanguage} onchange={changeLanguage} aria-label={texts.language}>
-                <option value="en">EN</option>
-                <option value="pt">PT</option>
-            </select>
+        <div class="auth-topbar">
+            <button type="button" class="back-link" onclick={goBack}>
+                {currentLanguage === 'pt' ? '← Voltar' : '← Back'}
+            </button>
+
+            <div class="language-row">
+                <label for="auth-language" class="language-label">{texts.language}</label>
+                <select id="auth-language" value={currentLanguage} onchange={changeLanguage} aria-label={texts.language}>
+                    <option value="en">EN</option>
+                    <option value="pt">PT</option>
+                </select>
+            </div>
         </div>
 
         <img src="/brand/logo.png" alt="DeepMap" class="auth-logo" />
@@ -390,7 +418,23 @@
                     </div>
                 {/if}
 
-                <button type="submit" class="submit-button" disabled={working}>
+                {#if authMode === 'register'}
+                    <label class="terms-consent">
+                        <input type="checkbox" bind:checked={acceptedTerms} disabled={working} />
+                        <span>
+                            {legalTexts.agree_prefix}
+                            <a href="/terms" target="_blank" rel="noopener noreferrer">{legalTexts.terms}</a>
+                            {legalTexts.and_acknowledge}
+                            <a href="/privacy" target="_blank" rel="noopener noreferrer">{legalTexts.privacy}</a>.
+                        </span>
+                    </label>
+                {/if}
+
+                <button
+                    type="submit"
+                    class="submit-button"
+                    disabled={working || (authMode === 'register' && !acceptedTerms)}
+                >
                     {working ? texts.processing : authMode === 'login' ? texts.sign_in : texts.create_account}
                 </button>
             </form>
@@ -402,20 +446,25 @@
         {/if}
 
         {#if !checkingSession && !userEmail && authMode !== 'recover'}
-            <a href="/privacy" class="privacy-link">
-                {currentLanguage === 'pt' ? 'Política de Privacidade' : 'Privacy Policy'}
-            </a>
+            <div class="legal-links">
+                <a href="/privacy">
+                    {currentLanguage === 'pt' ? 'Política de Privacidade' : 'Privacy Policy'}
+                </a>
+                <span aria-hidden="true">·</span>
+                <a href="/terms">
+                    {currentLanguage === 'pt' ? 'Termos de Utilização' : 'Terms of Use'}
+                </a>
+            </div>
         {/if}
 
         {#if errorKey}
-            <p class="error-message" role="alert">{texts[errorKey] ?? texts.auth_error}</p>
+            <p class="error-message" role="alert">
+                {errorKey === 'terms_required' ? legalTexts.terms_required : (texts[errorKey] ?? texts.auth_error)}
+            </p>
         {/if}
         {#if successKey}
             <p class="success-message" role="status">{texts[successKey] ?? ''}</p>
         {/if}
-        <a href={backDestination} class="back-link" onclick={goBack}>
-            {currentLanguage === 'pt' ? '← Voltar' : '← Back'}
-        </a>
     </div>
 </main>
 
@@ -632,28 +681,57 @@
         color: #9ee0ac;
     }
 
-    .privacy-link {
-        display: inline-block;
+    .legal-links {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 7px;
         margin-top: 19px;
-        color: #c8a355;
-        text-decoration: underline;
-        text-underline-offset: 3px;
         font-size: 0.83rem;
     }
 
-    .privacy-link:hover { color: #e5c894; }
-    .privacy-link:focus-visible { outline: 2px solid #c8a355; outline-offset: 4px; }
-
-    .back-link {
-        display: inline-block;
-        margin-top: 25px;
+    .legal-links a {
         color: #c8a355;
-        text-decoration: none;
-        font-size: 0.85rem;
+        text-decoration: underline;
+        text-underline-offset: 3px;
     }
 
-    .back-link:hover {
-        text-decoration: underline;
+    .legal-links a:hover { color: #e5c894; }
+    .legal-links a:focus-visible { outline: 2px solid #c8a355; outline-offset: 4px; }
+    .legal-links span { color: #666670; }
+
+    .auth-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .back-link {
+        width: auto;
+        min-height: 38px;
+        margin: 0;
+        padding: 8px 12px;
+        border: 1px solid rgba(200, 163, 85, .48);
+        border-radius: 8px;
+        background: rgba(200, 163, 85, .07);
+        color: #d9bd84;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+
+    .back-link:hover:not(:disabled),
+    .back-link:focus-visible {
+        border-color: #c8a355;
+        background: rgba(200, 163, 85, .14);
+        color: #f0d99f;
+    }
+
+    .back-link:focus-visible {
+        outline: 2px solid rgba(200, 163, 85, .35);
+        outline-offset: 2px;
     }
 
     /* Idioma disponível também fora do mapa. */
@@ -662,7 +740,7 @@
         align-items: center;
         justify-content: flex-end;
         gap: 8px;
-        margin-bottom: 16px;
+        margin: 0;
     }
     .language-label {
         margin: 0;
@@ -678,5 +756,45 @@
         font: inherit;
         font-size: 0.78rem;
         cursor: pointer;
+    }
+
+    .terms-consent {
+        display: grid;
+        grid-template-columns: 20px minmax(0, 1fr);
+        align-items: start;
+        gap: 10px;
+        margin-top: 10px;
+        color: #aeb0b8;
+        font-size: 0.78rem;
+        line-height: 1.5;
+        cursor: pointer;
+    }
+
+    .terms-consent input {
+        width: 17px;
+        height: 17px;
+        margin: 2px 0 0;
+        padding: 0;
+        accent-color: #c8a355;
+        cursor: pointer;
+    }
+
+    .terms-consent a {
+        color: #d7b573;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+
+    .terms-consent a:hover { color: #eed18a; }
+
+    @media (max-width: 420px) {
+        .auth-card { padding: 24px 18px; }
+        .auth-topbar { align-items: flex-start; }
+        .language-label { display: none; }
+    }
+
+    /* Registo bloqueado sem aceitar os termos: não mostrar cursor de carregamento. */
+    .submit-button:disabled {
+        cursor: not-allowed;
     }
 </style>

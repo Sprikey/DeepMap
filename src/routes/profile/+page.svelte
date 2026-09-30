@@ -129,6 +129,7 @@
 
     // Modo único de edição do perfil.
     let profileEditMode = $state(false);
+    let settingsMenuOpen = $state(false);
 
     let profileUi = $derived(currentLanguage === 'pt' ? {
         editProfile: 'Editar perfil',
@@ -260,6 +261,7 @@
 
     function beginProfileEdit() {
         if (working || !user || usernameLoading || usernameLoadError) return;
+        settingsMenuOpen = false;
         profileEditMode = true;
         editingName = true;
         editingBio = true;
@@ -1049,7 +1051,7 @@
                 {#if !checkingSession && user}
                     <!-- Definições privadas alinhadas com o logo, fora do banner. -->
                     <div class="profile-toolbar">
-                    <details class="profile-settings">
+                    <details class="profile-settings" bind:open={settingsMenuOpen}>
                         <summary class="settings-trigger" title={t.settings_menu}>
                             <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
