@@ -127,6 +127,49 @@
     let avatarModalError = $state('');
     let fileSelectionVersion = 0;
 
+    // Modo único de edição do perfil.
+    let profileEditMode = $state(false);
+
+    let profileUi = $derived(currentLanguage === 'pt' ? {
+        editProfile: 'Editar perfil',
+        saveChanges: 'Guardar alterações',
+        cancel: 'Cancelar',
+        overview: 'Visão geral',
+        about: 'Sobre',
+        memberSince: 'Membro desde',
+        permanentLink: 'Link do perfil',
+        worldFaction: 'Facção DeepMap World',
+        comingSoon: 'Indisponível por agora',
+        banner: 'Banner do perfil',
+        bannerSoon: 'Personalização do banner em breve',
+        markers: 'Marcadores',
+        followers: 'Seguidores',
+        following: 'A seguir',
+        badges: 'Badges & Títulos',
+        activity: 'Atividade recente',
+        editHint: 'Edita os teus dados e guarda tudo no fim.',
+        saved: 'Perfil atualizado.'
+    } : {
+        editProfile: 'Edit profile',
+        saveChanges: 'Save changes',
+        cancel: 'Cancel',
+        overview: 'Overview',
+        about: 'About',
+        memberSince: 'Member since',
+        permanentLink: 'Profile link',
+        worldFaction: 'DeepMap World faction',
+        comingSoon: 'Unavailable for now',
+        banner: 'Profile banner',
+        bannerSoon: 'Banner customisation coming soon',
+        markers: 'Markers',
+        followers: 'Followers',
+        following: 'Following',
+        badges: 'Badges & Titles',
+        activity: 'Recent activity',
+        editHint: 'Edit your details and save everything at the end.',
+        saved: 'Profile updated.'
+    });
+
     let canSaveAvatar = $derived(
         !!pendingAvatarChoice &&
         (pendingAvatarChoice !== 'custom' || !!pendingAvatarFile || !!customAvatarUrl)
@@ -214,6 +257,139 @@
         };
     });
 
+
+    function beginProfileEdit() {
+        if (working || !user || usernameLoading || usernameLoadError) return;
+        profileEditMode = true;
+        editingName = true;
+        editingBio = true;
+        editingUsername = true;
+        nameInput = displayName;
+        bioInput = bio;
+        usernameInput = username ?? '';
+        usernameError = '';
+        usernameCheckStatus = 'idle';
+        errorMessage = '';
+        successMessage = '';
+    }
+
+    function cancelProfileEdit() {
+        if (working) return;
+        profileEditMode = false;
+        editingName = false;
+        editingBio = false;
+        editingUsername = false;
+        nameInput = '';
+        bioInput = '';
+        usernameInput = '';
+        usernameError = '';
+        usernameCheckStatus = 'idle';
+        usernameCooldownNotice = false;
+        stopUsernameCheck();
+    }
+
+    async function saveProfileEdits(event) {
+        event?.preventDefault();
+        if (working || !user || usernameLoading || usernameLoadError) return;
+
+        errorMessage = '';
+        successMessage = '';
+        usernameError = '';
+
+        const cleanName = nameInput.trim().replace(/\s+/g, ' ');
+        const cleanBio = bioInput.trim();
+        const candidate = usernameInput.trim().toLowerCase();
+        const usernameChanged = candidate !== (username ?? '');
+
+        if (cleanName.length < 2 || cleanName.length > MAX_DISPLAY_NAME) {
+            errorMessage = t.name_length_error;
+            return;
+        }
+        if (cleanBio.length > MAX_BIO_LENGTH) {
+            errorMessage = t.bio_length_error;
+            return;
+        }
+
+        if (usernameChanged) {
+            if (usernameOnCooldown) {
+                usernameError = t.username_cooldown_error;
+                usernameCooldownNotice = true;
+                return;
+            }
+            if (!USERNAME_PATTERN.test(candidate)) {
+                usernameCheckStatus = 'invalid';
+                return;
+            }
+            if (RESERVED_USERNAMES.has(candidate)) {
+                usernameCheckStatus = 'reserved';
+                return;
+            }
+            if (usernameCheckStatus !== 'available') {
+                usernameError = usernameCheckStatus === 'checking'
+                    ? t.username_checking
+                    : t.username_check_error;
+                return;
+            }
+        }
+
+        working = true;
+        const supabase = getSupabaseBrowserClient();
+
+        try {
+            const metadata = {};
+            if (cleanName !== displayName) metadata.display_name = cleanName;
+            if (cleanBio !== bio) metadata.bio = cleanBio;
+
+            if (Object.keys(metadata).length) {
+                const { data, error } = await supabase.auth.updateUser({ data: metadata });
+                if (error || !data.user) {
+                    errorMessage = error?.message || t.name_save_error;
+                    return;
+                }
+                user = data.user;
+            }
+
+            if (usernameChanged) {
+                const query = username
+                    ? supabase.from('profiles').update({ username: candidate }).eq('id', user.id)
+                    : supabase.from('profiles').insert({ id: user.id, username: candidate });
+
+                const { data, error } = await query
+                    .select('username, username_changed_at')
+                    .single();
+
+                if (error || !data) {
+                    if (error?.code === '23505') usernameCheckStatus = 'taken';
+                    else if (error?.code === '23514') usernameError = t.username_format_error;
+                    else if (error?.code === 'P0001' && error?.message?.includes('username_cooldown')) usernameError = t.username_cooldown_error;
+                    else if (error?.code === 'P0001' && error?.message?.includes('username_temporarily_reserved')) {
+                        usernameCheckStatus = 'held';
+                        usernameError = t.username_held;
+                    } else usernameError = t.username_save_error;
+                    return;
+                }
+
+                username = data.username;
+                usernameChangedAt = data.username_changed_at ?? null;
+            }
+
+            profileEditMode = false;
+            editingName = false;
+            editingBio = false;
+            editingUsername = false;
+            nameInput = '';
+            bioInput = '';
+            usernameInput = '';
+            usernameCheckStatus = 'idle';
+            stopUsernameCheck();
+            successMessage = profileUi.saved;
+        } catch (error) {
+            console.error('DeepMap profile save:', error);
+            errorMessage = t.name_save_error;
+        } finally {
+            working = false;
+        }
+    }
 
     // ==========================================
     // @USERNAME — TABELA PUBLIC.PROFILES
@@ -883,6 +1059,17 @@
                         </summary>
                         <div class="settings-menu">
                             <span class="settings-eyebrow">{t.private_label}</span>
+                            <button
+                                type="button"
+                                class="settings-edit-profile"
+                                onclick={beginProfileEdit}
+                                disabled={working || usernameLoading || !!usernameLoadError}
+                            >
+                                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+                                </svg>
+                                <span>{profileUi.editProfile}</span>
+                            </button>
                             <details class="settings-information">
                                 <summary>
                                     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1004,61 +1191,49 @@
 
             {:else}
 
-                <div class="explorer-hero">
-                    <div class="hero-topline">
-                        <span class="account-badge"><span aria-hidden="true">✦</span> {t.account_badge}</span>
-                        <div class="hero-topline-actions">
-                            {#if memberSinceYear}
-                                <span class="member-since">{t.member_since} {memberSinceYear}</span>
-                            {/if}
-
-                        </div>
+                <section class="profile-showcase">
+                    <div class="profile-banner" aria-label={profileUi.banner}>
+                        <div class="profile-banner-shade"></div>
+                        {#if profileEditMode}
+                            <button type="button" class="banner-edit-soon" disabled title={profileUi.bannerSoon}>
+                                <span aria-hidden="true">✎</span>
+                                {profileUi.bannerSoon}
+                            </button>
+                        {/if}
                     </div>
 
-                    <div class="profile-heading">
-                        <!-- A fotografia conserva a borda; o lápis fica fora do recorte circular. -->
-                        <div class="avatar-edit-wrap">
+                    <div class="profile-identity-shell">
+                        <div class="profile-avatar-column" class:profile-avatar-editing={profileEditMode}>
                             <button
                                 type="button"
-                                class="avatar avatar-trigger"
-                                onclick={openAvatarModal}
-                                aria-label={t.edit_avatar}
-                                title={t.edit_avatar}
-                                disabled={working}
+                                class="avatar profile-main-avatar"
+                                class:avatar-editable={profileEditMode}
+                                onclick={() => profileEditMode && openAvatarModal()}
+                                aria-label={profileEditMode ? t.edit_avatar : displayName}
+                                title={profileEditMode ? t.edit_avatar : displayName}
+                                disabled={working || !profileEditMode}
                             >
                                 {#if avatarUrl && !avatarFailed}
-                                    <img
-                                        src={avatarUrl}
-                                        alt=""
-                                        referrerpolicy="no-referrer"
-                                        onerror={() => avatarFailed = true}
-                                    />
+                                    <img src={avatarUrl} alt="" referrerpolicy="no-referrer" onerror={() => avatarFailed = true} />
                                 {:else}
                                     <span>{initial}</span>
                                 {/if}
                             </button>
-                            <button
-                                type="button"
-                                class="avatar-edit-badge"
-                                onclick={openAvatarModal}
-                                aria-label={t.edit_avatar}
-                                title={t.edit_avatar}
-                                disabled={working}
-                            >
-                                <span aria-hidden="true">✎</span>
-                            </button>
+                            {#if profileEditMode}
+                                <button type="button" class="avatar-edit-chip" onclick={openAvatarModal} disabled={working}>
+                                    ✎
+                                </button>
+                            {/if}
                         </div>
 
-                        <div class="identity-copy">
-                            <!-- Nome editável: funcionalidade original. -->
-                            <div class="profile-name-line">
-                                {#if editingName}
-                                    <form class="name-form heading-name-form" onsubmit={saveDisplayName}>
-                                        <label for="profile-display-name" class="visually-hidden">
-                                            {t.display_name}
-                                        </label>
+                        <div class="profile-identity-main">
+                            {#if profileEditMode}
+                                <form class="profile-edit-form" onsubmit={saveProfileEdits}>
+                                    <p class="edit-mode-note">{profileUi.editHint}</p>
+
+                                    <label class="edit-field">
+                                        <span>{t.display_name}</span>
                                         <input
-                                            id="profile-display-name"
                                             type="text"
                                             bind:value={nameInput}
                                             minlength="2"
@@ -1067,53 +1242,13 @@
                                             required
                                             disabled={working}
                                         />
-                                        <div class="name-buttons">
-                                            <button type="submit" class="save-name-button" disabled={working}>
-                                                {working ? t.saving : t.save}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="cancel-name-button"
-                                                onclick={cancelEditingName}
-                                                disabled={working}
-                                            >
-                                                {t.cancel}
-                                            </button>
-                                        </div>
-                                    </form>
-                                {:else}
-                                    <h1>{displayName}</h1>
-                                    <button
-                                        type="button"
-                                        class="heading-name-edit"
-                                        onclick={startEditingName}
-                                        aria-label={`${t.edit} — ${t.display_name}`}
-                                        title={`${t.edit} — ${t.display_name}`}
-                                        disabled={working}
-                                    >
-                                        <span aria-hidden="true">✎</span>
-                                    </button>
-                                {/if}
-                            </div>
-                            <!-- @username continua associado ao UUID em public.profiles. -->
-                            <div class="username-area">
-                                {#if usernameLoading}
-                                    <span class="username-muted">{t.username_loading}</span>
-                                {:else if usernameLoadError}
-                                    <div class="username-load-error" role="alert">
-                                        <span>{usernameLoadError}</span>
-                                        <button type="button" class="username-retry" onclick={() => void loadUsername(user.id)}>
-                                            {t.retry}
-                                        </button>
-                                    </div>
-                                {:else if editingUsername}
+                                    </label>
 
-                                        <form class="username-form" onsubmit={saveUsername} novalidate>
-                                        <label for="profile-username" class="username-label">{t.username_label}</label>
-                                        <div class="username-input-wrap">
+                                    <label class="edit-field">
+                                        <span>{t.username_label}</span>
+                                        <div class="username-input-wrap profile-edit-username">
                                             <span aria-hidden="true">@</span>
                                             <input
-                                                id="profile-username"
                                                 type="text"
                                                 value={usernameInput}
                                                 oninput={handleUsernameInput}
@@ -1121,152 +1256,142 @@
                                                 autocapitalize="none"
                                                 autocomplete="off"
                                                 spellcheck="false"
-                                                disabled={working}
+                                                disabled={working || usernameOnCooldown}
                                             />
                                         </div>
-                                        <span class="username-hint">{t.username_hint}</span>
-                                        <div class="username-change-notice" role="note">
-                                            {#if username}
-                                                <strong>{t.username_change_notice_title}</strong>
-                                                <span>{t.username_change_notice}</span>
-                                            {:else}
-                                                <span>{t.username_first_choice_notice}</span>
-                                            {/if}
-                                        </div>
-                                        {#if usernameStatusMessage}
-                                            <span class:username-positive={usernameCheckStatus === 'available'}
+                                        {#if usernameOnCooldown}
+                                            <small>{t.username_cooldown_until} {usernameNextChangeText}</small>
+                                        {:else if usernameStatusMessage}
+                                            <small
+                                                class:username-positive={usernameCheckStatus === 'available'}
                                                 class:username-negative={usernameCheckStatus === 'taken' || usernameCheckStatus === 'invalid' || usernameCheckStatus === 'reserved' || usernameCheckStatus === 'held' || usernameCheckStatus === 'check_error'}
-                                                class="username-feedback" aria-live="polite">
-                                                {usernameStatusMessage}
-                                            </span>
+                                            >{usernameStatusMessage}</small>
                                         {/if}
-                                        {#if usernameError}
-                                            <span class="username-feedback username-negative" role="alert">{usernameError}</span>
-                                        {/if}
-                                        <div class="name-buttons username-actions">
-                                            <button type="submit" class="save-name-button" disabled={working || usernameCheckStatus === 'taken' || usernameCheckStatus === 'reserved' || usernameCheckStatus === 'held' || usernameCheckStatus === 'invalid'}>
-                                                {working ? t.saving : t.save}
-                                            </button>
-                                            <button type="button" class="cancel-name-button" onclick={cancelEditingUsername} disabled={working}>
-                                                {t.cancel}
-                                            </button>
-                                        </div>
-                                    </form>
-                                {:else}
-                                    <div class="username-display">
-                                        <span class:username-muted={!username} class="username-handle">
-                                            {username ? `@${username}` : t.username_not_set}
-                                        </span>
-                                        {#if username}
-                                            <button type="button" class="username-copy-button" onclick={copyPermanentProfileLink}
-                                                aria-label={t.copy_profile_link}
-                                                title={t.copy_profile_link}
-                                                disabled={working || usernameLoading || !!usernameLoadError}>
-                                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                                                </svg>
-                                            </button>
-                                        {/if}
-                                        <button type="button" class="username-edit-button" onclick={startEditingUsername}
-                                            aria-label={`${t.edit} — ${t.username_label}`}
-                                            title={`${t.edit} — ${t.username_label}`}
-                                            disabled={working}
-                                            aria-expanded={usernameOnCooldown ? usernameCooldownNotice : editingUsername}>
-                                            <span aria-hidden="true">✎</span>
+                                        {#if usernameError}<small class="username-negative">{usernameError}</small>{/if}
+                                    </label>
+
+                                    <label class="edit-field">
+                                        <span>{t.about_me}</span>
+                                        <textarea bind:value={bioInput} maxlength={MAX_BIO_LENGTH} rows="3" placeholder={t.about_placeholder} disabled={working}></textarea>
+                                        <small>{bioInput.length}/{MAX_BIO_LENGTH}</small>
+                                    </label>
+
+                                    <div class="profile-edit-actions">
+                                        <button type="submit" class="profile-save-button" disabled={working || processingFile}>
+                                            {working ? t.saving : profileUi.saveChanges}
+                                        </button>
+                                        <button type="button" class="profile-cancel-button" onclick={cancelProfileEdit} disabled={working}>
+                                            {profileUi.cancel}
                                         </button>
                                     </div>
-                                    {#if profileLinkStatus}
-                                        <span class:username-negative={profileLinkStatus === 'error'} class="profile-link-feedback" role="status" aria-live="polite">
-                                            {profileLinkStatus === 'copied' ? t.profile_link_copied : t.profile_link_copy_error}
+                                </form>
+                            {:else}
+                                <div class="profile-title-row">
+                                    <div>
+                                        <h1>{displayName}</h1>
+                                        <div class="public-handle-row">
+                                            <span class:username-muted={!username} class="username-handle">
+                                                {username ? `@${username}` : t.username_not_set}
+                                            </span>
+                                            {#if username}
+                                                <button
+                                                    type="button"
+                                                    class="username-copy-button"
+                                                    onclick={copyPermanentProfileLink}
+                                                    aria-label={t.copy_profile_link}
+                                                    title={t.copy_profile_link}
+                                                    disabled={working || usernameLoading || !!usernameLoadError}
+                                                >
+                                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                                    </svg>
+                                                </button>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                    <span class="explorer-title-badge"><span aria-hidden="true">✦</span> {t.account_badge}</span>
+                                </div>
+
+                                <p class:bio-empty={!bio} class="profile-public-bio">{bio || t.about_empty}</p>
+
+                                <div class="profile-meta-row">
+                                    {#if memberSinceYear}
+                                        <span>
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+                                            {profileUi.memberSince} {memberSinceYear}
                                         </span>
                                     {/if}
+                                </div>
+                                {#if profileLinkStatus}
+                                    <span class:username-negative={profileLinkStatus === 'error'} class="profile-link-feedback" role="status" aria-live="polite">
+                                        {profileLinkStatus === 'copied' ? t.profile_link_copied : t.profile_link_copy_error}
+                                    </span>
                                 {/if}
-                            </div>
-                            {#if !usernameLoading && !usernameLoadError && usernameOnCooldown && usernameCooldownNotice}
-                                <p class="username-cooldown" role="status">
-                                    {t.username_cooldown_until} <strong>{usernameNextChangeText}</strong>
-                                </p>
                             {/if}
-                            <!-- Bio real, editável aqui, sem cartão duplicado. -->
-                            <div class="hero-bio">
-                                {#if editingBio}
-                                    <form class="bio-form hero-bio-form" onsubmit={saveBio}>
-                                        <label for="profile-bio" class="visually-hidden">{t.about_me}</label>
-                                        <textarea
-                                            id="profile-bio"
-                                            bind:value={bioInput}
-                                            maxlength={MAX_BIO_LENGTH}
-                                            placeholder={t.about_placeholder}
-                                            rows="3"
-                                            disabled={working}
-                                        ></textarea>
-                                        <span class="bio-count">{bioInput.length}/{MAX_BIO_LENGTH}</span>
-                                        <div class="name-buttons">
-                                            <button type="submit" class="save-name-button" disabled={working}>
-                                                {working ? t.saving : t.save}
-                                            </button>
-                                            <button type="button" class="cancel-name-button" onclick={cancelEditingBio} disabled={working}>
-                                                {t.cancel}
-                                            </button>
-                                        </div>
-                                    </form>
-                                {:else}
-                                    <p class:bio-empty={!bio}>{bio || t.about_empty}</p>
-                                    <button
-                                        type="button"
-                                        class="hero-bio-edit"
-                                        onclick={startEditingBio}
-                                        aria-label={`${t.edit} — ${t.about_me}`}
-                                        title={`${t.edit} — ${t.about_me}`}
-                                        disabled={working}
-                                    >
-                                        <span aria-hidden="true">✎</span>
-                                    </button>
-                                {/if}
-                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="profile-content-grid">
-                    <div class="profile-primary-column">
-                        <!-- Sem dados inventados: as estatísticas só aparecem quando existir backend. -->
-                        <section class="profile-panel community-panel" aria-labelledby="profile-community-title">
+                </section>
+
+                {#if errorMessage}
+                    <p class="error-message profile-global-message" role="alert">{errorMessage}</p>
+                {/if}
+                {#if successMessage}
+                    <p class="success-message profile-global-message" role="status">{successMessage}</p>
+                {/if}
+
+                <div class="profile-dashboard">
+                    <div class="profile-dashboard-main">
+                        <section class="profile-stats-grid" aria-label={t.future_statistics}>
+                            <article class="profile-stat-card">
+                                <span class="stat-icon">⌖</span>
+                                <strong>—</strong>
+                                <span>{profileUi.markers}</span>
+                            </article>
+                            <article class="profile-stat-card">
+                                <span class="stat-icon">✧</span>
+                                <strong>—</strong>
+                                <span>{profileUi.followers}</span>
+                            </article>
+                            <article class="profile-stat-card">
+                                <span class="stat-icon">↗</span>
+                                <strong>—</strong>
+                                <span>{profileUi.following}</span>
+                            </article>
+                        </section>
+
+                        <section class="profile-panel profile-badges-panel">
                             <div class="panel-heading">
                                 <div>
-                                    <span class="panel-eyebrow">{t.community_label}</span>
-                                    <h2 id="profile-community-title">{t.community_title}</h2>
+                                    <span class="panel-eyebrow">{profileUi.comingSoon}</span>
+                                    <h2>{profileUi.badges}</h2>
                                 </div>
                                 <span class="planned-tag">{t.planned}</span>
                             </div>
-                            <p class="panel-description">{t.community_description}</p>
-                            <div class="community-stats" aria-label={t.future_statistics}>
-                                <div class="community-stat">
-                                    <span class="stat-mark" aria-hidden="true">⌖</span>
-                                    <strong aria-hidden="true">—</strong>
-                                    <span>{t.markers}</span>
+                            <div class="badge-preview">
+                                <span class="badge-preview-icon">✦</span>
+                                <div>
+                                    <strong>DeepMap Explorer</strong>
+                                    <span>{profileUi.comingSoon}</span>
                                 </div>
-                                <div class="community-stat">
-                                    <span class="stat-mark" aria-hidden="true">✧</span>
-                                    <strong aria-hidden="true">—</strong>
-                                    <span>{t.followers}</span>
-                                </div>
-                                <div class="community-stat">
-                                    <span class="stat-mark" aria-hidden="true">↗</span>
-                                    <strong aria-hidden="true">—</strong>
-                                    <span>{t.following}</span>
-                                </div>
-                            </div>
-                            <p class="community-note">{t.community_note}</p>
-                            <div class="future-sections" aria-label={t.future_sections}>
-                                <span>✦ {t.badges_title}</span>
-                                <span>◷ {t.activity_title}</span>
-                                <span>◇ {t.journey_title}</span>
                             </div>
                         </section>
                     </div>
 
+                    <section class="profile-panel profile-activity-panel">
+                        <div class="panel-heading">
+                            <div>
+                                <span class="panel-eyebrow">{profileUi.comingSoon}</span>
+                                <h2>{profileUi.activity}</h2>
+                            </div>
+                            <span class="planned-tag">{t.planned}</span>
+                        </div>
+                        <div class="activity-placeholder">
+                            <span aria-hidden="true">◷</span>
+                            <p>{t.community_note}</p>
+                        </div>
+                    </section>
                 </div>
 
                 <!-- ==================================
@@ -2705,4 +2830,812 @@
     .visitor-preview-link:hover { background: #443521; border-color: #c8a355; }
     .visitor-preview-link:focus-visible { outline: 2px solid #c8a355; outline-offset: 3px; }
     .settings-information-body .visitor-preview-note { margin: 2px 0 0; font-size: .72rem; color: #aaa5a7; text-align: center; }
+
+    /* ==========================================
+       PROFILE REDESIGN — DeepMap cyan + gold
+       ========================================== */
+    :global(body) { background: #071019; }
+
+    .profile-page {
+        background:
+            radial-gradient(circle at 80% -10%, rgba(16, 227, 242, .08), transparent 28rem),
+            linear-gradient(180deg, #071019 0%, #0a1119 55%, #081018 100%);
+    }
+
+    .profile-container { max-width: 1180px; }
+
+    .profile-card {
+        padding: 22px;
+        background: rgba(10, 16, 24, .96);
+        border-color: #243443;
+        border-radius: 18px;
+        box-shadow: 0 24px 80px rgba(0,0,0,.24);
+        text-align: left;
+    }
+
+    .profile-brandbar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 58px;
+        margin-bottom: 18px;
+    }
+
+    .profile-brandbar .brand-logo { margin: 0; max-width: 168px; }
+    .profile-brandbar .profile-toolbar { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+
+    .settings-edit-profile {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 12px;
+        margin-bottom: 9px;
+        border: 1px solid rgba(16,227,242,.42);
+        border-radius: 9px;
+        background: rgba(16,227,242,.08);
+        color: #8ff5fb;
+        font: inherit;
+        font-size: .84rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .settings-edit-profile:hover { background: rgba(16,227,242,.14); border-color: #10e3f2; }
+    .settings-edit-profile:disabled { opacity: .5; cursor: default; }
+
+    .profile-showcase {
+        overflow: hidden;
+        border: 1px solid #2c3d4b;
+        border-radius: 16px 16px 0 0;
+        background: #0d151e;
+    }
+
+    .profile-banner {
+        position: relative;
+        min-height: 285px;
+        background:
+            linear-gradient(90deg, rgba(5,12,18,.78) 0%, rgba(5,12,18,.12) 55%, rgba(5,12,18,.28) 100%),
+            url('/brand/home-hero-world.webp') center 48% / cover no-repeat,
+            linear-gradient(135deg, #122334, #0a121a);
+    }
+
+    .profile-banner-shade {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(4,10,16,.06), rgba(4,10,16,.52));
+        pointer-events: none;
+    }
+
+    .banner-edit-soon {
+        position: absolute;
+        right: 18px;
+        top: 18px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 12px;
+        border: 1px solid rgba(224,182,102,.5);
+        border-radius: 9px;
+        background: rgba(8,15,22,.82);
+        color: #d8bd86;
+        font: inherit;
+        font-size: .77rem;
+        opacity: .82;
+    }
+
+    .profile-identity-shell {
+        position: relative;
+        display: grid;
+        grid-template-columns: 168px minmax(0, 1fr);
+        gap: 24px;
+        min-height: 170px;
+        padding: 0 30px 26px;
+        border-top: 1px solid rgba(255,255,255,.04);
+    }
+
+    .profile-avatar-column { position: relative; width: 150px; margin-top: -72px; align-self: start; }
+    .profile-main-avatar {
+        width: 146px;
+        height: 146px;
+        margin: 0;
+        border: 4px solid #d4ab5c;
+        box-shadow: 0 0 0 6px #0d151e, 0 12px 30px rgba(0,0,0,.38);
+        background: #172431;
+        cursor: default;
+    }
+    .profile-main-avatar.avatar-editable { cursor: pointer; }
+    .profile-main-avatar.avatar-editable:hover { border-color: #10e3f2; box-shadow: 0 0 0 6px #0d151e, 0 0 0 9px rgba(16,227,242,.16); }
+
+    .avatar-edit-chip {
+        position: absolute;
+        right: -2px;
+        bottom: 4px;
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border: 2px solid #0d151e;
+        border-radius: 50%;
+        background: #10e3f2;
+        color: #031116;
+        font-weight: 900;
+        cursor: pointer;
+    }
+
+    .profile-identity-main { min-width: 0; padding-top: 22px; }
+    .profile-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .profile-title-row h1 { margin: 0; color: #f3efe8; font-size: clamp(1.8rem, 4vw, 2.55rem); letter-spacing: -.035em; }
+    .public-handle-row { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
+    .public-handle-row .username-handle { color: #d6b773; font-size: 1rem; font-weight: 700; }
+
+    .explorer-title-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex: none;
+        padding: 8px 12px;
+        border: 1px solid #6b5633;
+        border-radius: 999px;
+        background: rgba(190,145,67,.09);
+        color: #dfc27e;
+        font-size: .74rem;
+        font-weight: 800;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+    }
+
+    .profile-public-bio { margin: 14px 0 0; color: #d2d9df; line-height: 1.55; max-width: 730px; }
+    .profile-meta-row { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 16px; color: #aeb9c3; font-size: .8rem; }
+    .profile-meta-row span { display: inline-flex; align-items: center; gap: 7px; }
+    .profile-meta-row svg { color: #d2ad63; }
+
+    .profile-tabs {
+        display: flex;
+        gap: 2px;
+        overflow-x: auto;
+        padding: 0 18px;
+        border-top: 1px solid #263746;
+        background: rgba(7,14,21,.72);
+    }
+    .profile-tab {
+        min-width: max-content;
+        padding: 14px 18px 12px;
+        border-bottom: 2px solid transparent;
+        color: #92a1ad;
+        font-size: .83rem;
+        font-weight: 700;
+    }
+    .profile-tab.active { color: #eef6f7; border-color: #10e3f2; }
+    .profile-tab.active span { color: #d7b569; }
+    .profile-tab.disabled { opacity: .55; }
+
+    .profile-global-message { margin: 14px 0 0; text-align: center; }
+
+    .profile-dashboard {
+        display: grid;
+        grid-template-columns: minmax(330px, 1.2fr) minmax(280px, 1fr);
+        gap: 16px;
+        margin-top: 16px;
+    }
+
+    .profile-dashboard .profile-panel {
+        margin: 0;
+        padding: 21px;
+        border-color: #2b3b49;
+        background: linear-gradient(180deg, #101922, #0d151e);
+    }
+
+    .profile-dashboard .panel-eyebrow { color: #d0ae69; }
+    .profile-dashboard .panel-heading h2 { color: #eff3f4; }
+    .profile-about-panel { min-height: 100%; }
+    .about-bio { margin: 17px 0 20px; color: #c9d1d7; line-height: 1.55; }
+
+    .about-list { border-top: 1px solid #263746; }
+    .about-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 13px 0;
+        border-bottom: 1px solid #263746;
+        color: #8999a5;
+        font-size: .8rem;
+    }
+    .about-row strong { color: #d9e0e4; text-align: right; overflow-wrap: anywhere; }
+    .about-row .coming-soon-value { color: #c5a564; }
+
+    .profile-dashboard-main { display: grid; gap: 16px; min-width: 0; }
+    .profile-stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid #2b3b49; border-radius: 12px; background: #2b3b49; }
+    .profile-stat-card {
+        min-width: 0;
+        display: grid;
+        justify-items: center;
+        gap: 5px;
+        padding: 20px 8px 18px;
+        background: #101922;
+        text-align: center;
+    }
+    .profile-stat-card .stat-icon { color: #10e3f2; font-size: 1.15rem; }
+    .profile-stat-card strong { color: #f1f5f6; font-size: 1.25rem; }
+    .profile-stat-card span:last-child { color: #8ea0ad; font-size: .74rem; }
+
+    .badge-preview {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 18px;
+        padding: 15px;
+        border: 1px solid #344451;
+        border-radius: 11px;
+        background: #111c26;
+    }
+    .badge-preview-icon {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        flex: none;
+        border: 1px solid #80652e;
+        border-radius: 50%;
+        color: #e4bd63;
+        font-size: 1.55rem;
+        box-shadow: inset 0 0 18px rgba(223,178,80,.08);
+    }
+    .badge-preview div { display: grid; gap: 3px; min-width: 0; }
+    .badge-preview strong { color: #e6c36d; }
+    .badge-preview span { color: #8899a5; font-size: .78rem; }
+
+    .activity-placeholder {
+        min-height: 180px;
+        display: grid;
+        place-items: center;
+        align-content: center;
+        gap: 12px;
+        margin-top: 18px;
+        padding: 24px;
+        border: 1px dashed #354756;
+        border-radius: 11px;
+        color: #81929e;
+        text-align: center;
+    }
+    .activity-placeholder > span { color: #10e3f2; font-size: 1.5rem; }
+    .activity-placeholder p { margin: 0; max-width: 260px; line-height: 1.55; font-size: .8rem; }
+
+    .profile-edit-form {
+        display: grid;
+        grid-template-columns: minmax(180px, .7fr) minmax(180px, .7fr) minmax(260px, 1.3fr);
+        gap: 13px;
+        align-items: start;
+    }
+    .edit-mode-note { grid-column: 1 / -1; margin: 0 0 2px; color: #91a1ad; font-size: .78rem; }
+    .edit-field { display: grid; gap: 7px; min-width: 0; color: #cbb17a; font-size: .76rem; font-weight: 700; }
+    .edit-field input,
+    .edit-field textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 11px 12px;
+        border: 1px solid #3d5364;
+        border-radius: 9px;
+        background: #0b141d;
+        color: #eff5f6;
+        font: inherit;
+        font-size: .88rem;
+        font-weight: 500;
+    }
+    .edit-field input:focus,
+    .edit-field textarea:focus { outline: 2px solid rgba(16,227,242,.38); border-color: #10e3f2; }
+    .edit-field textarea { resize: vertical; min-height: 86px; }
+    .edit-field small { color: #7f919e; font-size: .7rem; font-weight: 500; }
+    .profile-edit-username { margin: 0; }
+
+    .profile-edit-actions {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 3px;
+    }
+    .profile-save-button,
+    .profile-cancel-button {
+        min-height: 42px;
+        padding: 10px 18px;
+        border-radius: 9px;
+        font: inherit;
+        font-size: .82rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+    .profile-save-button { border: 1px solid #10e3f2; background: #10e3f2; color: #031116; }
+    .profile-save-button:hover { filter: brightness(1.05); }
+    .profile-cancel-button { border: 1px solid #455665; background: #141e27; color: #c9d2d8; }
+    .profile-save-button:disabled, .profile-cancel-button:disabled { opacity: .55; cursor: wait; }
+
+    @media (max-width: 920px) {
+        .profile-dashboard { grid-template-columns: 1fr; }
+        .profile-activity-panel { grid-column: auto; }
+        .profile-edit-form { grid-template-columns: 1fr 1fr; }
+        .profile-edit-form .edit-field:last-of-type { grid-column: 1 / -1; }
+    }
+
+    @media (max-width: 650px) {
+        .profile-page { padding: 14px 10px 35px; }
+        .profile-card { padding: 10px; border-radius: 13px; }
+        .profile-brandbar { min-height: 50px; margin-bottom: 10px; }
+        .profile-brandbar .brand-logo { max-width: 136px; }
+        .profile-banner { min-height: 178px; background-position: center 48%; }
+        .profile-identity-shell {
+            grid-template-columns: 92px minmax(0, 1fr);
+            gap: 13px;
+            min-height: 125px;
+            padding: 0 15px 18px;
+        }
+        .profile-avatar-column { width: 88px; margin-top: -43px; }
+        .profile-main-avatar { width: 86px; height: 86px; border-width: 3px; box-shadow: 0 0 0 4px #0d151e, 0 8px 20px rgba(0,0,0,.35); }
+        .avatar-edit-chip { width: 30px; height: 30px; right: -2px; bottom: -2px; }
+        .profile-identity-main { padding-top: 12px; }
+        .profile-title-row { display: block; }
+        .profile-title-row h1 { font-size: 1.45rem; }
+        .public-handle-row .username-handle { font-size: .85rem; }
+        .explorer-title-badge { margin-top: 9px; padding: 6px 9px; font-size: .62rem; }
+        .profile-public-bio { margin-top: 11px; font-size: .82rem; }
+        .profile-meta-row { gap: 8px 13px; margin-top: 11px; font-size: .7rem; }
+        .profile-tabs { padding: 0 6px; }
+        .profile-tab { padding: 12px 13px 10px; font-size: .72rem; }
+
+        .profile-dashboard { grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+        .profile-activity-panel { grid-column: auto; }
+        .profile-dashboard .profile-panel { padding: 17px 15px; }
+        .profile-stats-grid { order: -1; }
+        .profile-dashboard-main { gap: 12px; }
+
+        .profile-edit-form { grid-template-columns: 1fr; }
+        .profile-edit-form .edit-field:last-of-type { grid-column: auto; }
+        .profile-edit-actions { justify-content: stretch; }
+        .profile-save-button, .profile-cancel-button { flex: 1; }
+
+        .banner-edit-soon { right: 10px; top: 10px; max-width: calc(100% - 20px); font-size: .68rem; }
+    }
+
+    @media (max-width: 390px) {
+        .profile-identity-shell { grid-template-columns: 78px minmax(0, 1fr); padding-left: 11px; padding-right: 11px; }
+        .profile-avatar-column { width: 74px; }
+        .profile-main-avatar { width: 72px; height: 72px; }
+        .profile-title-row h1 { font-size: 1.28rem; }
+        .profile-stats-grid .profile-stat-card { padding-left: 4px; padding-right: 4px; }
+    }
+
+    /* ==========================================
+       PROFILE POLISH — DeepMap cyan actions
+       ========================================== */
+
+    /* Ação principal nas definições */
+    .settings-edit-profile {
+        border-color: #10e3f2;
+        background: #10e3f2;
+        color: #031116;
+    }
+    .settings-edit-profile:hover {
+        border-color: #52f0fa;
+        background: #52f0fa;
+        color: #031116;
+    }
+    .settings-edit-profile svg { color: #031116; }
+
+    /* Botão principal de definições */
+    .settings-trigger {
+        border-color: rgba(16, 227, 242, .72);
+        background: rgba(16, 227, 242, .10);
+        color: #10e3f2;
+    }
+    .settings-trigger:hover,
+    .profile-settings[open] > .settings-trigger {
+        border-color: #10e3f2;
+        background: rgba(16, 227, 242, .18);
+        color: #62f1fa;
+    }
+    .settings-trigger:focus-visible,
+    .settings-information > summary:focus-visible,
+    .settings-logout:focus-visible {
+        outline-color: #10e3f2;
+    }
+
+    /* Logout continua visualmente uma ação, mas sem parecer destrutivo/vermelho */
+    .settings-logout {
+        border-color: rgba(16, 227, 242, .48);
+        background: rgba(16, 227, 242, .07);
+        color: #bff9fc;
+    }
+    .settings-logout svg { color: #10e3f2; }
+    .settings-logout:hover {
+        border-color: #10e3f2;
+        background: rgba(16, 227, 242, .15);
+    }
+
+    /* Ver como visitante */
+    .visitor-preview-link {
+        border-color: rgba(16, 227, 242, .56);
+        background: rgba(16, 227, 242, .09);
+        color: #9df6fb;
+    }
+    .visitor-preview-link:hover {
+        border-color: #10e3f2;
+        background: rgba(16, 227, 242, .17);
+    }
+    .visitor-preview-link:focus-visible {
+        outline-color: #10e3f2;
+    }
+
+    /* Visibilidade: off = contorno ciano; on = preenchido ciano */
+    .visibility-switch {
+        border-color: rgba(16, 227, 242, .68);
+        background: #17252e;
+    }
+    .visibility-switch.enabled {
+        border-color: #10e3f2;
+        background: #10e3f2;
+    }
+    .visibility-switch-thumb {
+        background: #eafcff;
+    }
+    .visibility-switch.enabled .visibility-switch-thumb {
+        background: #052029;
+    }
+    .visibility-switch:focus-visible {
+        outline-color: #10e3f2;
+    }
+    .settings-information-body .visibility-status {
+        color: #7df3fa;
+    }
+
+    /* Copiar link */
+    .username-copy-button {
+        border-color: rgba(16, 227, 242, .58);
+        background: rgba(16, 227, 242, .08);
+        color: #10e3f2;
+    }
+    .username-copy-button:hover {
+        border-color: #10e3f2;
+        background: rgba(16, 227, 242, .17);
+    }
+    .username-copy-button:focus-visible {
+        outline-color: #10e3f2;
+    }
+
+    /* O lápis do avatar continua dourado por defeito; ciano apenas ao interagir */
+    .avatar-edit-chip {
+        border-color: #0d151e;
+        background: #d4ab5c;
+        color: #16100a;
+    }
+    .avatar-edit-chip:hover,
+    .avatar-edit-chip:focus-visible {
+        background: #10e3f2;
+        color: #031116;
+    }
+
+    /* Username: uma única moldura, sem segunda borda amarela */
+    .edit-field .profile-edit-username {
+        border: 1px solid #3d5364;
+        border-radius: 9px;
+        background: #0b141d;
+        color: #10e3f2;
+        padding: 0 12px;
+    }
+    .edit-field .profile-edit-username:focus-within {
+        border-color: #10e3f2;
+        outline: 2px solid rgba(16, 227, 242, .30);
+        outline-offset: 0;
+    }
+    .edit-field .profile-edit-username input {
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        padding: 11px 0;
+        outline: 0;
+        box-shadow: none;
+    }
+    .edit-field .profile-edit-username input:focus {
+        border: 0;
+        outline: 0;
+        box-shadow: none;
+    }
+
+    /* Sem a barra de tabs, o dashboard liga diretamente ao cabeçalho. */
+    .profile-showcase { border-radius: 16px; }
+
+    /* Ajuste final: Editar perfil discreto como Terminar sessão */
+    .settings-edit-profile {
+        border-color: rgba(16, 227, 242, .48);
+        background: rgba(16, 227, 242, .07);
+        color: #bff9fc;
+    }
+    .settings-edit-profile:hover,
+    .settings-edit-profile:focus-visible {
+        border-color: #10e3f2;
+        background: rgba(16, 227, 242, .15);
+        color: #dffcff;
+    }
+    .settings-edit-profile svg {
+        color: #10e3f2;
+    }
+
+    /* ==========================================
+       PROFILE POLISH 2 — interação e cor
+       ========================================== */
+
+    /* O @ é identidade, não ação: dourado. */
+    .edit-field .profile-edit-username > span {
+        color: #d4ab5c;
+        font-weight: 800;
+    }
+
+    /* Avatar + lápis reagem como uma única ação. */
+    .profile-avatar-editing:hover .profile-main-avatar,
+    .profile-avatar-editing:focus-within .profile-main-avatar {
+        border-color: #10e3f2;
+        box-shadow:
+            0 0 0 6px #0d151e,
+            0 0 0 9px rgba(16, 227, 242, .16),
+            0 12px 30px rgba(0,0,0,.38);
+    }
+
+    .profile-avatar-editing:hover .avatar-edit-chip,
+    .profile-avatar-editing:focus-within .avatar-edit-chip {
+        background: #10e3f2;
+        color: #031116;
+    }
+
+    /* Todos os controlos das definições têm feedback semelhante. */
+    .settings-edit-profile,
+    .settings-information > summary,
+    .settings-logout,
+    .visitor-preview-link,
+    .settings-trigger {
+        transition:
+            background .18s ease,
+            border-color .18s ease,
+            color .18s ease,
+            transform .18s ease;
+    }
+
+    .settings-edit-profile:hover,
+    .settings-information > summary:hover,
+    .settings-logout:hover,
+    .visitor-preview-link:hover,
+    .settings-trigger:hover {
+        transform: translateY(-1px);
+    }
+
+    .settings-information > summary:hover {
+        border-color: rgba(16, 227, 242, .52);
+        background: rgba(16, 227, 242, .07);
+    }
+
+    /* Estado informativo = dourado. Ciano fica reservado à interação. */
+    .settings-information-body .visibility-status {
+        color: #d4ab5c;
+    }
+
+    /* ==========================================
+       PROFILE POLISH 3 — botões consistentes
+       ========================================== */
+
+    /* Voltar passa a botão DeepMap ciano. */
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 42px;
+        padding: 9px 14px;
+        border: 1px solid rgba(16, 227, 242, .62);
+        border-radius: 10px;
+        background: rgba(16, 227, 242, .08);
+        color: #bff9fc;
+        text-decoration: none;
+        font-weight: 700;
+        transition:
+            background .18s ease,
+            border-color .18s ease,
+            color .18s ease,
+            transform .18s ease;
+    }
+
+    .back-link:hover,
+    .back-link:focus-visible {
+        border-color: #10e3f2;
+        background: rgba(16, 227, 242, .15);
+        color: #e3fdff;
+        text-decoration: none;
+        transform: translateY(-1px);
+    }
+
+    .back-link:focus-visible {
+        outline: 2px solid rgba(16, 227, 242, .34);
+        outline-offset: 3px;
+    }
+
+    /* Todos os controlos dentro do menu Definições usam a mesma linguagem visual. */
+    .settings-edit-profile,
+    .settings-information > summary,
+    .settings-logout,
+    .visitor-preview-link {
+        border: 1px solid rgba(16, 227, 242, .58);
+        background: rgba(16, 227, 242, .08);
+        color: #bff9fc;
+    }
+
+    .settings-edit-profile svg,
+    .settings-information > summary svg,
+    .settings-logout svg,
+    .visitor-preview-link svg {
+        color: #10e3f2;
+    }
+
+    .settings-edit-profile:hover,
+    .settings-edit-profile:focus-visible,
+    .settings-information > summary:hover,
+    .settings-information > summary:focus-visible,
+    .settings-logout:hover,
+    .settings-logout:focus-visible,
+    .visitor-preview-link:hover,
+    .visitor-preview-link:focus-visible {
+        border-color: #10e3f2;
+        background: rgba(16, 227, 242, .15);
+        color: #e3fdff;
+        transform: translateY(-1px);
+    }
+
+    .settings-information > summary .settings-chevron {
+        color: #8eeff6;
+    }
+
+    /* Guardar alterações continua a ser a única ação sólida em ciano. */
+    .profile-save-button {
+        border-color: #10e3f2;
+        background: #10e3f2;
+        color: #031116;
+    }
+
+    /* ==========================================
+       PROFILE COLOR RESET — DeepMap original gold
+       Mantém o novo layout, reverte apenas a paleta
+       ========================================== */
+
+    .back-link,
+    .settings-trigger,
+    .settings-edit-profile,
+    .settings-information > summary,
+    .settings-logout,
+    .visitor-preview-link,
+    .username-copy-button {
+        border-color: rgba(200, 163, 85, .48);
+        background: rgba(200, 163, 85, .07);
+        color: #d9bd84;
+    }
+
+    .back-link:hover,
+    .back-link:focus-visible,
+    .settings-trigger:hover,
+    .profile-settings[open] > .settings-trigger,
+    .settings-edit-profile:hover,
+    .settings-edit-profile:focus-visible,
+    .settings-information > summary:hover,
+    .settings-information > summary:focus-visible,
+    .settings-logout:hover,
+    .settings-logout:focus-visible,
+    .visitor-preview-link:hover,
+    .visitor-preview-link:focus-visible,
+    .username-copy-button:hover,
+    .username-copy-button:focus-visible {
+        border-color: #c8a355;
+        background: rgba(200, 163, 85, .15);
+        color: #f0d99f;
+    }
+
+    .back-link:focus-visible,
+    .settings-trigger:focus-visible,
+    .settings-information > summary:focus-visible,
+    .settings-logout:focus-visible,
+    .visitor-preview-link:focus-visible,
+    .username-copy-button:focus-visible {
+        outline-color: rgba(200, 163, 85, .35);
+    }
+
+    .settings-trigger svg,
+    .settings-edit-profile svg,
+    .settings-information > summary svg,
+    .settings-logout svg,
+    .visitor-preview-link svg,
+    .username-copy-button svg,
+    .settings-information > summary .settings-chevron {
+        color: #c8a355;
+    }
+
+    .visibility-switch {
+        border-color: #66616a;
+        background: #4a4851;
+    }
+
+    .visibility-switch.enabled {
+        border-color: #c8a355;
+        background: #92733e;
+    }
+
+    .visibility-switch-thumb {
+        background: #f3efe7;
+    }
+
+    .visibility-switch.enabled .visibility-switch-thumb {
+        background: #f3efe7;
+    }
+
+    .visibility-switch:focus-visible {
+        outline-color: #c8a355;
+    }
+
+    .settings-information-body .visibility-status {
+        color: #d7b573;
+    }
+
+    .avatar-edit-chip {
+        border-color: #0d151e;
+        background: #d4ab5c;
+        color: #16100a;
+    }
+
+    .avatar-edit-chip:hover,
+    .avatar-edit-chip:focus-visible,
+    .profile-avatar-editing:hover .avatar-edit-chip,
+    .profile-avatar-editing:focus-within .avatar-edit-chip {
+        background: #eed18a;
+        color: #16100a;
+    }
+
+    .profile-avatar-editing:hover .profile-main-avatar,
+    .profile-avatar-editing:focus-within .profile-main-avatar,
+    .profile-main-avatar.avatar-editable:hover {
+        border-color: #d4ab5c;
+        box-shadow:
+            0 0 0 6px #0d151e,
+            0 0 0 9px rgba(200, 163, 85, .14),
+            0 12px 30px rgba(0,0,0,.38);
+    }
+
+    .edit-field .profile-edit-username {
+        border-color: #3d5364;
+        color: #d4ab5c;
+    }
+
+    .edit-field .profile-edit-username:focus-within,
+    .edit-field input:focus,
+    .edit-field textarea:focus {
+        border-color: #c8a355;
+        outline-color: rgba(200, 163, 85, .30);
+    }
+
+    .edit-field .profile-edit-username > span {
+        color: #d4ab5c;
+    }
+
+    .profile-save-button {
+        border-color: #c8a355;
+        background: #c8a355;
+        color: #171717;
+    }
+
+    .profile-save-button:hover {
+        background: #d9b76c;
+        border-color: #d9b76c;
+    }
+
+    .profile-stat-card .stat-icon,
+    .activity-placeholder > span {
+        color: #c8a355;
+    }
+
+    .profile-tab.active {
+        border-color: #c8a355;
+    }
 </style>

@@ -61,6 +61,7 @@
             socialsLabel: 'FOLLOW THE JOURNEY',
             socialsText: 'Keep up with the project and be part of the journey from the beginning.',
             privacy: 'Privacy Policy',
+            terms: 'Terms of Use',
             contact: 'Contact',
             copyright: 'DeepMap. Made for explorers.',
             comingSoon: 'Coming soon'
@@ -111,6 +112,7 @@
             socialsLabel: 'ACOMPANHA A JORNADA',
             socialsText: 'Acompanha o projeto e faz parte desta jornada desde o início.',
             privacy: 'Política de Privacidade',
+            terms: 'Termos de Utilização',
             contact: 'Contacto',
             copyright: 'DeepMap. Criado para exploradores.',
             comingSoon: 'Brevemente'
@@ -125,7 +127,7 @@
         { key: 'tiktok', name: 'TikTok', url: 'https://www.tiktok.com/@deepmap.cc' },
         { key: 'x', name: 'X', url: 'https://x.com/deepmapcc' },
         { key: 'youtube', name: 'YouTube', url: 'https://www.youtube.com/@deepmapcc' },
-        { key: 'facebook', name: 'Facebook', url: null }
+        { key: 'facebook', name: 'Facebook', url: 'https://www.facebook.com/deepmapcc' }
     ];
 
     onMount(() => {
@@ -211,6 +213,8 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M4 3 20 21M20 3 4 21"/><path d="M4 3h4M16 21h4"/></svg>
                 {:else if social.key === 'youtube'}
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3Z" fill="currentColor" stroke="none"/></svg>
+                {:else if social.key === 'facebook'}
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.2 21v-7.6h2.6l.4-3h-3V8.5c0-.9.3-1.5 1.5-1.5h1.6V4.3A21 21 0 0 0 15 4c-2.6 0-4.3 1.6-4.3 4.4v2H8v3h2.7V21h3.5Z"/></svg>
                 {/if}
             </a>
         {:else}
@@ -372,6 +376,7 @@
                 <span>© {new Date().getFullYear()} {t.copyright}</span>
                 <div class="footer-links">
                     <a href="/privacy">{t.privacy}</a>
+                    <a href="/terms">{t.terms}</a>
                     <a href="mailto:contact@deepmap.cc">{t.contact}</a>
                 </div>
             </div>
@@ -380,36 +385,36 @@
 </main>
 
 <style>
-    :global(html) { background: #0b0b0e; }
+    :global(html) { background: #061018; }
     :global(body) { margin: 0; }
     :global(*) { box-sizing: border-box; }
-    .landing-page { min-height: 100vh; min-height: 100dvh; background: #0b0b0e; color: #e9e5dd; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; }
-    .site-shell { max-width: 1440px; margin: auto; }
-    .site-header { position: relative; z-index: 3; min-height: 94px; padding: 20px clamp(20px, 6vw, 86px); display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid #ffffff0d; }
+    .landing-page { min-height: 100vh; min-height: 100dvh; background: #061018; color: #e9e5dd; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; }
+    .site-shell { max-width: 1440px; margin: auto; background: linear-gradient(180deg, #07121a 0%, #080b10 42%, #0b0b0e 100%); }
+    .site-header { position: relative; z-index: 3; min-height: 94px; padding: 20px clamp(20px, 6vw, 86px); display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid rgba(40, 208, 235, .13); background: rgba(4, 11, 16, .94); }
     .header-navigation { display: flex; gap: clamp(15px, 2vw, 34px); align-items: center; margin-left: auto; }
     .header-navigation a { color: #c8c1bd; font-size: .85rem; text-decoration: none; white-space: nowrap; }
-    .header-navigation a:hover { color: #d4b77d; }
+    .header-navigation a:hover { color: #d8b86f; }
     .brand-link { display: flex; align-items: center; flex: none; }
     .brand-logo { display: block; max-width: 166px; width: auto; height: auto; max-height: 57px; object-fit: contain; }
     .header-actions { display: flex; align-items: center; gap: 23px; }
-    .language-wrap select { border: 1px solid #46424b; border-radius: 7px; padding: 8px; background: #1d1c22; color: #dbc28c; font: inherit; font-size: .76rem; cursor: pointer; }
+    .language-wrap select { border: 1px solid #245b66; border-radius: 7px; padding: 8px; background: #0b1820; color: #dbc28c; font: inherit; font-size: .76rem; cursor: pointer; }
     .header-join, .footer-links a { color: #e1dcd4; text-decoration: none; font-size: .86rem; }
-    .footer-links a:hover { color: #d9b874; }
-    .header-join { border: 1px solid #806947; background: #27221b; padding: 11px 16px; border-radius: 7px; color: #e2c489; }
-    .header-join:hover { background: #373022; }
+    .footer-links a:hover { color: #d8b86f; }
+    .header-join { border: 1px solid #c8a355; background: linear-gradient(135deg, #c8a355, #d5b56d); padding: 11px 16px; border-radius: 7px; color: #17130c; font-weight: 800; box-shadow: 0 0 24px rgba(200, 163, 85, .12); }
+    .header-join:hover { background: linear-gradient(135deg, #d5b56d, #e1c886); }
     .account-loading, .cta-loading { opacity: .68; cursor: default; }
     .account-link { display: inline-flex; align-items: center; gap: 10px; min-width: 0; max-width: 235px; }
-    .account-avatar { width: 31px; height: 31px; flex: none; display: grid; place-items: center; overflow: hidden; border: 1px solid #a78a54; border-radius: 50%; background: #343039; color: #e6c88c; font-size: .85rem; font-weight: 800; }
+    .account-avatar { width: 31px; height: 31px; flex: none; display: grid; place-items: center; overflow: hidden; border: 1px solid #c8a355; border-radius: 50%; background: #10212a; color: #e6c88c; font-size: .85rem; font-weight: 800; }
     .account-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
     .account-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .account-status { color: #b4a48b; font-size: .56rem; font-weight: 800; letter-spacing: .085em; }
-    .account-name { color: #e8cb93; font-size: .81rem; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-name { color: #f0d39a; font-size: .81rem; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .account-arrow { flex: none; }
-    .hero { isolation: isolate; position: relative; display: flex; justify-content: flex-start; align-items: center; padding: 94px clamp(20px,6vw,86px) 106px; min-height: 670px; border-bottom: 1px solid #343039; background: radial-gradient(ellipse 52% 74% at 83% 46%, #413c30 0%, #25272a 45%, #0b0e12 85%), linear-gradient(110deg,#101116,#0b0b0e); overflow: hidden; text-align: left; }
-    .hero::before { content: ''; position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg,#0b0d12 0%,#0b0d12f5 31%,#0b0d1270 64%,#0b0d1240 100%), repeating-radial-gradient(ellipse at 80% 50%, transparent 0px,transparent 31px,#cfb37615 32px, transparent 33px,transparent 57px); }
-    .hero::after { content: ''; position: absolute; z-index: -1; bottom: -140px; left: -12%; width: 124%; height: 340px; background: radial-gradient(ellipse at center, #161516 5%, #08080b 68%); border-radius: 50% 50% 0 0; box-shadow: 0 -25px 95px #d1b4780b; }
-    .hero-halo { position: absolute; z-index: -1; width: min(580px, 95vw); aspect-ratio: 1; border: 1px solid #c9a6651b; border-radius: 50%; top: 6%; right: 9%; box-shadow: 0 0 0 60px #c9a66506, 0 0 0 125px #c9a66504; }
-    .hero-lines span { position: absolute; width: 1px; height: 140px; background: linear-gradient(transparent,#c6aa6836,transparent); transform: rotate(40deg); }
+    .hero { isolation: isolate; position: relative; display: flex; justify-content: flex-start; align-items: center; padding: 94px clamp(20px,6vw,86px) 106px; min-height: 670px; border-bottom: 1px solid #17313a; background-image: linear-gradient(90deg, rgba(3, 12, 18, .98) 0%, rgba(3, 12, 18, .93) 27%, rgba(3, 12, 18, .67) 49%, rgba(3, 12, 18, .18) 72%, rgba(3, 12, 18, .10) 100%), url('/brand/home-hero-world.webp'); background-size: cover; background-position: center center; background-repeat: no-repeat; overflow: hidden; text-align: left; }
+    .hero::before { content: ''; position: absolute; z-index: -1; inset: 0; background: radial-gradient(circle at 73% 56%, rgba(18, 210, 234, .08), transparent 32%), linear-gradient(180deg, rgba(0,0,0,.02) 55%, rgba(2,9,13,.56) 100%); }
+    .hero::after { content: ''; position: absolute; z-index: -1; inset: auto 0 0; height: 170px; background: linear-gradient(180deg, transparent, rgba(4, 12, 17, .82)); }
+    .hero-halo { display: none; }
+    .hero-lines span { display: none; }
     .hero-lines span:nth-child(1) { left: 12%; top: 15%; } .hero-lines span:nth-child(2) { right: 14%; top: 20%; } .hero-lines span:nth-child(3) { left: 23%; bottom: 18%; } .hero-lines span:nth-child(4) { right: 23%; bottom: 15%; }
     .hero-content { position: relative; z-index: 1; width: 100%; max-width: 620px; }
     .hero-badge { display: inline-flex; align-items: center; gap: 9px; padding: 9px 14px; border: 1px solid #a388573d; border-radius: 999px; background: #231f1bcc; color: #ddc394; font-size: .77rem; letter-spacing: .02em; }
@@ -427,10 +432,10 @@
     .hero-support { font-size: .94rem; line-height: 1.7; max-width: 600px; margin: 0; color: #a9a4a6; }
     .hero-actions { display: flex; align-items: center; justify-content: flex-start; gap: 13px; flex-wrap: wrap; margin-top: 32px; }
     .primary-button, .secondary-button { display: inline-flex; align-items: center; justify-content: center; min-height: 47px; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: .87rem; font-weight: 700; transition: background .18s, border-color .18s, transform .18s; }
-    .primary-button { color: #141212; background: #c8a355; border: 1px solid #d6b77b; }
-    .primary-button:hover { background: #e1c48a; transform: translateY(-1px); }
-    .secondary-button { color: #e0d0b5; background: #242124a8; border: 1px solid #6b5a43; }
-    .secondary-button:hover { background: #373028; }
+    .primary-button { color: #17130c; background: linear-gradient(135deg, #c8a355, #d5b56d); border: 1px solid #c8a355; box-shadow: 0 0 28px rgba(200, 163, 85, .12); }
+    .primary-button:hover { background: linear-gradient(135deg, #d5b56d, #e1c886); transform: translateY(-1px); }
+    .secondary-button { color: #e9e5dd; background: rgba(14, 13, 12, .72); border: 1px solid #6d5c3e; }
+    .secondary-button:hover { background: #211d18; border-color: #c8a355; }
     .hero-bottom { position: absolute; display: flex; align-items: center; gap: 13px; color: #9b8051; bottom: 33px; left: 50%; transform: translateX(-50%); font-size: .75rem; }
     .hero-bottom-line { width: 90px; height: 1px; background: linear-gradient(90deg,transparent,#9b8051,transparent); }
     .status-card { margin: 54px clamp(20px,6vw,86px) 70px; padding: 27px 30px; display: flex; gap: 23px; align-items: center; background: linear-gradient(115deg,#201e20,#18181c); border: 1px solid #484037; border-radius: 13px; }
@@ -461,14 +466,14 @@
     .footer-social { max-width: 360px; text-align: right; }
     .footer-social p { font-size: .79rem; color: #a6a0a5; margin: 8px 0 0; line-height: 1.55; }
     .social-links { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
-    .social-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid #635840; border-radius: 10px; background: #201e20e6; color: #e5c995; text-decoration: none; transition: border-color .15s, background .15s, transform .15s; }
+    .social-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid #6d5c3e; border-radius: 10px; background: rgba(8, 18, 24, .88); color: #e5c995; text-decoration: none; transition: border-color .15s, background .15s, color .15s, transform .15s; }
     .social-icon svg { width: 19px; height: 19px; }
-    a.social-icon:hover { color: #fff1cd; border-color: #c8a355; background: #372b21; transform: translateY(-2px); }
+    a.social-icon:hover { color: #f2dfb2; border-color: #c8a355; background: #221d16; transform: translateY(-2px); }
     .social-pending { opacity: .43; cursor: not-allowed; }
     .hero-socials { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; margin-top: 28px; }
     .hero-socials > span { font-size: .7rem; letter-spacing: .12em; font-weight: 700; color: #b99d6b; }
     .footer-social-links { justify-content: flex-end; margin-top: 13px; }
-    .hero-art { position: absolute; z-index: -1; inset: 0 0 0 41%; pointer-events: none; overflow: hidden; }
+    .hero-art { display: none; }
     .art-halo { position: absolute; width: min(520px, 68vw); aspect-ratio: 1; right: 8%; top: 10%; border: 2px solid #cba55945; border-radius: 50%; box-shadow: 0 0 38px #d1ad6c32, 0 0 0 21px #d1ad6c07, 0 0 0 70px #d1ad6c06, inset 0 0 64px #ad8c4820; background: radial-gradient(circle at 50% 46%,#f5ce7840,transparent 58%); }
     .art-halo::before, .art-halo::after { content: ''; position: absolute; inset: 13%; border: 1px solid #d8b87645; border-radius: 50%; }
     .art-halo::after { inset: 26%; border-style: dashed; transform: rotate(21deg); }
@@ -485,7 +490,7 @@
     .footer-links { display: flex; gap: 24px; }
     .footer-links a { font-size: .78rem; }
     .sr-only { position: absolute; height: 1px; width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    a:focus-visible, select:focus-visible { outline: 2px solid #d6b77b; outline-offset: 4px; }
+    a:focus-visible, select:focus-visible { outline: 2px solid #28d9ec; outline-offset: 4px; }
     @media (max-width: 770px) {
         .site-header { min-height: 78px; padding: 16px 20px; }
         .brand-logo { max-width: 135px; max-height: 48px; }
@@ -510,10 +515,10 @@
         .account-name { max-width: 88px; font-size: .72rem; }
         .account-arrow { display: none; }
         .language-wrap select { padding: 7px 5px; }
-        .hero { min-height: 0; align-items: flex-start; padding: 26px 19px 75px; }
+        .hero { min-height: 0; align-items: flex-start; padding: 26px 19px 75px; background-position: 61% center; }
         .hero-art { inset: 0; opacity: .26; }
         .hero-halo { right: -40%; top: 13%; }
-        .hero::before { background: linear-gradient(90deg,#0b0d12eb,#0b0d12c9); }
+        .hero::before { background: linear-gradient(180deg, rgba(2,10,15,.34) 0%, rgba(2,10,15,.73) 44%, rgba(2,10,15,.95) 100%), linear-gradient(90deg, rgba(2,10,15,.86) 0%, rgba(2,10,15,.50) 72%, rgba(2,10,15,.18) 100%); }
         .hero-socials { align-items: flex-start; flex-direction: column; gap: 10px; }
         .footer-social-links { justify-content: flex-start; }
         .hero h1 { font-size: clamp(2.72rem,12vw,3.8rem); }
@@ -530,4 +535,27 @@
     }
     :global(html) { scroll-behavior: smooth; }
     @media (prefers-reduced-motion: reduce) { .primary-button, .secondary-button { transition: none; } }
+
+    /* Sessão iniciada: botão outline, sem preenchimento dourado */
+    .header-join.account-link {
+        border-color: rgba(200, 163, 85, .58);
+        background: rgba(10, 14, 18, .72);
+        color: #f2eee7;
+        box-shadow: none;
+    }
+
+    .header-join.account-link:hover,
+    .header-join.account-link:focus-visible {
+        border-color: #c8a355;
+        background: rgba(200, 163, 85, .08);
+        color: #fff;
+    }
+
+    .header-join.account-link .account-status {
+        color: #c8a355;
+    }
+
+    .header-join.account-link .account-name {
+        color: #f2eee7;
+    }
 </style>
