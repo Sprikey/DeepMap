@@ -1,8 +1,8 @@
 <script>
     import { onMount } from 'svelte';
-    import { goto, afterNavigate } from '$app/navigation';
+    import { goto } from '$app/navigation';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
-    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
+    import { getSiteLanguage, setSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { authTranslations } from '$lib/i18n/auth.js';
 
     let currentLanguage = $state('en');
@@ -37,43 +37,6 @@
     });
 
     let returnTo = $state('/profile');
-    let previousPage = $state(null);
-    let referrerPage = $state(null);
-    // 'next' define o destino depois do login, nunca o destino do botão Voltar.
-    let backDestination = $derived(previousPage ?? referrerPage ?? '/');
-
-    // Guarda apenas uma página anterior do próprio DeepMap, nunca um site externo.
-    function safePreviousPage(raw, currentPath) {
-        if (!raw) return null;
-        try {
-            const url = new URL(raw, window.location.href);
-            if (
-                url.origin !== window.location.origin ||
-                url.pathname === currentPath ||
-                // Nunca regressar a uma conta privada pelo botão Voltar do login.
-                url.pathname.replace(/\/+$/, '') === '/profile' ||
-                url.pathname === '/reset-password' ||
-                url.pathname.startsWith('/auth/')
-            ) return null;
-            return url.pathname + url.search + url.hash;
-        } catch {
-            return null;
-        }
-    }
-
-    afterNavigate(({ from }) => {
-        const previous = safePreviousPage(from?.url?.href, '/login');
-        if (previous) previousPage = previous;
-    });
-
-    function goBack(event) {
-        event.preventDefault();
-        void goto(backDestination, { replaceState: true });
-    }
-
-    function changeLanguage(event) {
-        currentLanguage = setSiteLanguage(event.currentTarget.value);
-    }
 
     function safeReturnPath(raw) {
         if (
@@ -110,8 +73,8 @@
     }
 
     onMount(() => {
-        currentLanguage = getSiteLanguage();
-        referrerPage = safePreviousPage(document.referrer, '/login');
+        currentLanguage = setSiteLanguage(getSiteLanguage());
+        const unsubscribeLanguage = subscribeSiteLanguage((language) => { currentLanguage = language; });
         const supabase = getSupabaseBrowserClient();
         const params = new URLSearchParams(window.location.search);
         let active = true;
@@ -149,6 +112,7 @@
 
         return () => {
             active = false;
+            unsubscribeLanguage();
             subscription.unsubscribe();
         };
     });
@@ -304,21 +268,6 @@
 
 <main class="auth-page">
     <div class="auth-card">
-        <div class="auth-topbar">
-            <button type="button" class="back-link" onclick={goBack}>
-                {currentLanguage === 'pt' ? '← Voltar' : '← Back'}
-            </button>
-
-            <div class="language-row">
-                <label for="auth-language" class="language-label">{texts.language}</label>
-                <select id="auth-language" value={currentLanguage} onchange={changeLanguage} aria-label={texts.language}>
-                    <option value="en">EN</option>
-                    <option value="pt">PT</option>
-                </select>
-            </div>
-        </div>
-
-        <img src="/brand/logo.png" alt="DeepMap" class="auth-logo" />
         <h1>{texts.account}</h1>
 
         {#if checkingSession}
@@ -701,63 +650,6 @@
     .legal-links a:focus-visible { outline: 2px solid #c8a355; outline-offset: 4px; }
     .legal-links span { color: #666670; }
 
-    .auth-topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 16px;
-    }
-
-    .back-link {
-        width: auto;
-        min-height: 38px;
-        margin: 0;
-        padding: 8px 12px;
-        border: 1px solid rgba(200, 163, 85, .48);
-        border-radius: 8px;
-        background: rgba(200, 163, 85, .07);
-        color: #d9bd84;
-        font-size: 0.82rem;
-        font-weight: 700;
-    }
-
-    .back-link:hover:not(:disabled),
-    .back-link:focus-visible {
-        border-color: #c8a355;
-        background: rgba(200, 163, 85, .14);
-        color: #f0d99f;
-    }
-
-    .back-link:focus-visible {
-        outline: 2px solid rgba(200, 163, 85, .35);
-        outline-offset: 2px;
-    }
-
-    /* Idioma disponível também fora do mapa. */
-    .language-row {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 8px;
-        margin: 0;
-    }
-    .language-label {
-        margin: 0;
-        color: #a0a0aa;
-        font-size: 0.76rem;
-    }
-    .language-row select {
-        padding: 5px 7px;
-        border: 1px solid #41414d;
-        border-radius: 5px;
-        background: #22222a;
-        color: #c8a355;
-        font: inherit;
-        font-size: 0.78rem;
-        cursor: pointer;
-    }
-
     .terms-consent {
         display: grid;
         grid-template-columns: 20px minmax(0, 1fr);
@@ -789,8 +681,6 @@
 
     @media (max-width: 420px) {
         .auth-card { padding: 24px 18px; }
-        .auth-topbar { align-items: flex-start; }
-        .language-label { display: none; }
     }
 
     /* Registo bloqueado sem aceitar os termos: não mostrar cursor de carregamento. */

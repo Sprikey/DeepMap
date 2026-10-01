@@ -1,8 +1,8 @@
 <script>
     import { onMount } from 'svelte';
-    import { goto, afterNavigate } from '$app/navigation';
+    import { goto } from '$app/navigation';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
-    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
+    import { getSiteLanguage, setSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { profileTranslations } from '$lib/i18n/profile.js';
 
     import {
@@ -23,10 +23,6 @@
     ]);
     const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
     const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-
-    let previousPage = $state(null);
-    let referrerPage = $state(null);
-    let backDestination = $derived(previousPage ?? referrerPage ?? '/');
 
     let currentLanguage = $state('en');
     let t = $derived(profileTranslations[currentLanguage] ?? profileTranslations.en);
@@ -175,43 +171,9 @@
         !!pendingAvatarChoice &&
         (pendingAvatarChoice !== 'custom' || !!pendingAvatarFile || !!customAvatarUrl)
     );
-
-    // Guarda apenas uma página anterior do próprio DeepMap, nunca um site externo.
-    function safePreviousPage(raw, currentPath) {
-        if (!raw) return null;
-        try {
-            const url = new URL(raw, window.location.href);
-            if (
-                url.origin !== window.location.origin ||
-                url.pathname === currentPath ||
-                url.pathname === '/login' && currentPath === '/profile' ||
-                url.pathname === '/reset-password' ||
-                url.pathname.startsWith('/auth/')
-            ) return null;
-            return url.pathname + url.search + url.hash;
-        } catch {
-            return null;
-        }
-    }
-
-    // afterNavigate recebe a origem nas navegações internas do SvelteKit.
-    afterNavigate(({ from }) => {
-        const previous = safePreviousPage(from?.url?.href, '/profile');
-        if (previous) previousPage = previous;
-    });
-
-    function goBack(event) {
-        event.preventDefault();
-        void goto(backDestination, { replaceState: true });
-    }
-
-    function changeLanguage(event) {
-        currentLanguage = setSiteLanguage(event.currentTarget.value);
-    }
-
     onMount(() => {
         currentLanguage = setSiteLanguage(getSiteLanguage());
-        referrerPage = safePreviousPage(document.referrer, '/profile');
+        const unsubscribeLanguage = subscribeSiteLanguage((language) => { currentLanguage = language; });
         const supabase = getSupabaseBrowserClient();
         let active = true;
 
@@ -254,6 +216,7 @@
             fileSelectionVersion++;
             clearAvatarFile();
             if (profileLinkFeedbackTimer !== null) clearTimeout(profileLinkFeedbackTimer);
+            unsubscribeLanguage();
             subscription.unsubscribe();
         };
     });
@@ -987,9 +950,8 @@
         working = true;
         errorMessage = '';
 
-        // Captura a origem antes do signOut alterar o estado da sessão.
-        // Só aceita páginas internas validadas por safePreviousPage; acesso direto cai em '/'.
-        const logoutDestination = backDestination;
+        // Ao terminar sessão, regressar à homepage global do DeepMap.
+        const logoutDestination = '/';
         signingOut = true;
         let error;
         try {
@@ -1004,7 +966,7 @@
             return;
         }
         // SIGNED_OUT não mostra o estado de visitante neste intervalo.
-        // Substituir o perfil no histórico e preservar o destino de origem.
+        // Substituir o perfil no histórico pela homepage.
         try {
             await goto(logoutDestination, { replaceState: true });
         } catch {
@@ -1023,139 +985,7 @@
 
     <div class="profile-container">
 
-        <!-- Voltar à página interna anterior ou, em acesso direto, à homepage. -->
-
-        <div class="top-navigation">
-            <a href={backDestination} class="back-link" onclick={goBack}>
-                {currentLanguage === 'pt' ? '← Voltar' : '← Back'}
-            </a>
-            <select
-                class="profile-language"
-                value={currentLanguage}
-                onchange={changeLanguage}
-                aria-label={t.language}
-            >
-                <option value="en">EN</option>
-                <option value="pt">PT</option>
-            </select>
-        </div>
-
-        <section class="profile-card">
-
-            <div class="profile-brandbar">
-                <img
-                    src="/brand/logo.png"
-                    alt="DeepMap"
-                    class="brand-logo"
-                />
-                {#if !checkingSession && user}
-                    <!-- Definições privadas alinhadas com o logo, fora do banner. -->
-                    <div class="profile-toolbar">
-                    <details class="profile-settings" bind:open={settingsMenuOpen}>
-                        <summary class="settings-trigger" title={t.settings_menu}>
-                            <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-1.91 1.91-.06-.06A1.65 1.65 0 0 0 16 18.4a1.65 1.65 0 0 0-1 1.52V20h-2.7v-.08a1.65 1.65 0 0 0-1-1.52 1.65 1.65 0 0 0-1.82.33l-.06.06-1.91-1.91.06-.06A1.65 1.65 0 0 0 7.9 15a1.65 1.65 0 0 0-1.52-1H6.3v-2.7h.08A1.65 1.65 0 0 0 7.9 10.3a1.65 1.65 0 0 0-.33-1.82l-.06-.06 1.91-1.91.06.06A1.65 1.65 0 0 0 11.3 6.9a1.65 1.65 0 0 0 1-1.52V5.3H15v.08a1.65 1.65 0 0 0 1 1.52 1.65 1.65 0 0 0 1.82-.33l.06-.06 1.91 1.91-.06.06A1.65 1.65 0 0 0 19.4 10.3a1.65 1.65 0 0 0 1.52 1H21v2.7h-.08A1.65 1.65 0 0 0 19.4 15Z" transform="translate(-1.65 -0.65)" />
-                            </svg>
-                            <span class="visually-hidden">{t.settings_menu}</span>
-                        </summary>
-                        <div class="settings-menu">
-                            <span class="settings-eyebrow">{t.private_label}</span>
-                            <button
-                                type="button"
-                                class="settings-edit-profile"
-                                onclick={beginProfileEdit}
-                                disabled={working || usernameLoading || !!usernameLoadError}
-                            >
-                                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
-                                </svg>
-                                <span>{profileUi.editProfile}</span>
-                            </button>
-                            <details class="settings-information">
-                                <summary>
-                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                        <circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" />
-                                    </svg>
-                                    <span>{t.private_settings}</span>
-                                    <span class="settings-chevron" aria-hidden="true">⌄</span>
-                                </summary>
-                                <div class="settings-information-body">
-                                    <p>{t.private_description}</p>
-                                    <span class="settings-detail-label">{t.email}</span>
-                                    <strong class="email-value">{user.email || t.unavailable}</strong>
-                                    <span class="settings-detail-label">{t.sign_in_method}</span>
-                                    <strong>{user.app_metadata?.provider === 'google' ? 'Google' : 'Email'}</strong>
-                                </div>
-                            </details>
-                            <details class="settings-information settings-privacy">
-                                <summary>
-                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-                                        <path d="M9 12l2 2 4-4" />
-                                    </svg>
-                                    <span>{t.privacy_settings}</span>
-                                    <span class="settings-chevron" aria-hidden="true">⌄</span>
-                                </summary>
-                                <div class="settings-information-body">
-                                    {#if usernameLoading}
-                                        <p class="visibility-message" role="status">{t.visibility_loading}</p>
-                                    {:else}
-                                    <div class="visibility-row">
-                                        <div class="visibility-copy">
-                                            <strong>{t.profile_visibility_toggle}</strong>
-                                            <p>{profileIsPublic ? t.visibility_public_explanation : t.visibility_private_explanation}</p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            class="visibility-switch"
-                                            class:enabled={profileIsPublic}
-                                            role="switch"
-                                            aria-label={t.profile_visibility_toggle}
-                                            aria-checked={profileIsPublic}
-                                            title={profileIsPublic ? t.visibility_public : t.visibility_private}
-                                            onclick={toggleProfileVisibility}
-                                            disabled={privacySaving || working || usernameLoading || !!usernameLoadError || !username}
-                                        ><span class="visibility-switch-thumb" aria-hidden="true"></span></button>
-                                    </div>
-                                    <span class="visibility-status">{profileIsPublic ? t.visibility_public : t.visibility_private}</span>
-                                    <p class="visibility-private-note">{t.visibility_email_private}</p>
-                                    {#if username && !usernameLoadError}
-                                        <a class="visitor-preview-link" href={`/u/${encodeURIComponent(username)}?view=visitor`}>
-                                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
-                                                <circle cx="12" cy="12" r="3" />
-                                            </svg>
-                                            {t.view_as_visitor}
-                                        </a>
-                                        <p class="visitor-preview-note">{t.view_as_visitor_note}</p>
-                                    {/if}
-                                    {#if !username && !usernameLoading && !usernameLoadError}
-                                        <p class="visibility-message">{t.visibility_requires_username}</p>
-                                    {/if}
-                                    {#if privacySaving}
-                                        <p class="visibility-message" role="status">{t.visibility_saving}</p>
-                                    {/if}
-                                    {#if privacyError}
-                                        <p class="visibility-message visibility-error" role="alert">{privacyError}</p>
-                                    {/if}
-                                    {#if privacySuccess}
-                                        <p class="visibility-message visibility-success" role="status">{privacySuccess}</p>
-                                    {/if}
-                                    {/if}
-                                </div>
-                            </details>
-                            <button type="button" class="settings-logout" onclick={logout} disabled={working || privacySaving}>
-                                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5m5 5H9" />
-                                </svg>
-                                <span>{working ? t.logging_out : t.log_out}</span>
-                            </button>
-                        </div>
-                    </details>
-                    </div>
-                {/if}
-            </div>
+                <section class="profile-card">
 
             {#if checkingSession}
 
@@ -1263,11 +1093,16 @@
                                         </div>
                                         {#if usernameOnCooldown}
                                             <small>{t.username_cooldown_until} {usernameNextChangeText}</small>
-                                        {:else if usernameStatusMessage}
-                                            <small
-                                                class:username-positive={usernameCheckStatus === 'available'}
-                                                class:username-negative={usernameCheckStatus === 'taken' || usernameCheckStatus === 'invalid' || usernameCheckStatus === 'reserved' || usernameCheckStatus === 'held' || usernameCheckStatus === 'check_error'}
-                                            >{usernameStatusMessage}</small>
+                                        {:else}
+                                            {#if username}
+                                                <small class="username-change-warning">{t.username_change_notice}</small>
+                                            {/if}
+                                            {#if usernameStatusMessage}
+                                                <small
+                                                    class:username-positive={usernameCheckStatus === 'available'}
+                                                    class:username-negative={usernameCheckStatus === 'taken' || usernameCheckStatus === 'invalid' || usernameCheckStatus === 'reserved' || usernameCheckStatus === 'held' || usernameCheckStatus === 'check_error'}
+                                                >{usernameStatusMessage}</small>
+                                            {/if}
                                         {/if}
                                         {#if usernameError}<small class="username-negative">{usernameError}</small>{/if}
                                     </label>
@@ -1312,7 +1147,113 @@
                                             {/if}
                                         </div>
                                     </div>
-                                    <span class="explorer-title-badge"><span aria-hidden="true">✦</span> {t.account_badge}</span>
+                                    <div class="profile-title-actions">
+                                        <span class="explorer-title-badge"><span aria-hidden="true">✦</span> {t.account_badge}</span>
+                                        <div class="profile-toolbar">
+                                                            <details class="profile-settings" bind:open={settingsMenuOpen}>
+                                                                <summary class="settings-trigger" title={t.settings_menu}>
+                                                                    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                        <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                                                                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-1.91 1.91-.06-.06A1.65 1.65 0 0 0 16 18.4a1.65 1.65 0 0 0-1 1.52V20h-2.7v-.08a1.65 1.65 0 0 0-1-1.52 1.65 1.65 0 0 0-1.82.33l-.06.06-1.91-1.91.06-.06A1.65 1.65 0 0 0 7.9 15a1.65 1.65 0 0 0-1.52-1H6.3v-2.7h.08A1.65 1.65 0 0 0 7.9 10.3a1.65 1.65 0 0 0-.33-1.82l-.06-.06 1.91-1.91.06.06A1.65 1.65 0 0 0 11.3 6.9a1.65 1.65 0 0 0 1-1.52V5.3H15v.08a1.65 1.65 0 0 0 1 1.52 1.65 1.65 0 0 0 1.82-.33l.06-.06 1.91 1.91-.06.06A1.65 1.65 0 0 0 19.4 10.3a1.65 1.65 0 0 0 1.52 1H21v2.7h-.08A1.65 1.65 0 0 0 19.4 15Z" transform="translate(-1.65 -0.65)" />
+                                                                    </svg>
+                                                                    <span class="visually-hidden">{t.settings_menu}</span>
+                                                                </summary>
+                                                                <div class="settings-menu">
+                                                                    <span class="settings-eyebrow">{t.private_label}</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        class="settings-edit-profile"
+                                                                        onclick={beginProfileEdit}
+                                                                        disabled={working || usernameLoading || !!usernameLoadError}
+                                                                    >
+                                                                        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                            <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+                                                                        </svg>
+                                                                        <span>{profileUi.editProfile}</span>
+                                                                    </button>
+                                                                    <details class="settings-information">
+                                                                        <summary>
+                                                                            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                                <circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" />
+                                                                            </svg>
+                                                                            <span>{t.private_settings}</span>
+                                                                            <span class="settings-chevron" aria-hidden="true">⌄</span>
+                                                                        </summary>
+                                                                        <div class="settings-information-body">
+                                                                            <p>{t.private_description}</p>
+                                                                            <span class="settings-detail-label">{t.email}</span>
+                                                                            <strong class="email-value">{user.email || t.unavailable}</strong>
+                                                                            <span class="settings-detail-label">{t.sign_in_method}</span>
+                                                                            <strong>{user.app_metadata?.provider === 'google' ? 'Google' : 'Email'}</strong>
+                                                                        </div>
+                                                                    </details>
+                                                                    <details class="settings-information settings-privacy">
+                                                                        <summary>
+                                                                            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+                                                                                <path d="M9 12l2 2 4-4" />
+                                                                            </svg>
+                                                                            <span>{t.privacy_settings}</span>
+                                                                            <span class="settings-chevron" aria-hidden="true">⌄</span>
+                                                                        </summary>
+                                                                        <div class="settings-information-body">
+                                                                            {#if usernameLoading}
+                                                                                <p class="visibility-message" role="status">{t.visibility_loading}</p>
+                                                                            {:else}
+                                                                            <div class="visibility-row">
+                                                                                <div class="visibility-copy">
+                                                                                    <strong>{t.profile_visibility_toggle}</strong>
+                                                                                    <p>{profileIsPublic ? t.visibility_public_explanation : t.visibility_private_explanation}</p>
+                                                                                </div>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    class="visibility-switch"
+                                                                                    class:enabled={profileIsPublic}
+                                                                                    role="switch"
+                                                                                    aria-label={t.profile_visibility_toggle}
+                                                                                    aria-checked={profileIsPublic}
+                                                                                    title={profileIsPublic ? t.visibility_public : t.visibility_private}
+                                                                                    onclick={toggleProfileVisibility}
+                                                                                    disabled={privacySaving || working || usernameLoading || !!usernameLoadError || !username}
+                                                                                ><span class="visibility-switch-thumb" aria-hidden="true"></span></button>
+                                                                            </div>
+                                                                            <span class="visibility-status">{profileIsPublic ? t.visibility_public : t.visibility_private}</span>
+                                                                            <p class="visibility-private-note">{t.visibility_email_private}</p>
+                                                                            {#if username && !usernameLoadError}
+                                                                                <a class="visitor-preview-link" href={`/u/${encodeURIComponent(username)}?view=visitor`}>
+                                                                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                                        <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+                                                                                        <circle cx="12" cy="12" r="3" />
+                                                                                    </svg>
+                                                                                    {t.view_as_visitor}
+                                                                                </a>
+                                                                                <p class="visitor-preview-note">{t.view_as_visitor_note}</p>
+                                                                            {/if}
+                                                                            {#if !username && !usernameLoading && !usernameLoadError}
+                                                                                <p class="visibility-message">{t.visibility_requires_username}</p>
+                                                                            {/if}
+                                                                            {#if privacySaving}
+                                                                                <p class="visibility-message" role="status">{t.visibility_saving}</p>
+                                                                            {/if}
+                                                                            {#if privacyError}
+                                                                                <p class="visibility-message visibility-error" role="alert">{privacyError}</p>
+                                                                            {/if}
+                                                                            {#if privacySuccess}
+                                                                                <p class="visibility-message visibility-success" role="status">{privacySuccess}</p>
+                                                                            {/if}
+                                                                            {/if}
+                                                                        </div>
+                                                                    </details>
+                                                                    <button type="button" class="settings-logout" onclick={logout} disabled={working || privacySaving}>
+                                                                        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5m5 5H9" />
+                                                                        </svg>
+                                                                        <span>{working ? t.logging_out : t.log_out}</span>
+                                                                    </button>
+                                                                </div>
+                                                            </details>
+                                                            </div>
+                                    </div>
                                 </div>
 
                                 <p class:bio-empty={!bio} class="profile-public-bio">{bio || t.about_empty}</p>
@@ -1664,35 +1605,6 @@
         max-width: 640px;
     }
 
-    .top-navigation {
-        margin-bottom: 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .profile-language {
-        padding: 5px 8px;
-        border: 1px solid #454550;
-        border-radius: 6px;
-        background: #22222a;
-        color: #c8a355;
-        font: inherit;
-        font-size: 0.85rem;
-        cursor: pointer;
-    }
-
-    .back-link {
-        color: #c8a355;
-        text-decoration: none;
-        font-size: 0.9rem;
-    }
-
-    .back-link:hover {
-        text-decoration: underline;
-    }
-
     .profile-card {
         width: 100%;
         box-sizing: border-box;
@@ -1703,16 +1615,6 @@
         border-radius: 14px;
 
         text-align: center;
-    }
-
-    .brand-logo {
-        display: block;
-        width: auto;
-        max-width: 150px;
-        height: auto;
-        max-height: 65px;
-        object-fit: contain;
-        margin: 0 auto 28px;
     }
 
     .status-message {
@@ -2540,7 +2442,6 @@
             #0b0b0e;
     }
     .profile-container { max-width: 1060px; }
-    .top-navigation { margin-bottom: 16px; }
     .profile-card {
         padding: 24px;
         border-color: #3c372e;
@@ -2549,7 +2450,6 @@
         text-align: left;
         box-shadow: 0 28px 90px rgba(0, 0, 0, 0.22);
     }
-    .brand-logo { max-width: 118px; max-height: 48px; margin: 0 0 20px; }
     .profile-card > .status-message, .profile-card > .description, .profile-card > h1 { text-align: center; }
     .profile-card > .primary-link { text-align: center; }
     .explorer-hero {
@@ -2621,7 +2521,6 @@
     }
     @media (max-width: 600px) {
         .profile-card { padding: 14px; }
-        .brand-logo { margin: 2px auto 17px; }
         .explorer-hero { padding: 21px 17px 24px; }
         .profile-heading { align-items: flex-start; gap: 14px; }
         .profile-heading .avatar { width: 78px; height: 78px; }
@@ -2726,29 +2625,6 @@
         .hero-bio > p { font-size: .8rem; }
         .settings-menu { width: min(300px, calc(100vw - 48px)); }
     }
-
-    /* v1.0.31 — logo e definições na mesma linha, fora do banner. */
-    .profile-brandbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        min-height: 52px;
-        margin-bottom: 22px;
-        position: relative;
-        z-index: 30;
-    }
-    .profile-brandbar .brand-logo { margin: 0; max-height: 52px; }
-    .profile-toolbar {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        margin: 0;
-        position: relative;
-        z-index: 30;
-    }
-    .profile-toolbar .profile-settings { position: relative; }
-    .profile-toolbar .settings-menu { z-index: 40; }
     .explorer-hero { overflow: hidden; }
     .explorer-hero::after {
         display: block;
@@ -2780,14 +2656,6 @@
     }
     .username-change-notice strong { color: #e5c894; font-weight: 700; }
     @media (max-width: 600px) {
-        .profile-brandbar {
-            display: grid;
-            grid-template-columns: 39px minmax(0, 1fr) 39px;
-            gap: 8px;
-            margin-bottom: 18px;
-        }
-        .profile-brandbar .brand-logo { grid-column: 2; grid-row: 1; justify-self: center; margin: 0; }
-        .profile-brandbar .profile-toolbar { grid-column: 3; grid-row: 1; justify-self: end; }
         .explorer-hero::after {
             width: 260px;
             height: 260px;
@@ -2854,18 +2722,6 @@
         box-shadow: 0 24px 80px rgba(0,0,0,.24);
         text-align: left;
     }
-
-    .profile-brandbar {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 58px;
-        margin-bottom: 18px;
-    }
-
-    .profile-brandbar .brand-logo { margin: 0; max-width: 168px; }
-    .profile-brandbar .profile-toolbar { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
 
     .settings-edit-profile {
         width: 100%;
@@ -2967,6 +2823,7 @@
 
     .profile-identity-main { min-width: 0; padding-top: 22px; }
     .profile-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .profile-title-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-left: auto; flex: none; }
     .profile-title-row h1 { margin: 0; color: #f3efe8; font-size: clamp(1.8rem, 4vw, 2.55rem); letter-spacing: -.035em; }
     .public-handle-row { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
     .public-handle-row .username-handle { color: #d6b773; font-size: 1rem; font-weight: 700; }
@@ -3163,15 +3020,6 @@
     @media (max-width: 650px) {
         .profile-page { padding: 14px 10px 35px; }
         .profile-card { padding: 10px; border-radius: 13px; }
-        .profile-brandbar { min-height: 50px; margin-bottom: 10px; }
-        .profile-brandbar .brand-logo { max-width: 136px; }
-        .profile-banner { min-height: 178px; background-position: center 48%; }
-        .profile-identity-shell {
-            grid-template-columns: 92px minmax(0, 1fr);
-            gap: 13px;
-            min-height: 125px;
-            padding: 0 15px 18px;
-        }
         .profile-avatar-column { width: 88px; margin-top: -43px; }
         .profile-main-avatar { width: 86px; height: 86px; border-width: 3px; box-shadow: 0 0 0 4px #0d151e, 0 8px 20px rgba(0,0,0,.35); }
         .avatar-edit-chip { width: 30px; height: 30px; right: -2px; bottom: -2px; }
@@ -3423,41 +3271,6 @@
        PROFILE POLISH 3 — botões consistentes
        ========================================== */
 
-    /* Voltar passa a botão DeepMap ciano. */
-    .back-link {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        min-height: 42px;
-        padding: 9px 14px;
-        border: 1px solid rgba(16, 227, 242, .62);
-        border-radius: 10px;
-        background: rgba(16, 227, 242, .08);
-        color: #bff9fc;
-        text-decoration: none;
-        font-weight: 700;
-        transition:
-            background .18s ease,
-            border-color .18s ease,
-            color .18s ease,
-            transform .18s ease;
-    }
-
-    .back-link:hover,
-    .back-link:focus-visible {
-        border-color: #10e3f2;
-        background: rgba(16, 227, 242, .15);
-        color: #e3fdff;
-        text-decoration: none;
-        transform: translateY(-1px);
-    }
-
-    .back-link:focus-visible {
-        outline: 2px solid rgba(16, 227, 242, .34);
-        outline-offset: 3px;
-    }
-
     /* Todos os controlos dentro do menu Definições usam a mesma linguagem visual. */
     .settings-edit-profile,
     .settings-information > summary,
@@ -3505,7 +3318,6 @@
        Mantém o novo layout, reverte apenas a paleta
        ========================================== */
 
-    .back-link,
     .settings-trigger,
     .settings-edit-profile,
     .settings-information > summary,
@@ -3517,8 +3329,6 @@
         color: #d9bd84;
     }
 
-    .back-link:hover,
-    .back-link:focus-visible,
     .settings-trigger:hover,
     .profile-settings[open] > .settings-trigger,
     .settings-edit-profile:hover,
@@ -3536,7 +3346,6 @@
         color: #f0d99f;
     }
 
-    .back-link:focus-visible,
     .settings-trigger:focus-visible,
     .settings-information > summary:focus-visible,
     .settings-logout:focus-visible,
@@ -3640,4 +3449,30 @@
     .profile-tab.active {
         border-color: #c8a355;
     }
+
+    .username-change-warning {
+        display: block;
+        margin-top: 4px;
+        color: #d6bd88;
+        font-size: .76rem;
+        line-height: 1.45;
+    }
+
+
+    /* Global header cleanup: settings now belongs to the profile identity area. */
+    .profile-showcase { overflow: visible; }
+    .profile-banner { overflow: hidden; border-radius: 15px 15px 0 0; }
+    .profile-title-actions .profile-toolbar { position: relative; z-index: 35; margin: 0; }
+    .profile-title-actions .profile-settings { position: relative; }
+    .profile-title-actions .settings-menu { right: 0; left: auto; z-index: 60; }
+
+    @media (max-width: 650px) {
+        .profile-title-actions {
+            margin: 9px 0 0;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+        }
+        .profile-title-actions .explorer-title-badge { margin-top: 0; }
+    }
+
 </style>

@@ -1,22 +1,19 @@
 <script>
     import { onMount } from 'svelte';
-    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
+    import { getSiteLanguage, setSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
 
     let currentLanguage = $state('en');
 
     onMount(() => {
         currentLanguage = setSiteLanguage(getSiteLanguage());
+        const unsubscribeLanguage = subscribeSiteLanguage((language) => { currentLanguage = language; });
+        return unsubscribeLanguage;
     });
-
-    function changeLanguage(event) {
-        currentLanguage = setSiteLanguage(event.currentTarget.value);
-    }
 
     const content = {
         en: {
             title: 'Terms of Use',
             description: 'The rules for using DeepMap, your account and the platform.',
-            back: 'Back to DeepMap',
             language: 'Language',
             eyebrow: 'FAIR PLAY',
             subtitle: 'Explore freely. Respect the journey.',
@@ -112,12 +109,10 @@
                     ]
                 }
             ],
-            footer: 'Every explorer belongs here.'
         },
         pt: {
             title: 'Termos de Utilização',
             description: 'As regras de utilização do DeepMap, da tua conta e da plataforma.',
-            back: 'Voltar ao DeepMap',
             language: 'Idioma',
             eyebrow: 'JOGO LIMPO',
             subtitle: 'Explora livremente. Respeita a jornada.',
@@ -213,7 +208,6 @@
                     ]
                 }
             ],
-            footer: 'Every explorer belongs here.'
         }
     };
 
@@ -229,20 +223,7 @@
 
 <main class="privacy-page">
     <div class="privacy-container">
-        <nav class="top-navigation" aria-label="DeepMap">
-            <a href="/" class="back-link"><span aria-hidden="true">←</span> {t.back}</a>
-            <select class="language-select" value={currentLanguage} onchange={changeLanguage} aria-label={t.language}>
-                <option value="en">EN</option>
-                <option value="pt">PT</option>
-            </select>
-        </nav>
-
         <div class="privacy-card">
-            <header class="brandbar">
-                <a href="/" aria-label="DeepMap home">
-                    <img src="/brand/logo.png" alt="DeepMap" class="brand-logo" />
-                </a>
-            </header>
 
             <section class="hero" aria-labelledby="terms-title">
                 <span class="eyebrow"><span aria-hidden="true">✦</span> {t.eyebrow}</span>
@@ -281,10 +262,6 @@
                     </div>
                 </aside>
             </div>
-
-            <footer class="page-footer">
-                <span>{currentLanguage === 'pt' ? '© 2026 DeepMap. Criado para exploradores.' : '© 2026 DeepMap. Built for explorers.'}</span>
-            </footer>
         </div>
     </div>
 </main>
@@ -300,13 +277,7 @@
         font-family: 'Segoe UI', Arial, sans-serif;
     }
     .privacy-container { max-width: 1060px; margin: 0 auto; }
-    .top-navigation { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-    .back-link { color: #c8a355; text-decoration: none; font-size: .9rem; }
-    .back-link:hover, .back-link:focus-visible { text-decoration: underline; }
-    .language-select { background: #22222a; border: 1px solid #454550; border-radius: 6px; padding: 6px 9px; color: #c8a355; font: inherit; font-size: .84rem; cursor: pointer; }
     .privacy-card { border: 1px solid #333340; border-radius: 14px; background: #16161a; padding: 34px; }
-    .brandbar { display: flex; justify-content: center; align-items: center; margin-bottom: 24px; }
-    .brand-logo { display: block; max-width: 170px; max-height: 70px; width: auto; height: auto; object-fit: contain; }
     .hero { position: relative; overflow: hidden; border: 1px solid #514333; border-radius: 13px; background: linear-gradient(120deg,#262018 0%,#1b1a20 55%,#17171b 100%); padding: 34px; margin-bottom: 20px; }
     .hero::after { position: absolute; content: ''; width: 230px; height: 230px; right: -84px; top: -113px; border: 1px solid rgba(200,163,85,.18); box-shadow: 0 0 0 29px rgba(200,163,85,.025),0 0 0 58px rgba(200,163,85,.018); border-radius: 50%; pointer-events: none; }
     .hero > * { position: relative; z-index: 1; }
@@ -329,8 +300,7 @@
     .contact-email { display: block; color: #e0c187; overflow-wrap: anywhere; text-decoration: none; margin: 10px 0 0; font-size: .91rem; }
     .contact-email:hover, .reference-link a:hover { text-decoration: underline; }
     .reference-link a { color: #d6b67a; text-decoration: none; }
-    .page-footer { margin-top: 23px; padding-top: 19px; border-top: 1px solid #35343c; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; color: #908e99; font-size: .77rem; }
     a:focus-visible, select:focus-visible { outline: 2px solid #d1ad6c; outline-offset: 3px; }
     @media (max-width: 790px) { .content-grid { grid-template-columns: 1fr; } .side-column { position: static; grid-row: 1; grid-template-columns: repeat(2, minmax(0,1fr)); } }
-    @media (max-width: 590px) { .privacy-page { padding: 20px 12px 35px; } .privacy-card { padding: 15px; } .brandbar { margin: 4px 0 19px; } .brand-logo { max-width: 150px; } .hero { padding: 23px 19px; } .side-column { grid-template-columns: 1fr; } .policy-section, .aside-card { padding: 18px; } .section-heading { gap: 10px; } .section-heading h2 { font-size: 1.03rem; } .hero::after { width: 180px; height: 180px; right: -90px; top: -90px; } }
+    @media (max-width: 590px) { .privacy-page { padding: 20px 12px 35px; } .privacy-card { padding: 15px; } .hero { padding: 23px 19px; } .side-column { grid-template-columns: 1fr; } .policy-section, .aside-card { padding: 18px; } .section-heading { gap: 10px; } .section-heading h2 { font-size: 1.03rem; } .hero::after { width: 180px; height: 180px; right: -90px; top: -90px; } }
 </style>

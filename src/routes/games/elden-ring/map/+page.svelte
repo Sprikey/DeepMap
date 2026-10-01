@@ -1,8 +1,7 @@
 
 <script>
     import { onMount } from 'svelte';
-    import AuthHeader from '$lib/components/AuthHeader.svelte';
-    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
+    import { getSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
 
     import { translations } from '$lib/games/elden-ring/translations.js';
 
@@ -39,12 +38,17 @@
         );
     }
 
-    function changeLanguage(event) {
-        currentLanguage = setSiteLanguage(event.currentTarget.value);
+    $effect(() => {
+        const unsubscribe = subscribeSiteLanguage((language) => {
+            if (currentLanguage === language) return;
 
-        renderLocationMarkers();
-        updateEditorInterface();
-    }
+            currentLanguage = language;
+            renderLocationMarkers();
+            updateEditorInterface();
+        });
+
+        return unsubscribe;
+    });
 
 
     /* ==========================================
@@ -587,7 +591,7 @@
 
     onMount(async () => {
         // A língua escolhida mantém-se ao navegar entre mapa e perfil.
-        currentLanguage = setSiteLanguage(getSiteLanguage());
+        currentLanguage = getSiteLanguage();
 
         const L = await import('leaflet');
 
@@ -706,9 +710,9 @@
     />
 
 
-    <!-- HEADER -->
+    <!-- SUBHEADER DO JOGO -->
 
-    <header class="header">
+    <header class="game-subheader">
 
         <label
             for="mobile-menu-toggle"
@@ -719,45 +723,15 @@
             <span class="close-icon">✕</span>
         </label>
 
-
-        <div class="brand">
-
-            <img
-                src="/brand/logo.png"
-                alt="DeepMap"
-                class="logo-img"
-            />
-
-            <span class="game-title">
-                Elden Ring
-            </span>
-
-            <span class="version-tag">
-                v1.0.30
-            </span>
-
+        <div class="game-brand">
+            <span class="game-title">Elden Ring</span>
         </div>
 
-
-        <div class="header-actions">
-
-            <select
-                class="language-selector"
-                value={currentLanguage}
-                onchange={changeLanguage}
-                aria-label={currentTexts.language}
-            >
-                <option value="en">EN</option>
-                <option value="pt">PT</option>
-            </select>
-
+        <div class="subheader-actions">
             <div class="checklist-status">
                 {currentTexts.checklist}
                 <span>(0%)</span>
             </div>
-
-            <AuthHeader language={currentLanguage} />
-
         </div>
 
     </header>
@@ -1099,83 +1073,46 @@
 
 
     /* ==========================================
-       HEADER
+       SUBHEADER DO JOGO
        ========================================== */
 
-    .header {
+    .game-subheader {
         position: fixed;
-        top: 0;
+        top: var(--deepmap-site-header-height, 72px);
         left: 0;
         right: 0;
-
-        height: 56px;
-
+        height: var(--deepmap-game-subheader-height, 54px);
         background: #16161a;
         border-bottom: 1px solid #2a2a30;
-
         display: flex;
         align-items: center;
         justify-content: space-between;
-
         padding: 0 16px;
         box-sizing: border-box;
-
-        z-index: 10000;
+        z-index: 30000;
     }
 
-    .brand {
+    .game-brand {
         display: flex;
         align-items: center;
-        gap: 12px;
-    }
-
-    .logo-img {
-        height: 32px;
-        width: auto;
+        min-width: 0;
     }
 
     .game-title {
-        font-size: 1.2rem;
+        font-size: 1.08rem;
         font-weight: 700;
-        color: #c8a355;
-        letter-spacing: 1px;
+        color: #d8b86f;
+        letter-spacing: 0.7px;
     }
 
-    .version-tag {
-        font-size: 0.75rem;
-        color: #888899;
-        background: #22222a;
-
-        padding: 2px 6px;
-        border-radius: 4px;
-        border: 1px solid #333340;
-    }
-
-    .header-actions {
+    .subheader-actions {
         display: flex;
         align-items: center;
         gap: 12px;
     }
 
-    .language-selector {
-        background: #22222a;
-        border: 1px solid #3a3a45;
-        border-radius: 5px;
-
-        color: #c8a355;
-        padding: 5px 7px;
-
-        font-weight: 700;
-        cursor: pointer;
-        outline: none;
-    }
-
-    .language-selector:hover {
-        border-color: #c8a355;
-    }
-
     .checklist-status {
-        font-size: 0.9rem;
+        font-size: 0.88rem;
         color: #a0a0a0;
     }
 
@@ -1230,7 +1167,7 @@
 
     .editor-ui {
         position: fixed !important;
-        top: 68px !important;
+        top: calc(var(--deepmap-site-header-height, 72px) + var(--deepmap-game-subheader-height, 54px) + 12px) !important;
         right: 16px !important;
 
         width: 280px;
@@ -1403,7 +1340,7 @@
         display: none;
 
         position: fixed !important;
-        top: 68px !important;
+        top: calc(var(--deepmap-site-header-height, 72px) + var(--deepmap-game-subheader-height, 54px) + 12px) !important;
         left: 50% !important;
 
         transform: translateX(-50%);
@@ -1448,7 +1385,7 @@
     .body-container {
         position: fixed;
 
-        top: 56px;
+        top: calc(var(--deepmap-site-header-height, 72px) + var(--deepmap-game-subheader-height, 54px));
         left: 0;
         right: 0;
         bottom: 0;
@@ -1465,7 +1402,7 @@
     .desktop-sidebar {
         position: fixed;
 
-        top: 56px;
+        top: calc(var(--deepmap-site-header-height, 72px) + var(--deepmap-game-subheader-height, 54px));
         left: 0;
         bottom: 0;
 
@@ -1892,42 +1829,26 @@
 
     @media (max-width: 768px) {
 
-        .header {
-    padding: 0 8px;
-
-    /* Permite gestos normais, mas impede pinch-zoom no header. */
-    touch-action: pan-x pan-y;
-}
+        .game-subheader {
+            padding: 0 8px;
+            touch-action: pan-x pan-y;
+        }
 
         .mobile-toggle {
             display: flex;
         }
 
-        .brand {
+        .game-brand {
             flex: 1;
             margin-left: 4px;
-            gap: 8px;
-        }
-
-        .logo-img {
-            height: 30px;
         }
 
         .game-title {
             font-size: 1rem;
         }
 
-        .version-tag {
-            font-size: 0.65rem;
-        }
-
-        .header-actions {
+        .subheader-actions {
             gap: 6px;
-        }
-
-        .language-selector {
-            font-size: 0.7rem;
-            padding: 4px 4px;
         }
 
         .checklist-status {
@@ -1964,7 +1885,7 @@
 
             position: fixed;
 
-            top: 56px;
+            top: calc(var(--deepmap-site-header-height, 62px) + var(--deepmap-game-subheader-height, 52px));
             left: 0;
             right: 0;
             bottom: 0;
@@ -1979,11 +1900,11 @@
             pointer-events: auto;
         }
 
-        .mobile-menu-checkbox:checked ~ .header .mobile-toggle .menu-icon {
+        .mobile-menu-checkbox:checked ~ .game-subheader .mobile-toggle .menu-icon {
             display: none;
         }
 
-        .mobile-menu-checkbox:checked ~ .header .mobile-toggle .close-icon {
+        .mobile-menu-checkbox:checked ~ .game-subheader .mobile-toggle .close-icon {
             display: block;
         }
 

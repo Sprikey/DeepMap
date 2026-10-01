@@ -1,7 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
-    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
+    import { getSiteLanguage, setSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { authTranslations } from '$lib/i18n/auth.js';
 
     let currentLanguage = $state('en');
@@ -16,12 +16,10 @@
     let errorKey = $state('');
     let successKey = $state('');
 
-    function changeLanguage(event) {
-        currentLanguage = setSiteLanguage(event.currentTarget.value);
-    }
 
     onMount(() => {
-        currentLanguage = getSiteLanguage();
+        currentLanguage = setSiteLanguage(getSiteLanguage());
+        const unsubscribeLanguage = subscribeSiteLanguage((language) => { currentLanguage = language; });
         let active = true;
 
         async function checkSession() {
@@ -34,7 +32,7 @@
         }
 
         checkSession();
-        return () => { active = false; };
+        return () => { active = false; unsubscribeLanguage(); };
     });
 
     async function updatePassword(event) {
@@ -84,15 +82,6 @@
 
 <main class="auth-page">
     <div class="auth-card">
-        <div class="language-row">
-            <label for="reset-language" class="language-label">{texts.language}</label>
-            <select id="reset-language" value={currentLanguage} onchange={changeLanguage} aria-label={texts.language}>
-                <option value="en">EN</option>
-                <option value="pt">PT</option>
-            </select>
-        </div>
-
-        <img src="/brand/logo.png" alt="DeepMap" class="auth-logo" />
         <h1>{texts.reset_heading}</h1>
 
         {#if checkingSession}

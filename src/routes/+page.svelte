@@ -1,18 +1,11 @@
 <script>
     import { onMount } from 'svelte';
-    import { getSiteLanguage, setSiteLanguage } from '$lib/i18n/site.js';
+    import { getSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
-    import { getDisplayName, getAvatarPresentation } from '$lib/avatar/avatars.js';
 
     let currentLanguage = $state('en');
     let accountUser = $state(null);
     let checkingSession = $state(true);
-    let profileUsername = $state(null);
-    let avatarFailed = $state(false);
-    let accountDisplayName = $derived(accountUser ? getDisplayName(accountUser) : '');
-    let accountAvatar = $derived(accountUser ? getAvatarPresentation(accountUser).image : null);
-    let accountName = $derived(profileUsername ? `@${profileUsername}` : accountDisplayName || accountUser?.email?.split('@')[0] || 'Explorer');
-    let accountInitial = $derived(accountName.replace(/^@/, '').charAt(0).toLocaleUpperCase('pt-PT') || 'D');
 
     const copy = {
         en: {
@@ -60,10 +53,6 @@
             communityButton: 'Create an account or sign in',
             socialsLabel: 'FOLLOW THE JOURNEY',
             socialsText: 'Keep up with the project and be part of the journey from the beginning.',
-            privacy: 'Privacy Policy',
-            terms: 'Terms of Use',
-            contact: 'Contact',
-            copyright: 'DeepMap. Made for explorers.',
             comingSoon: 'Coming soon'
         },
         pt: {
@@ -111,10 +100,6 @@
             communityButton: 'Criar conta ou iniciar sessão',
             socialsLabel: 'ACOMPANHA A JORNADA',
             socialsText: 'Acompanha o projeto e faz parte desta jornada desde o início.',
-            privacy: 'Política de Privacidade',
-            terms: 'Termos de Utilização',
-            contact: 'Contacto',
-            copyright: 'DeepMap. Criado para exploradores.',
             comingSoon: 'Brevemente'
         }
     };
@@ -130,42 +115,29 @@
         { key: 'facebook', name: 'Facebook', url: 'https://www.facebook.com/deepmapcc' }
     ];
 
+    $effect(() => {
+        const unsubscribe = subscribeSiteLanguage((language) => {
+            currentLanguage = language;
+        });
+
+        return unsubscribe;
+    });
+
     onMount(() => {
         currentLanguage = getSiteLanguage();
         const supabase = getSupabaseBrowserClient();
         let active = true;
-        let accountVersion = 0;
         let authEventVersion = 0;
 
         function applyUser(user) {
-            const version = ++accountVersion;
             accountUser = user ?? null;
-            profileUsername = null;
-            avatarFailed = false;
             checkingSession = false;
-
-            if (!user?.id) return;
-
-            // O username público está em public.profiles, não nos metadados de autenticação.
-            void supabase.from('profiles')
-                .select('username')
-                .eq('id', user.id)
-                .maybeSingle()
-                .then(({ data, error }) => {
-                    if (active && version === accountVersion && !error) {
-                        profileUsername = data?.username ?? null;
-                    }
-                })
-                .catch(() => {
-                    // O nome de apresentação continua disponível caso a leitura falhe.
-                });
         }
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             if (!active || event === 'INITIAL_SESSION') return;
             if (['SIGNED_IN', 'SIGNED_OUT', 'USER_UPDATED'].includes(event)) {
                 authEventVersion++;
-                // Evitar operações de BD diretamente dentro do callback de Auth.
                 Promise.resolve().then(() => {
                     if (active) applyUser(session?.user ?? null);
                 });
@@ -185,14 +157,9 @@
 
         return () => {
             active = false;
-            accountVersion++;
             subscription.unsubscribe();
         };
     });
-
-    function changeLanguage(event) {
-        currentLanguage = setSiteLanguage(event.currentTarget.value);
-    }
 </script>
 
 <svelte:head>
@@ -231,46 +198,6 @@
 
 <main class="landing-page">
     <div class="site-shell">
-        <header class="site-header">
-            <a href="/" class="brand-link" aria-label="DeepMap — Home">
-                <img src="/brand/logo.png" alt="DeepMap" class="brand-logo" />
-            </a>
-            <nav class="header-navigation" aria-label="Site navigation">
-                <a href="#journey">{t.navJourney}</a>
-                <a href="#vision">{t.navVision}</a>
-                <a href="#follow">{t.navFollow}</a>
-            </nav>
-            <div class="header-actions">
-                <label class="language-wrap">
-                    <span class="sr-only">{t.language}</span>
-                    <select value={currentLanguage} onchange={changeLanguage} aria-label={t.language}>
-                        <option value="en">EN</option>
-                        <option value="pt">PT</option>
-                    </select>
-                </label>
-                {#if checkingSession}
-                    <span class="header-join account-loading" aria-live="polite">{t.checkingAccount}</span>
-                {:else if accountUser}
-                    <a class="header-join account-link" href="/profile" aria-label={`${t.myProfile} — ${accountName}`} title={t.myProfile}>
-                        <span class="account-avatar" aria-hidden="true">
-                            {#if accountAvatar && !avatarFailed}
-                                <img src={accountAvatar} alt="" referrerpolicy="no-referrer" onerror={() => avatarFailed = true} />
-                            {:else}
-                                <span>{accountInitial}</span>
-                            {/if}
-                        </span>
-                        <span class="account-copy">
-                            <span class="account-status">{t.signedIn}</span>
-                            <strong class="account-name">{accountName}</strong>
-                        </span>
-                        <span class="account-arrow" aria-hidden="true">↗</span>
-                    </a>
-                {:else}
-                    <a class="header-join" href="/login">{t.account}<span aria-hidden="true"> ↗</span></a>
-                {/if}
-            </div>
-        </header>
-
         <section class="hero" aria-labelledby="landing-title">
             <div class="hero-halo" aria-hidden="true"></div>
             <div class="hero-lines" aria-hidden="true">
@@ -362,25 +289,13 @@
                 <a class="primary-button" href={accountUser ? '/profile' : '/login'}>{accountUser ? t.myProfile : t.communityButton}<span aria-hidden="true"> ↗</span></a>
             {/if}
         </section>
-
-        <footer class="site-footer" id="follow">
-            <div class="footer-top">
-                <a href="/" class="footer-logo" aria-label="DeepMap — Home"><img src="/brand/logo.png" alt="DeepMap" /></a>
-                <div class="footer-social">
-                    <span class="section-label">{t.socialsLabel}</span>
-                    <p>{t.socialsText}</p>
-                    <div class="social-links footer-social-links">{@render socialIcons()}</div>
-                </div>
+        <section class="home-follow" id="follow" aria-labelledby="follow-title">
+            <div class="footer-social">
+                <span class="section-label" id="follow-title">{t.socialsLabel}</span>
+                <p>{t.socialsText}</p>
+                <div class="social-links footer-social-links">{@render socialIcons()}</div>
             </div>
-            <div class="footer-bottom">
-                <span>© {new Date().getFullYear()} {t.copyright}</span>
-                <div class="footer-links">
-                    <a href="/privacy">{t.privacy}</a>
-                    <a href="/terms">{t.terms}</a>
-                    <a href="mailto:contact@deepmap.cc">{t.contact}</a>
-                </div>
-            </div>
-        </footer>
+        </section>
     </div>
 </main>
 
@@ -390,26 +305,8 @@
     :global(*) { box-sizing: border-box; }
     .landing-page { min-height: 100vh; min-height: 100dvh; background: #061018; color: #e9e5dd; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; }
     .site-shell { max-width: 1440px; margin: auto; background: linear-gradient(180deg, #07121a 0%, #080b10 42%, #0b0b0e 100%); }
-    .site-header { position: relative; z-index: 3; min-height: 94px; padding: 20px clamp(20px, 6vw, 86px); display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid rgba(40, 208, 235, .13); background: rgba(4, 11, 16, .94); }
-    .header-navigation { display: flex; gap: clamp(15px, 2vw, 34px); align-items: center; margin-left: auto; }
-    .header-navigation a { color: #c8c1bd; font-size: .85rem; text-decoration: none; white-space: nowrap; }
-    .header-navigation a:hover { color: #d8b86f; }
-    .brand-link { display: flex; align-items: center; flex: none; }
-    .brand-logo { display: block; max-width: 166px; width: auto; height: auto; max-height: 57px; object-fit: contain; }
-    .header-actions { display: flex; align-items: center; gap: 23px; }
-    .language-wrap select { border: 1px solid #245b66; border-radius: 7px; padding: 8px; background: #0b1820; color: #dbc28c; font: inherit; font-size: .76rem; cursor: pointer; }
-    .header-join, .footer-links a { color: #e1dcd4; text-decoration: none; font-size: .86rem; }
-    .footer-links a:hover { color: #d8b86f; }
-    .header-join { border: 1px solid #c8a355; background: linear-gradient(135deg, #c8a355, #d5b56d); padding: 11px 16px; border-radius: 7px; color: #17130c; font-weight: 800; box-shadow: 0 0 24px rgba(200, 163, 85, .12); }
-    .header-join:hover { background: linear-gradient(135deg, #d5b56d, #e1c886); }
-    .account-loading, .cta-loading { opacity: .68; cursor: default; }
-    .account-link { display: inline-flex; align-items: center; gap: 10px; min-width: 0; max-width: 235px; }
-    .account-avatar { width: 31px; height: 31px; flex: none; display: grid; place-items: center; overflow: hidden; border: 1px solid #c8a355; border-radius: 50%; background: #10212a; color: #e6c88c; font-size: .85rem; font-weight: 800; }
-    .account-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
-    .account-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-    .account-status { color: #b4a48b; font-size: .56rem; font-weight: 800; letter-spacing: .085em; }
-    .account-name { color: #f0d39a; font-size: .81rem; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .account-arrow { flex: none; }
+    #journey, #vision, #follow { scroll-margin-top: calc(var(--deepmap-site-header-height, 72px) + 18px); }
+    .cta-loading { opacity: .68; cursor: default; }
     .hero { isolation: isolate; position: relative; display: flex; justify-content: flex-start; align-items: center; padding: 94px clamp(20px,6vw,86px) 106px; min-height: 670px; border-bottom: 1px solid #17313a; background-image: linear-gradient(90deg, rgba(3, 12, 18, .98) 0%, rgba(3, 12, 18, .93) 27%, rgba(3, 12, 18, .67) 49%, rgba(3, 12, 18, .18) 72%, rgba(3, 12, 18, .10) 100%), url('/brand/home-hero-world.webp'); background-size: cover; background-position: center center; background-repeat: no-repeat; overflow: hidden; text-align: left; }
     .hero::before { content: ''; position: absolute; z-index: -1; inset: 0; background: radial-gradient(circle at 73% 56%, rgba(18, 210, 234, .08), transparent 32%), linear-gradient(180deg, rgba(0,0,0,.02) 55%, rgba(2,9,13,.56) 100%); }
     .hero::after { content: ''; position: absolute; z-index: -1; inset: auto 0 0; height: 170px; background: linear-gradient(180deg, transparent, rgba(4, 12, 17, .82)); }
@@ -460,10 +357,8 @@
     .community-decoration { position: absolute; z-index: -1; top: -108px; left: 50%; transform: translateX(-50%); color: #c8a3550a; font-size: 340px; line-height: 1; }
     .community h2 { font-size: clamp(2rem,3.8vw,3.3rem); letter-spacing: -.045em; font-family: Georgia,'Times New Roman',serif; font-weight: 500; margin: 13px 0 14px; }
     .community p { max-width: 560px; margin: 0 auto 25px; color: #c0b5aa; line-height: 1.7; font-size: .94rem; }
-    .site-footer { padding: 0 clamp(20px,6vw,86px) 28px; }
-    .footer-top { display: flex; justify-content: space-between; gap: 30px; border-bottom: 1px solid #33323a; padding: 0 0 32px; }
-    .footer-logo img { display: block; width: auto; max-width: 145px; height: auto; max-height: 52px; }
-    .footer-social { max-width: 360px; text-align: right; }
+    .home-follow { display: flex; justify-content: flex-end; padding: 0 clamp(20px,6vw,86px) 34px; }
+    .footer-social { max-width: 420px; text-align: right; }
     .footer-social p { font-size: .79rem; color: #a6a0a5; margin: 8px 0 0; line-height: 1.55; }
     .social-links { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
     .social-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid #6d5c3e; border-radius: 10px; background: rgba(8, 18, 24, .88); color: #e5c995; text-decoration: none; transition: border-color .15s, background .15s, color .15s, transform .15s; }
@@ -486,17 +381,9 @@
     .ridge-front { bottom: -27%; background: #111419; transform: rotate(8deg); box-shadow: 0 -12px 36px #0a0d12; }
     .art-compass { position: absolute; z-index: 1; right: 31%; top: 37%; display: grid; place-items: center; width: 146px; height: 146px; border: 1px solid #f6d99670; border-radius: 50%; background: #b9975426; color: #ebcd88; box-shadow: 0 0 65px #eac47a4a, inset 0 0 30px #dbb87a44; }
     .art-compass span { font-family: Georgia,serif; font-size: 108px; line-height: 1; margin-top: -5px; }
-    .footer-bottom { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding-top: 25px; color: #89838a; font-size: .78rem; }
-    .footer-links { display: flex; gap: 24px; }
-    .footer-links a { font-size: .78rem; }
     .sr-only { position: absolute; height: 1px; width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     a:focus-visible, select:focus-visible { outline: 2px solid #28d9ec; outline-offset: 4px; }
     @media (max-width: 770px) {
-        .site-header { min-height: 78px; padding: 16px 20px; }
-        .brand-logo { max-width: 135px; max-height: 48px; }
-        .header-actions { gap: 12px; }
-        .header-join { padding: 9px 11px; font-size: .78rem; }
-        .header-navigation { display: none; }
         .hero-art { left: 45%; opacity: .72; }
         .hero { min-height: 600px; padding: 85px 20px 84px; }
         .feature-grid { grid-template-columns: 1fr; }
@@ -505,16 +392,6 @@
         .status-card { margin-top: 35px; }
     }
     @media (max-width: 500px) {
-        .site-header { gap: 9px; }
-        .brand-logo { max-width: 103px; }
-        .header-actions { gap: 9px; }
-        .header-join { display: inline-flex; padding: 9px 10px; font-size: .72rem; text-align: center; }
-        .account-link { gap: 6px; max-width: min(43vw, 165px); }
-        .account-status { display: none; }
-        .account-avatar { width: 26px; height: 26px; font-size: .72rem; }
-        .account-name { max-width: 88px; font-size: .72rem; }
-        .account-arrow { display: none; }
-        .language-wrap select { padding: 7px 5px; }
         .hero { min-height: 0; align-items: flex-start; padding: 26px 19px 75px; background-position: 61% center; }
         .hero-art { inset: 0; opacity: .26; }
         .hero-halo { right: -40%; top: 13%; }
@@ -530,7 +407,7 @@
         .status-pill { display: inline-block; margin-top: 17px; }
         .roadmap { padding-bottom: 50px; }
         .community { margin-bottom: 45px; padding: 46px 19px; }
-        .footer-top, .footer-bottom { flex-direction: column; align-items: flex-start; }
+        .home-follow { justify-content: flex-start; }
         .footer-social { text-align: left; }
     }
     :global(html) { scroll-behavior: smooth; }
