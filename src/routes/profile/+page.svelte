@@ -3475,4 +3475,124 @@
         .profile-title-actions .explorer-title-badge { margin-top: 0; }
     }
 
+
+    /* ==========================================
+       PROFILE MOBILE — layout only
+       Mantém a lógica e o desktop intactos.
+       ========================================== */
+    @media (max-width: 650px) {
+        .profile-identity-shell {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0;
+            min-height: 0;
+            padding: 0 14px 22px;
+        }
+
+        .profile-avatar-column {
+            width: 92px;
+            margin: -46px auto 0;
+            justify-self: center;
+        }
+
+        .profile-main-avatar {
+            width: 90px;
+            height: 90px;
+        }
+
+        .profile-identity-main {
+            width: 100%;
+            padding-top: 14px;
+            text-align: center;
+        }
+
+        .profile-title-row {
+            display: block;
+            width: 100%;
+        }
+
+        .profile-title-row h1 {
+            font-size: 1.55rem;
+            line-height: 1.15;
+            overflow-wrap: anywhere;
+        }
+
+        .public-handle-row {
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .profile-title-actions {
+            position: relative;
+            justify-content: center;
+            flex-wrap: wrap;
+            width: 100%;
+            margin: 12px 0 0;
+        }
+
+        .profile-title-actions .profile-toolbar,
+        .profile-title-actions .profile-settings {
+            position: static;
+        }
+
+        .profile-title-actions .settings-menu {
+            right: auto;
+            left: 50%;
+            width: min(320px, calc(100vw - 40px));
+            max-width: calc(100vw - 40px);
+            transform: translateX(-50%);
+        }
+
+        .explorer-title-badge {
+            margin-top: 0;
+        }
+
+        .profile-public-bio {
+            max-width: 34rem;
+            margin: 13px auto 0;
+            text-align: center;
+        }
+
+        .profile-meta-row {
+            justify-content: center;
+        }
+
+        .profile-edit-form {
+            width: 100%;
+            text-align: left;
+        }
+
+        .edit-mode-note {
+            text-align: center;
+        }
+    }
+
+    @media (max-width: 420px) {
+        .profile-page {
+            padding-left: 8px;
+            padding-right: 8px;
+        }
+
+        .profile-card {
+            padding: 8px;
+        }
+
+        .profile-identity-shell {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+
+        .profile-title-row h1 {
+            font-size: 1.42rem;
+        }
+
+        .profile-edit-actions {
+            flex-direction: column;
+        }
+
+        .profile-save-button,
+        .profile-cancel-button {
+            width: 100%;
+        }
+    }
+
 </style>
