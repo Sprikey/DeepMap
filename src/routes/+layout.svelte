@@ -1,6 +1,5 @@
 <script>
     import { page } from '$app/state';
-    import favicon from '$lib/assets/favicon.svg';
     import SiteHeader from '$lib/components/SiteHeader.svelte';
     import SiteFooter from '$lib/components/SiteFooter.svelte';
 
@@ -9,9 +8,6 @@
     let isMapRoute = $derived(page.url.pathname.startsWith('/games/elden-ring/map'));
 </script>
 
-<svelte:head>
-    <link rel="icon" href={favicon} />
-</svelte:head>
 
 <SiteHeader />
 

@@ -23,6 +23,8 @@
     import CommunityMarkerPanel from '$lib/community/CommunityMarkerPanel.svelte';
 
     const GAME_ID = 'elden-ring';
+    const PREVIEW_MARKER_COLOR = '#2f8fff';
+    const PREVIEW_MARKER_OPACITY = 0.82;
 
     // Estado normalizado consumido pelo mapa. Começa com os ficheiros legacy
     // para nunca deixar o mapa vazio durante a migração para Supabase.
@@ -308,6 +310,39 @@
         `;
     }
 
+    function getMarkerContentTypeLabel(type) {
+        const labels = {
+            npc: { en: 'NPC', pt: 'NPC' },
+            item: { en: 'Item', pt: 'Item' },
+            reward: { en: 'Reward', pt: 'Recompensa' },
+            requirement: { en: 'Requirement', pt: 'Requisito' },
+            note: { en: 'Note', pt: 'Nota' }
+        };
+        return labels[type]?.[currentLanguage] ?? labels[type]?.en ?? type ?? '';
+    }
+
+    function buildLocationContentHtml(location) {
+        const items = (location.contentItems ?? [])
+            .map((item) => ({
+                ...item,
+                value: getLocalisedValue(item.text)
+            }))
+            .filter((item) => item.value);
+
+        if (!items.length) return '';
+
+        return `
+            <div class="deepmap-popup-extra-content">
+                ${items.map((item) => `
+                    <div class="deepmap-popup-extra-row">
+                        <span>${escapeHtml(getMarkerContentTypeLabel(item.type))}</span>
+                        <strong>${escapeHtml(item.value)}</strong>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
     function getLocationMedia(location) {
         const media = [];
         const seenImages = new Set();
@@ -439,6 +474,7 @@
         }
 
         const mediaHTML = buildLocationMediaHtml(location);
+        const contentHTML = buildLocationContentHtml(location);
         const attributionRows = [
             location.publishedByUsername
                 ? [currentLanguage === 'pt' ? 'Publicado por' : 'Published by', location.publishedByUsername]
@@ -504,6 +540,8 @@
                             `
                             : ''
                     }
+
+                    ${contentHTML}
 
                     ${footer}
                 </div>
@@ -927,6 +965,7 @@
             slug: 'editor-preview',
             mapLayer: marker.mapLayer || activeMapLayer,
             categoryId: marker.categoryId,
+            colorOverride: PREVIEW_MARKER_COLOR,
             coordinates: [y, x]
         };
 
@@ -934,13 +973,14 @@
             editorMarker = Leaflet.marker([y, x], {
                 icon: createLocationIcon(location),
                 zIndexOffset: 10000,
-                opacity: 0.92,
+                opacity: PREVIEW_MARKER_OPACITY,
                 interactive: false,
                 keyboard: false
             }).addTo(map);
         } else {
             editorMarker.setLatLng([y, x]);
             editorMarker.setIcon(createLocationIcon(location));
+            editorMarker.setOpacity(PREVIEW_MARKER_OPACITY);
         }
 
         if (options.pan) map.panTo([y, x]);
@@ -1119,19 +1159,21 @@
             slug: 'community-preview',
             mapLayer: marker.mapLayer || activeMapLayer,
             categoryId: marker.categoryId,
+            colorOverride: PREVIEW_MARKER_COLOR,
             coordinates: [y, x]
         };
         if (!communityPreviewMarker) {
             communityPreviewMarker = Leaflet.marker([y, x], {
                 icon: createLocationIcon(location),
                 zIndexOffset: 9000,
-                opacity: .82,
+                opacity: PREVIEW_MARKER_OPACITY,
                 interactive: false,
                 keyboard: false
             }).addTo(map);
         } else {
             communityPreviewMarker.setLatLng([y, x]);
             communityPreviewMarker.setIcon(createLocationIcon(location));
+            communityPreviewMarker.setOpacity(PREVIEW_MARKER_OPACITY);
         }
     }
 
@@ -1395,6 +1437,7 @@
                         point={editorPoint}
                         selectedMarkerId={editorSelectedMarkerId}
                         {categories}
+                        {categoryGroups}
                         {mapDefinitions}
                         onChanged={handleEditorDataChanged}
                         onPreview={previewEditorMarker}
@@ -1456,6 +1499,7 @@
             requestRevision={communityRequestRevision}
             point={communityPoint}
             {categories}
+            {categoryGroups}
             {mapDefinitions}
             positionModeActive={communityPositionMode}
             onPositionModeChange={(active) => communityPositionMode = active}
@@ -2402,6 +2446,33 @@
         color: #d8d8dd;
         text-align: right;
         font-weight: 600;
+    }
+
+    :global(.deepmap-popup-extra-content) {
+        display: grid;
+        gap: 5px;
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid #292930;
+    }
+
+    :global(.deepmap-popup-extra-row) {
+        display: grid;
+        grid-template-columns: minmax(78px,.42fr) minmax(0,1fr);
+        gap: 10px;
+        align-items: baseline;
+        font-size: .76rem;
+    }
+
+    :global(.deepmap-popup-extra-row span) {
+        color: #888894;
+    }
+
+    :global(.deepmap-popup-extra-row strong) {
+        color: #d8d8dd;
+        font-weight: 600;
+        text-align: right;
+        overflow-wrap: anywhere;
     }
 
     :global(.deepmap-popup-description) {

@@ -118,6 +118,7 @@
     let errorMessage = $state('');
     let successMessage = $state('');
     let editingId = $state(null);
+    let activeGroupId = $state('');
 
     let categoryId = $state('');
     let groupId = $state('');
@@ -125,7 +126,8 @@
     let namePt = $state('');
     let iconSource = $state('none');
     let iconRef = $state('');
-    let color = $state('#777777');
+    const DEFAULT_PREVIEW_COLOR = '#2f8fff';
+    let color = $state(DEFAULT_PREVIEW_COLOR);
     let markerSize = $state('30');
     let symbolSize = $state('18');
     let sortOrder = $state('');
@@ -139,6 +141,10 @@
 
     let sortedGroups = $derived(
         [...categoryGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    );
+
+    let visibleCategories = $derived(
+        sortedCategories.filter((category) => !activeGroupId || category.group === activeGroupId)
     );
 
     let previewWidth = $derived(Number(markerSize) > 0 ? Number(markerSize) : 30);
@@ -167,12 +173,12 @@
     function resetForm() {
         editingId = null;
         categoryId = '';
-        groupId = sortedGroups[0]?.id ?? '';
+        groupId = activeGroupId || sortedGroups[0]?.id || '';
         nameEn = '';
         namePt = '';
         iconSource = 'none';
         iconRef = '';
-        color = '#777777';
+        color = DEFAULT_PREVIEW_COLOR;
         markerSize = '30';
         symbolSize = '18';
         sortOrder = String(nextSortOrder());
@@ -185,11 +191,12 @@
         editingId = category.id;
         categoryId = category.id;
         groupId = category.group ?? '';
+        activeGroupId = category.group ?? activeGroupId;
         nameEn = category.label?.en ?? '';
         namePt = category.label?.pt ?? '';
         iconSource = category.iconSource ?? (category.icon ? 'static' : 'none');
         iconRef = category.iconRef ?? category.icon ?? '';
-        color = category.color ?? '#777777';
+        color = category.color ?? DEFAULT_PREVIEW_COLOR;
         markerSize = String(category.markerWidth ?? (category.markerHeight ? Math.round(Number(category.markerHeight) / 1.3) : 30));
         symbolSize = String(category.symbolSize ?? 18);
         sortOrder = String(category.sortOrder ?? 0);
@@ -219,6 +226,27 @@
         }
         const category = sortedCategories.find((item) => item.id === id) ?? categories[id];
         if (category) loadCategory(category);
+    }
+
+    function selectGroup(groupIdValue) {
+        activeGroupId = groupIdValue;
+        if (editingId === null) {
+            groupId = groupIdValue;
+            categoryId = '';
+            nameEn = '';
+            namePt = '';
+            iconSource = 'none';
+            iconRef = '';
+            color = DEFAULT_PREVIEW_COLOR;
+            markerSize = '30';
+            symbolSize = '18';
+            sortOrder = String(nextSortOrder());
+            isActive = true;
+            clearMessages();
+        } else if (groupId !== groupIdValue) {
+            editingId = null;
+            resetForm();
+        }
     }
 
     function maybeCreateId() {
@@ -329,8 +357,10 @@
     });
 
     $effect(() => {
-        if (!expanded || editingId !== null || groupId) return;
-        groupId = sortedGroups[0]?.id ?? '';
+        if (!expanded || !sortedGroups.length) return;
+        if (!activeGroupId) activeGroupId = sortedGroups[0]?.id ?? '';
+        if (editingId !== null || groupId) return;
+        groupId = activeGroupId || sortedGroups[0]?.id || '';
         sortOrder = String(nextSortOrder());
     });
 
@@ -363,9 +393,20 @@
                 </button>
             </div>
 
+            <div class="group-tabs" role="tablist" aria-label={t.group}>
+                {#each sortedGroups as group}
+                    <button
+                        type="button"
+                        class:active={activeGroupId === group.id}
+                        onclick={() => selectGroup(group.id)}
+                        disabled={saving || deleting}
+                    >{localisedLabel(group)}</button>
+                {/each}
+            </div>
+
             <select onchange={chooseCategory} value={editingId ?? ''} disabled={saving || deleting || loadingCategories}>
                 <option value="">{t.chooseCategory}</option>
-                {#each sortedCategories as category}
+                {#each visibleCategories as category}
                     <option value={category.id}>
                         {localisedLabel(category)} — {category.id}{category.isActive === false ? ` (${t.inactive})` : ''}
                     </option>
@@ -383,7 +424,7 @@
                         xmlns="http://www.w3.org/2000/svg"
                         aria-label={t.iconPreview}
                     >
-                        <path d="M20 1 C9.5 1 1 9.5 1 20 C1 34 20 51 20 51 C20 51 39 34 39 20 C39 9.5 30.5 1 20 1 Z" fill={color} />
+                        <path d="M20 1 C9.5 1 1 9.5 1 20 C1 34 20 51 20 51 C20 51 39 34 39 20 C39 9.5 30.5 1 20 1 Z" fill={color} opacity="0.82" />
                         {#if iconSource !== 'none' && iconRef}
                             <image
                                 href={iconRef}
@@ -417,7 +458,7 @@
                 </label>
                 <label>
                     <span>{t.group}</span>
-                    <select bind:value={groupId} disabled={saving || deleting}>
+                    <select bind:value={groupId} onchange={() => activeGroupId = groupId} disabled={saving || deleting}>
                         {#each sortedGroups as group}
                             <option value={group.id}>{localisedLabel(group)}</option>
                         {/each}
@@ -509,6 +550,9 @@
     .category-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .category-heading>div { display:grid; gap:2px; }
     .category-heading strong { color:#f2f2f4; font-size:.86rem; }
+    .group-tabs { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:6px; }
+    .group-tabs button { padding:8px 10px; border:1px solid #3a3a45; border-radius:6px; background:#17171c; color:#bcbcc4; font:inherit; font-size:.7rem; font-weight:800; cursor:pointer; }
+    .group-tabs button.active { border-color:#c8a355; background:#211d14; color:#f1d58e; box-shadow:0 0 0 2px rgba(200,163,85,.08); }
     .eyebrow { color:#c8a355; font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
     label { display:grid; gap:5px; }
     label>span,.live-marker-preview>span { color:#b8b8c0; font-size:.69rem; font-weight:700; }

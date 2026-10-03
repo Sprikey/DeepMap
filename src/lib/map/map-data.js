@@ -93,6 +93,7 @@ function normaliseMarker(row) {
         symbolSizeOverride: row.symbol_size_override,
         image: null,
         images: [],
+        contentItems: [],
         npcs: [],
         items: [],
         quests: [],
@@ -244,6 +245,67 @@ async function attachMarkerImages({ supabase, locations }) {
     }
 }
 
+
+async function attachMarkerContent({ supabase, locations }) {
+    const databaseIds = locations
+        .map((location) => location.databaseId)
+        .filter((id) => Number.isFinite(Number(id)))
+        .map(Number);
+
+    if (!databaseIds.length) return locations;
+
+    try {
+        const { data: sections, error: sectionsError } = await supabase
+            .from('marker_sections')
+            .select('id, marker_id, section_type, title_en, title_pt, sort_order, metadata')
+            .in('marker_id', databaseIds)
+            .order('sort_order', { ascending: true })
+            .order('id', { ascending: true });
+
+        if (sectionsError) throw sectionsError;
+        if (!sections?.length) return locations;
+
+        const sectionIds = sections.map((section) => section.id);
+        const { data: rows, error: rowsError } = await supabase
+            .from('marker_section_rows')
+            .select('id, section_id, text_en, text_pt, sort_order')
+            .in('section_id', sectionIds)
+            .order('sort_order', { ascending: true })
+            .order('id', { ascending: true });
+
+        if (rowsError) throw rowsError;
+
+        const sectionById = new Map(sections.map((section) => [Number(section.id), section]));
+        const byMarker = new Map();
+
+        for (const row of rows ?? []) {
+            const section = sectionById.get(Number(row.section_id));
+            if (!section) continue;
+
+            const markerId = Number(section.marker_id);
+            if (!byMarker.has(markerId)) byMarker.set(markerId, []);
+
+            byMarker.get(markerId).push({
+                id: row.id,
+                type: section.section_type ?? 'note',
+                title: { en: section.title_en ?? '', pt: section.title_pt ?? '' },
+                text: { en: row.text_en ?? '', pt: row.text_pt ?? '' },
+                sortOrder: section.sort_order ?? row.sort_order ?? 0
+            });
+        }
+
+        return locations.map((location) => ({
+            ...location,
+            contentItems: location.databaseId
+                ? byMarker.get(Number(location.databaseId)) ?? []
+                : location.contentItems ?? []
+        }));
+    } catch (error) {
+        console.warn('DeepMap map data (marker content):', error?.message ?? error);
+        return locations;
+    }
+}
+
 export async function loadDeepMapGameData({ supabase, gameId, fallback }) {
     const layersPromise = queryWithMigrationFallback({
         query: supabase
@@ -343,10 +405,15 @@ export async function loadDeepMapGameData({ supabase, gameId, fallback }) {
         locations: markers.value
     });
 
+    const locationsWithContent = await attachMarkerContent({
+        supabase,
+        locations: locationsWithImages
+    });
+
     const locations = await attachPublicMarkerAttribution({
         supabase,
         gameId,
-        locations: locationsWithImages
+        locations: locationsWithContent
     });
 
     return {

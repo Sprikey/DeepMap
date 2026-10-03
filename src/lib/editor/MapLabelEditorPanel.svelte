@@ -1,4 +1,5 @@
 <script>
+    import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import {
         createEditorMapLabel,
@@ -267,10 +268,6 @@
         return '';
     }
 
-    function nudgeCoordinateX(delta) {
-        coordinateX = String((Number(coordinateX) || 0) + delta);
-    }
-
     function hasCoordinateValue(value) {
         return String(value ?? '').trim() !== '' && Number.isFinite(Number(value));
     }
@@ -430,15 +427,11 @@
         <div class="grid two">
             <label>
                 <span>{t.x}</span>
-                <div class="coordinate-control-x">
-                    <button type="button" aria-label="X - 1" onclick={() => nudgeCoordinateX(-1)} disabled={saving || deleting}>←</button>
-                    <input type="number" step="1" bind:value={coordinateX} disabled={saving || deleting} />
-                    <button type="button" aria-label="X + 1" onclick={() => nudgeCoordinateX(1)} disabled={saving || deleting}>→</button>
-                </div>
+                <CoordinateStepper axis="x" bind:value={coordinateX} disabled={saving || deleting} />
             </label>
             <label>
                 <span>{t.y}</span>
-                <input type="number" step="1" bind:value={coordinateY} disabled={saving || deleting} />
+                <CoordinateStepper axis="y" bind:value={coordinateY} disabled={saving || deleting} />
             </label>
         </div>
 
@@ -548,10 +541,5 @@
     .success { border:1px solid rgba(87,162,106,.45); background:rgba(46,110,61,.17); color:#afe0b9; }
     @media (max-width:640px) { .two { grid-template-columns:1fr; } .actions { flex-direction:column; } }
 
-    .coordinate-control-x { display:grid; grid-template-columns:34px minmax(0,1fr) 34px; align-items:stretch; border:1px solid #34343e; border-radius:5px; background:#0b0b0e; overflow:hidden; }
-    .coordinate-control-x input { min-width:0; border:0; border-radius:0; box-shadow:none !important; text-align:center; -moz-appearance:textfield; }
-    .coordinate-control-x input::-webkit-outer-spin-button, .coordinate-control-x input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
-    .coordinate-control-x button { border:0; background:#17171c; color:#d8b86f; font-weight:800; }
-    .coordinate-control-x button:first-child { border-right:1px solid #34343e; }
-    .coordinate-control-x button:last-child { border-left:1px solid #34343e; }
+
 </style>

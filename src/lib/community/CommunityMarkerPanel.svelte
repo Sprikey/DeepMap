@@ -1,6 +1,9 @@
 <script>
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { normaliseHttpUrl } from '$lib/map/media.js';
+    import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
+    import MarkerContentEditor from '$lib/editor/MarkerContentEditor.svelte';
+    import { serialiseMarkerContentItems } from '$lib/editor/marker-content.js';
     import {
         cancelMarkerSubmission,
         createMarkerSubmission,
@@ -19,6 +22,7 @@
         requestRevision = 0,
         point = null,
         categories = {},
+        categoryGroups = [],
         mapDefinitions = {},
         positionModeActive = false,
         onClose = () => {},
@@ -32,7 +36,7 @@
             title: 'Community contribution', addMarker: 'Add marker', myContributions: 'My contributions',
             suggestCorrection: 'Suggest a correction', pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled',
             editPending: 'Edit pending submission', close: 'Close', refresh: 'Refresh', newContribution: 'New contribution',
-            layer: 'Map layer', category: 'Category', chooseCategory: 'Choose a category…', titleEn: 'Title — EN', titlePt: 'Title — PT',
+            layer: 'Map layer', type: 'Type', category: 'Category', chooseCategory: 'Choose a category…', titleEn: 'Title — EN', titlePt: 'Title — PT',
             region: 'Region', descriptionEn: 'Description — EN', descriptionPt: 'Description — PT', video: 'Video URL', image: 'Image URL',
             coordinates: 'Location', x: 'X', y: 'Y', choosePosition: 'Choose position', choosingPosition: 'Click the map…',
             note: 'Note for moderators', submit: 'Send for approval', update: 'Save pending changes', cancelSubmission: 'Cancel submission',
@@ -52,7 +56,7 @@
             title: 'Contribuição da comunidade', addMarker: 'Adicionar marcador', myContributions: 'As minhas contribuições',
             suggestCorrection: 'Sugerir correção', pending: 'Pendente', approved: 'Aprovada', rejected: 'Rejeitada', cancelled: 'Cancelada',
             editPending: 'Editar submissão pendente', close: 'Fechar', refresh: 'Atualizar', newContribution: 'Nova contribuição',
-            layer: 'Camada do mapa', category: 'Categoria', chooseCategory: 'Escolhe uma categoria…', titleEn: 'Título — EN', titlePt: 'Título — PT',
+            layer: 'Camada do mapa', type: 'Tipo', category: 'Categoria', chooseCategory: 'Escolhe uma categoria…', titleEn: 'Título — EN', titlePt: 'Título — PT',
             region: 'Região', descriptionEn: 'Descrição — EN', descriptionPt: 'Descrição — PT', video: 'URL do vídeo', image: 'URL da imagem',
             coordinates: 'Localização', x: 'X', y: 'Y', choosePosition: 'Escolher posição', choosingPosition: 'Clica no mapa…',
             note: 'Nota para a moderação', submit: 'Enviar para aprovação', update: 'Guardar alterações pendentes', cancelSubmission: 'Cancelar submissão',
@@ -82,6 +86,7 @@
     let correctionKind = $state('text');
     let targetMarker = $state(null);
     let mapLayer = $state('surface');
+    let categoryGroupId = $state('');
     let categoryId = $state('');
     let titleEn = $state('');
     let titlePt = $state('');
@@ -95,14 +100,21 @@
     let coordinateX = $state('');
     let coordinateY = $state('');
     let note = $state('');
+    let contentItems = $state([]);
     let fieldErrors = $state({});
     let duplicatePendingId = $state(null);
     let checkingDuplicate = $state(false);
     let lastRequestRevision = null;
     let lastPointRevision = null;
 
+    let sortedGroups = $derived(
+        [...categoryGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    );
     let sortedCategories = $derived(
         Object.values(categories).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    );
+    let filteredCategories = $derived(
+        sortedCategories.filter((category) => !categoryGroupId || category.group === categoryGroupId)
     );
     let sortedLayers = $derived(
         Object.values(mapDefinitions).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
@@ -138,6 +150,7 @@
         correctionKind = 'text';
         targetMarker = null;
         mapLayer = sortedLayers[0]?.id ?? 'surface';
+        categoryGroupId = sortedGroups[0]?.id ?? '';
         categoryId = '';
         titleEn = '';
         titlePt = '';
@@ -151,6 +164,7 @@
         coordinateX = '';
         coordinateY = '';
         note = '';
+        contentItems = [];
         duplicatePendingId = null;
         checkingDuplicate = false;
         onPositionModeChange(false);
@@ -172,6 +186,7 @@
         targetMarker = marker;
         mapLayer = marker?.mapLayer ?? 'surface';
         categoryId = marker?.categoryId ?? '';
+        categoryGroupId = categories[marker?.categoryId]?.group ?? sortedGroups[0]?.id ?? '';
         titleEn = marker?.title?.en ?? '';
         titlePt = marker?.title?.pt ?? '';
         regionId = marker?.regionId ?? '';
@@ -230,7 +245,8 @@
                 video_url: videoUrl.trim(),
                 image_url: imageUrl.trim(),
                 coordinate_x: Number(coordinateX),
-                coordinate_y: Number(coordinateY)
+                coordinate_y: Number(coordinateY),
+                content_items: serialiseMarkerContentItems(contentItems)
             };
         }
 
@@ -403,6 +419,14 @@
         targetImageId = p.target_image_id == null ? '' : String(p.target_image_id);
         coordinateX = p.coordinate_x == null ? '' : String(p.coordinate_x);
         coordinateY = p.coordinate_y == null ? '' : String(p.coordinate_y);
+        categoryGroupId = categories[categoryId]?.group ?? sortedGroups[0]?.id ?? '';
+        contentItems = Array.isArray(p.content_items)
+            ? p.content_items.map((item) => ({
+                type: item?.type ?? 'note',
+                textEn: item?.text_en ?? '',
+                textPt: item?.text_pt ?? ''
+            }))
+            : [];
 
         if (item.markerId) {
             targetMarker = requestMarker?.databaseId === item.markerId
@@ -440,9 +464,9 @@
         }
     }
 
-    function nudgeX(delta) {
-        coordinateX = String((Number(coordinateX) || 0) + delta);
-        clearFieldError('coordinateX');
+    function handleCategoryGroupChange() {
+        if (categoryId && categories[categoryId]?.group !== categoryGroupId) categoryId = '';
+        clearFieldError('category');
     }
 
     function togglePosition() {
@@ -570,30 +594,32 @@
                             </select>
                             {#if fieldErrors.layer}<small class="field-error">{fieldErrors.layer}</small>{/if}
                         </label>
-                        <label class:invalid={Boolean(fieldErrors.category)}>
-                            <span>{t.category} *</span>
-                            <select bind:value={categoryId} onchange={() => clearFieldError('category')} disabled={saving}>
-                                <option value="">{t.chooseCategory}</option>
-                                {#each sortedCategories as category}<option value={category.id}>{localisedLabel(category)}</option>{/each}
+                        <label>
+                            <span>{t.type}</span>
+                            <select bind:value={categoryGroupId} onchange={handleCategoryGroupChange} disabled={saving}>
+                                {#each sortedGroups as group}<option value={group.id}>{localisedLabel(group)}</option>{/each}
                             </select>
-                            {#if fieldErrors.category}<small class="field-error">{fieldErrors.category}</small>{/if}
                         </label>
                     </div>
+                    <label class:invalid={Boolean(fieldErrors.category)}>
+                        <span>{t.category} *</span>
+                        <select bind:value={categoryId} onchange={() => clearFieldError('category')} disabled={saving}>
+                            <option value="">{t.chooseCategory}</option>
+                            {#each filteredCategories as category}<option value={category.id}>{localisedLabel(category)}</option>{/each}
+                        </select>
+                        {#if fieldErrors.category}<small class="field-error">{fieldErrors.category}</small>{/if}
+                    </label>
 
                     <fieldset class="location-box">
                         <legend>{t.coordinates} *</legend>
                         <div class="coordinate-row">
                             <span>{t.x} *</span>
-                            <div class:invalid={Boolean(fieldErrors.coordinateX)} class="coordinate-input-x">
-                                <button type="button" aria-label="X - 1" onclick={() => nudgeX(-1)} disabled={saving}>←</button>
-                                <input type="number" step="1" bind:value={coordinateX} oninput={() => clearFieldError('coordinateX')} disabled={saving} />
-                                <button type="button" aria-label="X + 1" onclick={() => nudgeX(1)} disabled={saving}>→</button>
-                            </div>
+                            <CoordinateStepper axis="x" bind:value={coordinateX} invalid={Boolean(fieldErrors.coordinateX)} onValueChange={() => clearFieldError('coordinateX')} disabled={saving} />
                             {#if fieldErrors.coordinateX}<small class="field-error">{fieldErrors.coordinateX}</small>{/if}
                         </div>
                         <div class="coordinate-row">
                             <span>{t.y} *</span>
-                            <input class:invalid={Boolean(fieldErrors.coordinateY)} type="number" step="1" bind:value={coordinateY} oninput={() => clearFieldError('coordinateY')} disabled={saving} />
+                            <CoordinateStepper axis="y" bind:value={coordinateY} invalid={Boolean(fieldErrors.coordinateY)} onValueChange={() => clearFieldError('coordinateY')} disabled={saving} />
                             {#if fieldErrors.coordinateY}<small class="field-error">{fieldErrors.coordinateY}</small>{/if}
                         </div>
                         <button class:active={positionModeActive} class="position-button" type="button" onclick={togglePosition} disabled={saving}>{positionModeActive ? t.choosingPosition : t.choosePosition}</button>
@@ -626,21 +652,21 @@
                     {/if}
                 {/if}
 
+                {#if submissionType === 'create'}
+                    <MarkerContentEditor {language} bind:value={contentItems} disabled={saving} />
+                {/if}
+
                 {#if submissionType === 'correction' && correctionKind === 'location'}
                     <fieldset class="location-box">
                         <legend>{t.coordinates} *</legend>
                         <div class="coordinate-row">
                             <span>{t.x} *</span>
-                            <div class:invalid={Boolean(fieldErrors.coordinateX)} class="coordinate-input-x">
-                                <button type="button" aria-label="X - 1" onclick={() => nudgeX(-1)} disabled={saving}>←</button>
-                                <input type="number" step="1" bind:value={coordinateX} oninput={() => clearFieldError('coordinateX')} disabled={saving} />
-                                <button type="button" aria-label="X + 1" onclick={() => nudgeX(1)} disabled={saving}>→</button>
-                            </div>
+                            <CoordinateStepper axis="x" bind:value={coordinateX} invalid={Boolean(fieldErrors.coordinateX)} onValueChange={() => clearFieldError('coordinateX')} disabled={saving} />
                             {#if fieldErrors.coordinateX}<small class="field-error">{fieldErrors.coordinateX}</small>{/if}
                         </div>
                         <div class="coordinate-row">
                             <span>{t.y} *</span>
-                            <input class:invalid={Boolean(fieldErrors.coordinateY)} type="number" step="1" bind:value={coordinateY} oninput={() => clearFieldError('coordinateY')} disabled={saving} />
+                            <CoordinateStepper axis="y" bind:value={coordinateY} invalid={Boolean(fieldErrors.coordinateY)} onValueChange={() => clearFieldError('coordinateY')} disabled={saving} />
                             {#if fieldErrors.coordinateY}<small class="field-error">{fieldErrors.coordinateY}</small>{/if}
                         </div>
                         <button class:active={positionModeActive} class="position-button" type="button" onclick={togglePosition} disabled={saving}>{positionModeActive ? t.choosingPosition : t.choosePosition}</button>
@@ -683,9 +709,9 @@
 <style>
     .community-panel{position:fixed;top:118px;right:18px;z-index:1300;width:min(430px,calc(100vw - 36px));max-height:calc(100vh - 140px);overflow:auto;padding:14px;border:1px solid #34343e;border-radius:12px;background:rgba(12,12,15,.98);box-shadow:0 18px 48px rgba(0,0,0,.48);color:#f0f0f2}
     .community-heading,.mine-heading,.actions{display:flex;align-items:center;justify-content:space-between;gap:10px}.community-heading{position:sticky;top:-14px;z-index:5;margin:-14px -14px 12px;padding:14px;background:rgba(12,12,15,.985);border-bottom:1px solid #2b2b33}.community-heading div{display:grid;gap:2px}.eyebrow{color:#c8a355;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.icon-button,.small-button,.community-tabs button,.correction-types button,.position-button,.actions button{border:1px solid #3a3a45;border-radius:8px;background:#17171c;color:#ddd;cursor:pointer}.icon-button{width:34px;height:34px}.small-button,.position-button,.actions button{padding:8px 11px}.community-tabs,.correction-types{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}.correction-types{grid-template-columns:repeat(2,1fr)}.community-tabs button,.correction-types button{padding:8px}.community-tabs button.active,.correction-types button.active,.position-button.active{border-color:#c8a355;color:#f1d58e;background:#211d14}.grid{display:grid;gap:10px}.grid.two{grid-template-columns:1fr 1fr}
-    label{display:grid;gap:5px;margin:10px 0}label>span,legend{color:#b8b8c0;font-size:.72rem;font-weight:700}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #34343e;border-radius:8px;background:#0f0f13;color:#eee;padding:9px 10px;font:inherit}textarea{resize:vertical}input:focus,select:focus,textarea:focus{outline:none;border-color:#c8a355;box-shadow:0 0 0 2px rgba(200,163,85,.11)}label.invalid input,label.invalid select,label.invalid textarea,input.invalid,.coordinate-input-x.invalid{border-color:#c85f67!important;box-shadow:0 0 0 2px rgba(200,95,103,.12)}.field-error{color:#ff9da7;font-size:.68rem;line-height:1.3}
+    label{display:grid;gap:5px;margin:10px 0}label>span,legend{color:#b8b8c0;font-size:.72rem;font-weight:700}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #34343e;border-radius:8px;background:#0f0f13;color:#eee;padding:9px 10px;font:inherit}textarea{resize:vertical}input:focus,select:focus,textarea:focus{outline:none;border-color:#c8a355;box-shadow:0 0 0 2px rgba(200,163,85,.11)}label.invalid input,label.invalid select,label.invalid textarea,input.invalid{border-color:#c85f67!important;box-shadow:0 0 0 2px rgba(200,95,103,.12)}.field-error{color:#ff9da7;font-size:.68rem;line-height:1.3}
     .help,.muted,.mine-heading p{color:#9696a0;font-size:.78rem;line-height:1.4}.message{padding:9px 10px;border-radius:8px;font-size:.8rem}.message.error{background:#2a1518;color:#ffb4bd}.message.success{background:#16251b;color:#b9efc7}.submission-list{display:grid;gap:8px}.submission-card{display:grid;gap:3px;width:100%;padding:10px;border:1px solid #303039;border-radius:9px;background:#121217;color:#eee;text-align:left}.submission-card.pending{cursor:pointer}.submission-card.pending:hover{border-color:#c8a355}.submission-card small{color:#9b9ba5}.target-marker{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid #303039;border-radius:8px;background:#111116}.target-marker span{color:#999}
-    .location-box{margin:12px 0;padding:10px;border:1px solid #303039;border-radius:9px;background:rgba(9,9,12,.42)}.coordinate-row{display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;gap:7px;margin:7px 0}.coordinate-row>.field-error{grid-column:2}.coordinate-input-x{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:stretch;border:1px solid #34343e;border-radius:8px;background:#0f0f13;overflow:hidden}.coordinate-input-x input{min-width:0;border:0;border-radius:0;box-shadow:none!important;text-align:center;-moz-appearance:textfield}.coordinate-input-x input::-webkit-outer-spin-button,.coordinate-input-x input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}.coordinate-input-x button{border:0;background:#17171c;color:#d8b86f;font:inherit;font-weight:800;cursor:pointer}.coordinate-input-x button:first-child{border-right:1px solid #34343e}.coordinate-input-x button:last-child{border-left:1px solid #34343e}.coordinate-input-x button:disabled{opacity:.5;cursor:not-allowed}
+    .location-box{margin:12px 0;padding:10px;border:1px solid #303039;border-radius:9px;background:rgba(9,9,12,.42)}.coordinate-row{display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;gap:7px;margin:7px 0}.coordinate-row>.field-error{grid-column:2}
     .actions{justify-content:flex-start;flex-wrap:wrap;margin-top:12px}.actions .primary{border-color:#c8a355;background:#c8a355;color:#111;font-weight:800}.actions .danger{border-color:#6f343b;color:#ffc1c8}.actions button:disabled,.position-button:disabled{opacity:.55;cursor:not-allowed}
     @media(max-width:700px){.community-panel{top:106px;left:10px;right:10px;width:auto;max-height:calc(100vh - 120px)}.grid.two{grid-template-columns:1fr}}
 </style>

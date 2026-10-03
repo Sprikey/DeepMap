@@ -1,6 +1,9 @@
 <script>
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import MarkerImagesPanel from '$lib/editor/MarkerImagesPanel.svelte';
+    import MarkerContentEditor from '$lib/editor/MarkerContentEditor.svelte';
+    import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
+    import { loadEditorMarkerContent, replaceEditorMarkerContent } from '$lib/editor/marker-content.js';
     import { getVideoEmbedUrl, normaliseHttpUrl } from '$lib/map/media.js';
     import {
         createEditorMarker,
@@ -17,6 +20,7 @@
         point = null,
         selectedMarkerId = null,
         categories = {},
+        categoryGroups = [],
         mapDefinitions = {},
         onChanged = async () => {},
         onPreview = () => {},
@@ -40,6 +44,7 @@
             noPublished: 'No published markers.',
             refresh: 'Refresh',
             layer: 'Layer',
+            type: 'Type',
             category: 'Category',
             chooseCategory: 'Choose a category…',
             slug: 'Slug',
@@ -98,6 +103,7 @@
             noPublished: 'Sem marcadores publicados.',
             refresh: 'Atualizar',
             layer: 'Camada',
+            type: 'Tipo',
             category: 'Categoria',
             chooseCategory: 'Escolhe uma categoria…',
             slug: 'Slug',
@@ -160,6 +166,7 @@
 
     let editingId = $state(null);
     let mapLayer = $state('surface');
+    let categoryGroupId = $state('');
     let categoryId = $state('');
     let slug = $state('');
     let manualSlug = $state(false);
@@ -174,9 +181,19 @@
     let isPublished = $state(false);
     let showOriginalLocation = $state(false);
     let markerMoved = $state(false);
+    let contentItems = $state([]);
+    let contentLoadToken = 0;
+
+    let sortedGroups = $derived(
+        [...categoryGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    );
 
     let sortedCategories = $derived(
         Object.values(categories).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    );
+
+    let filteredCategories = $derived(
+        sortedCategories.filter((category) => !categoryGroupId || category.group === categoryGroupId)
     );
 
     let sortedLayers = $derived(
@@ -214,6 +231,7 @@
     function resetForm({ keepCoordinates = true } = {}) {
         editingId = null;
         mapLayer = sortedLayers[0]?.id ?? 'surface';
+        categoryGroupId = sortedGroups[0]?.id ?? '';
         categoryId = '';
         slug = '';
         manualSlug = false;
@@ -223,6 +241,7 @@
         descriptionPt = '';
         regionId = '';
         videoUrl = '';
+        contentItems = [];
         isPublished = false;
 
         if (!keepCoordinates) {
@@ -246,6 +265,7 @@
         editingId = marker.id;
         mapLayer = marker.mapLayer;
         categoryId = marker.categoryId;
+        categoryGroupId = categories[marker.categoryId]?.group ?? sortedGroups[0]?.id ?? '';
         slug = marker.slug;
         manualSlug = true;
         titleEn = marker.titleEn;
@@ -265,6 +285,25 @@
         onMoveStateChange(false);
         onOriginalVisibilityChange(false);
         onPreview(marker, { pan: true });
+        void refreshMarkerContent(marker.id);
+    }
+
+    async function refreshMarkerContent(markerId) {
+        const token = ++contentLoadToken;
+        try {
+            const items = await loadEditorMarkerContent({
+                supabase: getSupabaseBrowserClient(),
+                markerId
+            });
+            if (token === contentLoadToken && editingId === markerId) contentItems = items;
+        } catch (error) {
+            console.warn('DeepMap marker content load:', error);
+            if (token === contentLoadToken && editingId === markerId) contentItems = [];
+        }
+    }
+
+    function handleCategoryGroupChange() {
+        if (categoryId && categories[categoryId]?.group !== categoryGroupId) categoryId = '';
     }
 
     async function refreshMarkers({ preserveSelection = true } = {}) {
@@ -376,6 +415,12 @@
                     marker: markerInput
                 });
 
+            await replaceEditorMarkerContent({
+                supabase,
+                markerId: saved.id,
+                items: contentItems
+            });
+
             await refreshMarkers({ preserveSelection: false });
 
             // Guardar/publicar termina a operação atual.
@@ -395,10 +440,6 @@
         } finally {
             saving = false;
         }
-    }
-
-    function nudgeCoordinateX(delta) {
-        coordinateX = String((Number(coordinateX) || 0) + delta);
     }
 
     function togglePositionMode() {
@@ -582,15 +623,24 @@
             </label>
 
             <label>
-                <span>{t.category}</span>
-                <select bind:value={categoryId} disabled={saving || deleting}>
-                    <option value="">{t.chooseCategory}</option>
-                    {#each sortedCategories as category}
-                        <option value={category.id}>{localisedLabel(category)}</option>
+                <span>{t.type}</span>
+                <select bind:value={categoryGroupId} onchange={handleCategoryGroupChange} disabled={saving || deleting}>
+                    {#each sortedGroups as group}
+                        <option value={group.id}>{localisedLabel(group)}</option>
                     {/each}
                 </select>
             </label>
         </div>
+
+        <label>
+            <span>{t.category}</span>
+            <select bind:value={categoryId} disabled={saving || deleting}>
+                <option value="">{t.chooseCategory}</option>
+                {#each filteredCategories as category}
+                    <option value={category.id}>{localisedLabel(category)}</option>
+                {/each}
+            </select>
+        </label>
 
         <div class="form-grid two-columns">
             <label>
@@ -607,16 +657,12 @@
         <div class="form-grid two-columns coordinates-grid">
             <label>
                 <span>{t.x}</span>
-                <div class="coordinate-control-x">
-                    <button type="button" aria-label="X - 1" onclick={() => nudgeCoordinateX(-1)} disabled={saving || deleting}>←</button>
-                    <input type="number" step="1" bind:value={coordinateX} disabled={saving || deleting} />
-                    <button type="button" aria-label="X + 1" onclick={() => nudgeCoordinateX(1)} disabled={saving || deleting}>→</button>
-                </div>
+                <CoordinateStepper axis="x" bind:value={coordinateX} disabled={saving || deleting} />
             </label>
 
             <label>
                 <span>{t.y}</span>
-                <input type="number" step="1" bind:value={coordinateY} disabled={saving || deleting} />
+                <CoordinateStepper axis="y" bind:value={coordinateY} disabled={saving || deleting} />
             </label>
         </div>
 
@@ -714,6 +760,8 @@
         {:else if videoUrl.trim()}
             <p class="inline-warning">{t.invalidVideo}</p>
         {/if}
+
+        <MarkerContentEditor {language} bind:value={contentItems} disabled={saving || deleting} />
 
         <MarkerImagesPanel
             markerId={editingId}
@@ -1159,11 +1207,4 @@
         }
     }
 
-    .coordinate-control-x { display:grid; grid-template-columns:34px minmax(0,1fr) 34px; align-items:stretch; border:1px solid #34343e; border-radius:5px; background:#0b0b0e; overflow:hidden; }
-    .coordinate-control-x input { min-width:0; border:0; border-radius:0; box-shadow:none !important; text-align:center; -moz-appearance:textfield; }
-    .coordinate-control-x input::-webkit-outer-spin-button, .coordinate-control-x input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
-    .coordinate-control-x button { border:0; background:#17171c; color:#d8b86f; cursor:pointer; font-weight:800; }
-    .coordinate-control-x button:first-child { border-right:1px solid #34343e; }
-    .coordinate-control-x button:last-child { border-left:1px solid #34343e; }
-    .coordinate-control-x button:disabled { opacity:.5; cursor:not-allowed; }
 </style>
