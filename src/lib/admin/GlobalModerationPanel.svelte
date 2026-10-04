@@ -26,7 +26,7 @@
             addImage: 'Add image', reportImage: 'Report existing image', targetImage: 'Image ID', note: 'Contributor note', moderatorNote: 'Moderator note',
             approve: 'Approve', reject: 'Reject', close: 'Close', working: 'Working…', approvedOk: 'Submission approved.', rejectedOk: 'Submission rejected.',
             loadError: 'Could not load moderation queue.', reviewError: 'Could not review this submission.', openMap: 'Open on map', content: 'Additional content',
-            changes: 'Submitted data', gameUnavailable: 'This game is not registered in the admin registry yet.'
+            changes: 'Submitted data', current: 'Current', suggested: 'Suggested', finalVersion: 'Final version to publish', comparison: 'Change comparison', comparisonHelp: 'Only fields that actually changed are shown.', noStructuredChanges: 'No structured fields changed. Check the contributor note below.', noCurrentMarker: 'The current marker could not be loaded for comparison.', images: 'Images', addImageSummary: 'Add image', reportImageSummary: 'Report image', gameUnavailable: 'This game is not registered in the admin registry yet.'
         },
         pt: {
             title: 'Moderação global', pending: 'Pendentes', history: 'Histórico', approved: 'Aprovados', rejected: 'Reprovados',
@@ -40,7 +40,7 @@
             addImage: 'Adicionar imagem', reportImage: 'Reportar imagem existente', targetImage: 'ID da imagem', note: 'Nota do utilizador', moderatorNote: 'Nota da moderação',
             approve: 'Aprovar', reject: 'Rejeitar', close: 'Fechar', working: 'A processar…', approvedOk: 'Submissão aprovada.', rejectedOk: 'Submissão reprovada.',
             loadError: 'Não foi possível carregar a fila de moderação.', reviewError: 'Não foi possível rever esta submissão.', openMap: 'Abrir no mapa', content: 'Conteúdo adicional',
-            changes: 'Dados submetidos', gameUnavailable: 'Este jogo ainda não está registado no painel de administração.'
+            changes: 'Dados submetidos', current: 'Atual', suggested: 'Sugerido', finalVersion: 'Versão final a publicar', comparison: 'Comparação da alteração', comparisonHelp: 'São mostrados apenas os campos que realmente mudaram.', noStructuredChanges: 'Não existem campos estruturados alterados. Revê a nota do utilizador abaixo.', noCurrentMarker: 'Não foi possível carregar o marcador atual para comparação.', images: 'Imagens', addImageSummary: 'Adicionar imagem', reportImageSummary: 'Reportar imagem', gameUnavailable: 'Este jogo ainda não está registado no painel de administração.'
         }
     };
 
@@ -173,6 +173,91 @@
     function payloadValue(payload, key, fallback = '') {
         if (payload && Object.prototype.hasOwnProperty.call(payload, key)) return payload[key] ?? '';
         return fallback ?? '';
+    }
+
+    function hasPayloadKey(payload, key) {
+        return Boolean(payload && Object.prototype.hasOwnProperty.call(payload, key));
+    }
+
+    function displayValue(value) {
+        if (value == null || String(value).trim() === '') return '—';
+        return String(value);
+    }
+
+    function layerLabel(id) {
+        const layer = mapDefinitions?.[id];
+        return layer ? localisedLabel(layer) : displayValue(id);
+    }
+
+    function contentSummary(items = []) {
+        const normalised = reviewItemsFrom(items);
+        if (!normalised.length) return '—';
+        return normalised
+            .map((item) => `${contentTypeLabel(item.type, language)}: ${item[language === 'pt' ? 'textPt' : 'textEn'] || item.textEn || item.textPt || '—'}`)
+            .join('\n');
+    }
+
+    function valuesDiffer(before, after) {
+        return String(before ?? '').trim() !== String(after ?? '').trim();
+    }
+
+    function correctionComparisonRows(item) {
+        if (!item || item.type !== 'correction') return [];
+        const target = targetLocation(item);
+        if (!target) return [];
+        const payload = item.payload ?? {};
+        const rows = [];
+
+        const add = (key, label, before, after, formatter = displayValue) => {
+            if (!hasPayloadKey(payload, key) || !valuesDiffer(before, after)) return;
+            rows.push({ key, label, before: formatter(before), suggested: formatter(after) });
+        };
+
+        add('map_layer', t.layer, target.mapLayer, payload.map_layer, layerLabel);
+        add('category_id', t.category, target.categoryId, payload.category_id, localisedCategory);
+        add('title_en', t.titleEn, target.title?.en, payload.title_en);
+        add('title_pt', t.titlePt, target.title?.pt, payload.title_pt);
+        add('region_id', t.region, target.regionId, payload.region_id);
+        add('description_en', t.descriptionEn, target.description?.en, payload.description_en);
+        add('description_pt', t.descriptionPt, target.description?.pt, payload.description_pt);
+        add('video_url', t.video, target.videoUrl, payload.video_url);
+
+        if (hasPayloadKey(payload, 'coordinate_x') || hasPayloadKey(payload, 'coordinate_y')) {
+            const beforeX = target.coordinates?.[1];
+            const beforeY = target.coordinates?.[0];
+            const afterX = hasPayloadKey(payload, 'coordinate_x') ? payload.coordinate_x : beforeX;
+            const afterY = hasPayloadKey(payload, 'coordinate_y') ? payload.coordinate_y : beforeY;
+            if (valuesDiffer(beforeX, afterX) || valuesDiffer(beforeY, afterY)) {
+                rows.push({
+                    key: 'coordinates',
+                    label: t.coordinates,
+                    before: `X ${displayValue(beforeX)} · Y ${displayValue(beforeY)}`,
+                    suggested: `X ${displayValue(afterX)} · Y ${displayValue(afterY)}`
+                });
+            }
+        }
+
+        if (hasPayloadKey(payload, 'content_items')) {
+            const before = contentSummary(target.contentItems ?? []);
+            const after = contentSummary(payload.content_items ?? []);
+            if (before !== after) rows.push({ key: 'content_items', label: t.content, before, suggested: after });
+        }
+
+        if (item.correctionKind === 'image' || hasPayloadKey(payload, 'image_action') || hasPayloadKey(payload, 'image_url') || hasPayloadKey(payload, 'target_image_id')) {
+            const imageCount = Array.isArray(target.images) ? target.images.length : 0;
+            const before = imageCount === 1
+                ? `1 ${language === 'pt' ? 'imagem' : 'image'}`
+                : `${imageCount} ${language === 'pt' ? 'imagens' : 'images'}`;
+            let suggested = '—';
+            if ((payload.image_action ?? 'add') === 'report') {
+                suggested = `${t.reportImageSummary}: #${displayValue(payload.target_image_id)}`;
+            } else if (payload.image_url) {
+                suggested = `${t.addImageSummary}: ${payload.image_url}`;
+            }
+            rows.push({ key: 'images', label: t.images, before, suggested });
+        }
+
+        return rows;
     }
 
     function populateReviewForm(item) {
@@ -452,7 +537,31 @@
                     </div>
 
                     {#if selected.status === 'pending'}
-                        <div class="review-intro"><strong>{t.review}</strong><small>{t.reviewHelp}</small></div>
+                        {#if selected.type === 'correction'}
+                            <section class="comparison-panel" aria-label={t.comparison}>
+                                <div class="comparison-heading"><strong>{t.comparison}</strong><small>{t.comparisonHelp}</small></div>
+                                {#if targetLocation(selected)}
+                                    {@const comparisonRows = correctionComparisonRows(selected)}
+                                    {#if comparisonRows.length}
+                                        <div class="comparison-table">
+                                            <div class="comparison-header"><span></span><b>{t.current}</b><b>{t.suggested}</b></div>
+                                            {#each comparisonRows as row (row.key)}
+                                                <div class="comparison-row">
+                                                    <strong>{row.label}</strong>
+                                                    <div class="comparison-value current-value"><small class="value-label">{t.current}</small>{row.before}</div>
+                                                    <div class="comparison-value suggested-value"><small class="value-label">{t.suggested}</small>{row.suggested}</div>
+                                                </div>
+                                            {/each}
+                                        </div>
+                                    {:else}
+                                        <p class="comparison-empty">{t.noStructuredChanges}</p>
+                                    {/if}
+                                {:else}
+                                    <p class="comparison-empty">{t.noCurrentMarker}</p>
+                                {/if}
+                            </section>
+                        {/if}
+                        <div class="review-intro"><strong>{selected.type === 'correction' ? t.finalVersion : t.review}</strong><small>{t.reviewHelp}</small></div>
                         <div class="form-grid two">
                             <label class:invalid={Boolean(fieldErrors.layer)}><span>{t.layer} *</span><select bind:value={reviewMapLayer} disabled={working}>{#each sortedLayers as layer}<option value={layer.id}>{localisedLabel(layer)}</option>{/each}</select>{#if fieldErrors.layer}<small class="field-error">{fieldErrors.layer}</small>{/if}</label>
                             <label><span>{t.type}</span><select bind:value={reviewCategoryGroupId} onchange={handleCategoryGroupChange} disabled={working}>{#each sortedGroups as group}<option value={group.id}>{localisedLabel(group)}</option>{/each}</select></label>
@@ -488,7 +597,7 @@
 {/if}
 
 <style>
-    .global-moderation{display:grid;gap:16px;color:#eee}.toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}.toolbar h2{margin:2px 0 0;font-size:1.35rem}.eyebrow{color:#c8a355;font-size:.68rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em}.toolbar-actions{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.toolbar button,.toolbar select,.mode-tabs button,.pagination button,.review-head-actions button,.review-head-actions a,.actions button{border:1px solid #3b3b45;border-radius:8px;background:#17171c;color:#ddd;cursor:pointer;text-decoration:none}.toolbar button{padding:9px 12px}.map-filter{display:grid;gap:4px}.map-filter span{font-size:.68rem;color:#999}.map-filter select{min-width:170px;padding:8px;background:#111116;color:#eee}.mode-tabs{display:flex;gap:7px;flex-wrap:wrap}.mode-tabs button{padding:8px 12px;font-weight:800}.mode-tabs button.active,.pagination button.active{border-color:#c8a355;background:#211d14;color:#f0d28a}.moderation-layout{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:14px;align-items:start}.queue-column,.review-column{min-width:0}.queue{display:grid;gap:7px}.queue>button{display:grid;gap:4px;padding:10px;border:1px solid #303039;border-radius:9px;background:#111115;color:#ddd;text-align:left;cursor:pointer}.queue>button:hover,.queue>button.selected{border-color:#c8a355;background:#1d1a13}.queue-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.queue-top b{color:#d8b86f;font-size:.72rem}.queue-top em{color:#73737d;font-size:.66rem;font-style:normal}.queue small{color:#9696a0}.pagination{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin-top:10px}.pagination button{min-width:32px;height:32px}.review-card,.review-placeholder,.empty{border:1px solid #303039;border-radius:12px;background:#101014}.review-card{display:grid;gap:12px;padding:14px}.review-placeholder,.empty{min-height:150px;display:grid;place-items:center;align-content:center;gap:6px;padding:18px;color:#92929c;text-align:center}.review-placeholder strong,.empty strong{color:#e4e4e7}.review-placeholder p{margin:0}.review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.review-head h3{margin:3px 0 0}.review-head-actions{display:flex;gap:6px;flex-wrap:wrap}.review-head-actions a,.review-head-actions button{padding:7px 9px;font-size:.72rem}.review-head-actions a{border-color:#66593b;color:#d8b86f}.meta-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.meta-grid span{display:grid;color:#8f8f98;font-size:.68rem}.meta-grid strong{color:#eee;font-size:.78rem}.review-intro{display:grid;gap:3px;padding-top:9px;border-top:1px solid #2b2b33}.review-intro strong{color:#d8b86f}.review-intro small{color:#8f8f98}.form-grid{display:grid;gap:9px}.form-grid.two{grid-template-columns:1fr 1fr}label{display:grid;gap:5px}label span,legend{color:#aaa;font-size:.7rem;font-weight:700}input,select,textarea{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1px solid #34343e;border-radius:8px;background:#0d0d11;color:#eee;font:inherit}textarea{resize:vertical}label.invalid input,label.invalid select,label.invalid textarea{border-color:#c85f67}.field-error{color:#ff9da7;font-size:.66rem}.location-box{margin:0;padding:10px;border:1px solid #303039;border-radius:9px}.coordinate-row{display:grid;grid-template-columns:36px minmax(0,1fr);gap:7px;align-items:center;margin:7px 0}.coordinate-row>.field-error{grid-column:2}.actions{display:flex;gap:8px;flex-wrap:wrap;padding-top:9px;border-top:1px solid #2d2d35;background:#101014}.actions button{padding:9px 12px}.actions .approve{border-color:#c8a355;background:#c8a355;color:#111;font-weight:900}.actions .reject{border-color:#704047;color:#ffc0c8}.note{margin:0;color:#c7c7ce;font-size:.78rem}.proposal{padding:10px;border:1px solid #2f2f38;border-radius:9px;background:#0b0b0e}.proposal>strong{color:#c8a355}.proposal p{margin:5px 0;color:#c1c1c8;font-size:.78rem}.proposal p span{color:#d8b86f;font-weight:800}.message{margin:0;padding:9px;border-radius:8px}.message.error{background:#2b1519;color:#ffc0c8}.message.success{background:#15251a;color:#bcebc7}
+    .global-moderation{display:grid;gap:16px;color:#eee}.toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}.toolbar h2{margin:2px 0 0;font-size:1.35rem}.eyebrow{color:#c8a355;font-size:.68rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em}.toolbar-actions{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.toolbar button,.toolbar select,.mode-tabs button,.pagination button,.review-head-actions button,.review-head-actions a,.actions button{border:1px solid #3b3b45;border-radius:8px;background:#17171c;color:#ddd;cursor:pointer;text-decoration:none}.toolbar button{padding:9px 12px}.map-filter{display:grid;gap:4px}.map-filter span{font-size:.68rem;color:#999}.map-filter select{min-width:170px;padding:8px;background:#111116;color:#eee}.mode-tabs{display:flex;gap:7px;flex-wrap:wrap}.mode-tabs button{padding:8px 12px;font-weight:800}.mode-tabs button.active,.pagination button.active{border-color:#c8a355;background:#211d14;color:#f0d28a}.moderation-layout{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:14px;align-items:start}.queue-column,.review-column{min-width:0}.queue{display:grid;gap:7px}.queue>button{display:grid;gap:4px;padding:10px;border:1px solid #303039;border-radius:9px;background:#111115;color:#ddd;text-align:left;cursor:pointer}.queue>button:hover,.queue>button.selected{border-color:#c8a355;background:#1d1a13}.queue-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.queue-top b{color:#d8b86f;font-size:.72rem}.queue-top em{color:#73737d;font-size:.66rem;font-style:normal}.queue small{color:#9696a0}.pagination{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin-top:10px}.pagination button{min-width:32px;height:32px}.review-card,.review-placeholder,.empty{border:1px solid #303039;border-radius:12px;background:#101014}.review-card{display:grid;gap:12px;padding:14px}.review-placeholder,.empty{min-height:150px;display:grid;place-items:center;align-content:center;gap:6px;padding:18px;color:#92929c;text-align:center}.review-placeholder strong,.empty strong{color:#e4e4e7}.review-placeholder p{margin:0}.review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.review-head h3{margin:3px 0 0}.review-head-actions{display:flex;gap:6px;flex-wrap:wrap}.review-head-actions a,.review-head-actions button{padding:7px 9px;font-size:.72rem}.review-head-actions a{border-color:#66593b;color:#d8b86f}.meta-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.meta-grid span{display:grid;color:#8f8f98;font-size:.68rem}.meta-grid strong{color:#eee;font-size:.78rem}.comparison-panel{display:grid;gap:9px;padding:11px;border:1px solid #303039;border-radius:10px;background:#0b0b0f}.comparison-heading{display:grid;gap:3px}.comparison-heading strong{color:#d8b86f}.comparison-heading small{color:#8f8f98}.comparison-table{display:grid;gap:6px}.comparison-header,.comparison-row{display:grid;grid-template-columns:minmax(110px,.55fr) minmax(0,1fr) minmax(0,1fr);gap:7px;align-items:stretch}.comparison-header{padding:0 3px;color:#8f8f98;font-size:.68rem}.comparison-header b:last-child{color:#d8b86f}.comparison-row>strong{align-self:start;padding:9px 8px;color:#aaa;font-size:.7rem}.comparison-value{padding:9px;border:1px solid #2f2f38;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.76rem;line-height:1.4}.value-label{display:none;margin-bottom:3px;color:#777;font-size:.6rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em}.current-value{background:#111116;color:#aaa}.suggested-value{border-color:#5f5338;background:#1b1811;color:#eee}.comparison-empty{margin:0;color:#9a9aa4;font-size:.76rem}.review-intro{display:grid;gap:3px;padding-top:9px;border-top:1px solid #2b2b33}.review-intro strong{color:#d8b86f}.review-intro small{color:#8f8f98}.form-grid{display:grid;gap:9px}.form-grid.two{grid-template-columns:1fr 1fr}label{display:grid;gap:5px}label span,legend{color:#aaa;font-size:.7rem;font-weight:700}input,select,textarea{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1px solid #34343e;border-radius:8px;background:#0d0d11;color:#eee;font:inherit}textarea{resize:vertical}label.invalid input,label.invalid select,label.invalid textarea{border-color:#c85f67}.field-error{color:#ff9da7;font-size:.66rem}.location-box{margin:0;padding:10px;border:1px solid #303039;border-radius:9px}.coordinate-row{display:grid;grid-template-columns:36px minmax(0,1fr);gap:7px;align-items:center;margin:7px 0}.coordinate-row>.field-error{grid-column:2}.actions{display:flex;gap:8px;flex-wrap:wrap;padding-top:9px;border-top:1px solid #2d2d35;background:#101014}.actions button{padding:9px 12px}.actions .approve{border-color:#c8a355;background:#c8a355;color:#111;font-weight:900}.actions .reject{border-color:#704047;color:#ffc0c8}.note{margin:0;color:#c7c7ce;font-size:.78rem}.proposal{padding:10px;border:1px solid #2f2f38;border-radius:9px;background:#0b0b0e}.proposal>strong{color:#c8a355}.proposal p{margin:5px 0;color:#c1c1c8;font-size:.78rem}.proposal p span{color:#d8b86f;font-weight:800}.message{margin:0;padding:9px;border-radius:8px}.message.error{background:#2b1519;color:#ffc0c8}.message.success{background:#15251a;color:#bcebc7}
     @media(max-width:900px){.moderation-layout{grid-template-columns:1fr}.queue-column{max-height:38vh;overflow:auto;touch-action:pan-y}.review-column{min-height:0}.meta-grid{grid-template-columns:1fr 1fr}}
-    @media(max-width:600px){.toolbar{align-items:stretch;flex-direction:column}.toolbar-actions,.map-filter,.map-filter select{width:100%}.toolbar button{flex:1}.mode-tabs{display:grid;grid-template-columns:repeat(3,1fr)}.mode-tabs button{padding:8px 5px}.review-card{padding:10px}.review-head{flex-direction:column}.review-head-actions{width:100%}.review-head-actions a,.review-head-actions button{flex:1;text-align:center}.meta-grid,.form-grid.two{grid-template-columns:1fr}.actions{margin:4px 0 0;padding:10px 0 0}.actions button{flex:1}.queue-column{max-height:32vh}}
+    @media(max-width:600px){.comparison-header{display:none}.comparison-row{grid-template-columns:1fr;gap:5px;padding:8px 0;border-bottom:1px solid #25252d}.comparison-row:last-child{border-bottom:0}.comparison-row>strong{padding:0 2px;color:#d6d6dc}.comparison-value{padding:7px 8px;font-size:.7rem}.value-label{display:block}.toolbar{align-items:stretch;flex-direction:column}.toolbar-actions,.map-filter,.map-filter select{width:100%}.toolbar button{flex:1}.mode-tabs{display:grid;grid-template-columns:repeat(3,1fr)}.mode-tabs button{padding:8px 5px}.review-card{padding:10px}.review-head{flex-direction:column}.review-head-actions{width:100%}.review-head-actions a,.review-head-actions button{flex:1;text-align:center}.meta-grid,.form-grid.two{grid-template-columns:1fr}.actions{margin:4px 0 0;padding:10px 0 0}.actions button{flex:1}.queue-column{max-height:32vh}}
 </style>
