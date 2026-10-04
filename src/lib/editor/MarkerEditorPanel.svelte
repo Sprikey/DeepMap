@@ -26,6 +26,7 @@
         onPreview = () => {},
         onSelectionChange = () => {},
         positionModeActive = false,
+        mobilePositionFlow = false,
         onPositionModeChange = () => {},
         onMoveStateChange = () => {},
         onOriginalVisibilityChange = () => {}
@@ -79,6 +80,7 @@
             autoSlugHelp: 'Generated automatically from the English title. Edit only when needed.',
             showOriginal: 'Show original location',
             showOriginalHelp: 'Useful for fine adjustments.',
+            choosePosition: 'Choose position',
             changePosition: 'Change position',
             choosingPosition: 'Click the map…',
             cancelEdit: 'Cancel editing',
@@ -138,6 +140,7 @@
             autoSlugHelp: 'Gerado automaticamente a partir do título EN. Altera apenas se precisares.',
             showOriginal: 'Mostrar localização original',
             showOriginalHelp: 'Útil para pequenos retoques.',
+            choosePosition: 'Escolher posição',
             changePosition: 'Mudar posição',
             choosingPosition: 'Clica no mapa…',
             cancelEdit: 'Cancelar edição',
@@ -443,7 +446,8 @@
     }
 
     function togglePositionMode() {
-        if (editingId === null || saving || deleting) return;
+        if (saving || deleting) return;
+        if (!mobilePositionFlow && editingId === null) return;
         onPositionModeChange(!positionModeActive);
     }
 
@@ -496,7 +500,7 @@
         if (editingId !== null) {
             markerMoved = true;
             onMoveStateChange(true);
-            onPositionModeChange(false);
+            if (!mobilePositionFlow) onPositionModeChange(false);
         }
     });
 
@@ -666,7 +670,34 @@
             </label>
         </div>
 
-        {#if selectedMarker}
+        {#if mobilePositionFlow}
+            <div class="position-toolbar mobile-position-toolbar">
+                <button
+                    class:active={positionModeActive}
+                    class="position-button"
+                    type="button"
+                    onclick={togglePositionMode}
+                    disabled={saving || deleting}
+                >
+                    {positionModeActive ? t.choosingPosition : editingId === null ? t.choosePosition : t.changePosition}
+                </button>
+
+                {#if selectedMarker && markerMoved}
+                    <label class="original-location-toggle compact">
+                        <input
+                            type="checkbox"
+                            bind:checked={showOriginalLocation}
+                            onchange={() => onOriginalVisibilityChange(showOriginalLocation)}
+                            disabled={saving || deleting}
+                        />
+                        <span>{t.showOriginal}</span>
+                    </label>
+                {/if}
+            </div>
+            {#if selectedMarker && markerMoved && showOriginalLocation}
+                <small class="position-help">{t.showOriginalHelp}</small>
+            {/if}
+        {:else if selectedMarker}
             <div class="position-toolbar">
                 <button
                     class:active={positionModeActive}
@@ -1000,6 +1031,8 @@
         font-weight: 800;
         cursor: pointer;
     }
+
+    .mobile-position-toolbar .position-button { flex: 1; min-height: 38px; }
 
     .position-button.active {
         border-color: #d8b86f;

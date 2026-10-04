@@ -25,6 +25,7 @@
     let notifications = $state([]);
     let loadedForUser = null;
     let notificationChannel = null;
+    let notificationWrap;
 
     let unreadCount = $derived(notifications.filter((item) => !item.is_read).length);
 
@@ -137,6 +138,16 @@
         if (open) void loadNotifications();
     }
 
+
+    function handleDocumentPointerDown(event) {
+        if (!open || !notificationWrap) return;
+        if (!notificationWrap.contains(event.target)) open = false;
+    }
+
+    function handleDocumentKeyDown(event) {
+        if (event.key === 'Escape') open = false;
+    }
+
     function subscribeToNotifications() {
         const supabase = getSupabaseBrowserClient();
 
@@ -166,12 +177,17 @@
     }
 
     onMount(() => {
+        document.addEventListener('pointerdown', handleDocumentPointerDown);
+        document.addEventListener('keydown', handleDocumentKeyDown);
+
         if (userId) {
             void loadNotifications();
             subscribeToNotifications();
         }
 
         return () => {
+            document.removeEventListener('pointerdown', handleDocumentPointerDown);
+            document.removeEventListener('keydown', handleDocumentKeyDown);
             if (notificationChannel) {
                 void getSupabaseBrowserClient().removeChannel(notificationChannel);
                 notificationChannel = null;
@@ -186,7 +202,7 @@
     });
 </script>
 
-<div class="notification-wrap">
+<div class="notification-wrap" bind:this={notificationWrap}>
     <button class:has-unread={unreadCount > 0} class="bell-button" type="button" aria-label={t.title} aria-expanded={open} onclick={toggle}>
         <svg aria-hidden="true" viewBox="0 0 24 24">
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"></path>

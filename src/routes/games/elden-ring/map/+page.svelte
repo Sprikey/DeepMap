@@ -20,6 +20,7 @@
     import CategoryManagerPanel from '$lib/editor/CategoryManagerPanel.svelte';
     import MapLabelEditorPanel from '$lib/editor/MapLabelEditorPanel.svelte';
     import ModerationPanel from '$lib/editor/ModerationPanel.svelte';
+    import UserManagementPanel from '$lib/editor/UserManagementPanel.svelte';
     import CommunityMarkerPanel from '$lib/community/CommunityMarkerPanel.svelte';
 
     const GAME_ID = 'elden-ring';
@@ -43,8 +44,12 @@
     // O Editor 2.0 é privado. Esta flag serve apenas para decidir se a UI
     // aparece; as permissões reais de escrita continuam protegidas por RLS.
     let isEditorAdmin = $state(false);
+    let isMapModerator = $state(false);
     let editorAccessChecked = $state(false);
     let currentMapUser = $state(null);
+    let isMobileLayout = $state(false);
+    let mobileMenuToggle;
+
 
     async function loadEditorAccess() {
         try {
@@ -55,27 +60,47 @@
 
             if (userError || !userData.user) {
                 isEditorAdmin = false;
+                isMapModerator = false;
                 return;
             }
 
-            const { data, error } = await supabase.rpc('is_deepmap_admin');
+            const { data: role, error: roleError } = await supabase.rpc('get_deepmap_role');
 
-            if (error) {
-                console.warn('DeepMap editor access check:', error.message);
+            if (!roleError) {
+                isEditorAdmin = role === 'admin';
+                isMapModerator = role === 'moderator';
+                return;
+            }
+
+            // Compatibilidade enquanto a migration de moderadores ainda não foi aplicada.
+            const { data: adminStatus, error: adminError } = await supabase.rpc('is_deepmap_admin');
+            if (adminError) {
+                console.warn('DeepMap editor access check:', adminError.message);
                 isEditorAdmin = false;
+                isMapModerator = false;
                 return;
             }
 
-            isEditorAdmin = data === true;
+            isEditorAdmin = adminStatus === true;
+            isMapModerator = false;
         } catch (error) {
             console.warn('DeepMap editor access check:', error);
             isEditorAdmin = false;
+            isMapModerator = false;
         } finally {
             editorAccessChecked = true;
             if (map && Leaflet) renderLocationMarkers();
             handleContributionDeepLink();
         }
     }
+
+    onMount(() => {
+        const media = window.matchMedia('(max-width: 768px)');
+        const syncMobileLayout = () => { isMobileLayout = media.matches; };
+        syncMobileLayout();
+        media.addEventListener?.('change', syncMobileLayout);
+        return () => media.removeEventListener?.('change', syncMobileLayout);
+    });
 
 
     /* ==========================================
@@ -947,11 +972,12 @@
     let editorLabelMoved = $state(false);
     let editorShowOriginalLabelLocation = $state(false);
     let editorPositionMode = $state(null);
+    let editorPositionCandidateReady = $state(false);
     let editorPointRevision = 0;
 
     let editorToolText = $derived(currentLanguage === 'pt'
-        ? { markers: 'Marcadores', labels: 'Títulos de zona', categories: 'Categorias e ícones', moderation: 'Moderação' }
-        : { markers: 'Markers', labels: 'Zone titles', categories: 'Categories & icons', moderation: 'Moderation' }
+        ? { markers: 'Marcadores', labels: 'Títulos de zona', categories: 'Categorias e ícones', moderation: 'Moderação', users: 'Utilizadores' }
+        : { markers: 'Markers', labels: 'Zone titles', categories: 'Categories & icons', moderation: 'Moderation', users: 'Users' }
     );
 
     function getCategoryForRender(categoryId) {
@@ -1074,11 +1100,25 @@
         editorMarkerMoved = false;
         editorShowOriginalLocation = false;
         editorPositionMode = null;
+        editorPositionCandidateReady = false;
         renderLocationMarkers();
     }
 
     function handleEditorPositionMode(tool, active) {
         editorPositionMode = active === true ? tool : null;
+        editorPositionCandidateReady = false;
+    }
+
+    function confirmEditorMobilePosition() {
+        if (!isMobileLayout || editorPositionMode === null || !editorPositionCandidateReady) return;
+        editorPositionMode = null;
+        editorPositionCandidateReady = false;
+    }
+
+    function closeEditorMobilePosition() {
+        if (!isMobileLayout) return;
+        editorPositionMode = null;
+        editorPositionCandidateReady = false;
     }
 
     function handleEditorMoveStateChange(moved) {
@@ -1097,6 +1137,7 @@
         editorLabelMoved = false;
         editorShowOriginalLabelLocation = false;
         editorPositionMode = null;
+        editorPositionCandidateReady = false;
         editorPoint = null;
         clearEditorPointMarker();
         renderMapLabels();
@@ -1123,6 +1164,7 @@
             editorMarkerMoved = false;
             editorShowOriginalLocation = false;
             editorPositionMode = null;
+            editorPositionCandidateReady = false;
             clearEditorMarkerPreview();
             renderLocationMarkers();
         }
@@ -1133,6 +1175,7 @@
             editorLabelMoved = false;
             editorShowOriginalLabelLocation = false;
             editorPositionMode = null;
+            editorPositionCandidateReady = false;
             clearEditorLabelPreview();
             clearEditorPointMarker();
             renderMapLabels();
@@ -1150,6 +1193,7 @@
         editorLabelMoved = false;
         editorShowOriginalLabelLocation = false;
         editorPositionMode = null;
+        editorPositionCandidateReady = false;
         clearEditorMarkerPreview();
         clearEditorLabelPreview();
         clearEditorPointMarker();
@@ -1171,6 +1215,7 @@
             editorLabelMoved = false;
             editorShowOriginalLabelLocation = false;
             editorPositionMode = null;
+            editorPositionCandidateReady = false;
             clearEditorMarkerPreview();
             clearEditorLabelPreview();
             clearEditorPointMarker();
@@ -1192,7 +1237,30 @@
     let communityPoint = $state(null);
     let communityPointRevision = $state(0);
     let communityPositionMode = $state(false);
+    let communityPositionCandidateReady = $state(false);
     let communityPreviewMarker = null;
+
+
+    function closeMobileSidebar() {
+        if (mobileMenuToggle) mobileMenuToggle.checked = false;
+    }
+
+    function handleCommunityPositionMode(active) {
+        communityPositionMode = active === true;
+        communityPositionCandidateReady = false;
+    }
+
+    function confirmCommunityMobilePosition() {
+        if (!isMobileLayout || !communityPositionMode || !communityPositionCandidateReady) return;
+        communityPositionMode = false;
+        communityPositionCandidateReady = false;
+    }
+
+    function closeCommunityMobilePosition() {
+        if (!isMobileLayout) return;
+        communityPositionMode = false;
+        communityPositionCandidateReady = false;
+    }
 
     function clearCommunityPreview() {
         if (communityPreviewMarker && map) map.removeLayer(communityPreviewMarker);
@@ -1236,46 +1304,111 @@
 
     function openCommunityCreate() {
         if (!currentMapUser || isEditorAdmin) return;
+        closeModeratorPanel();
+        closeMobileSidebar();
         communityRequestMode = 'create';
         communityRequestMarker = null;
         communityFocusSubmissionId = null;
         communityRequestRevision += 1;
         communityPanelOpen = true;
         communityPositionMode = false;
+        communityPositionCandidateReady = false;
         clearCommunityPreview();
     }
 
     function openCommunityMine(focusSubmissionId = null) {
         if (!currentMapUser || isEditorAdmin) return;
+        closeModeratorPanel();
+        closeMobileSidebar();
         communityRequestMode = 'mine';
         communityRequestMarker = null;
         communityFocusSubmissionId = focusSubmissionId == null ? null : Number(focusSubmissionId);
         communityRequestRevision += 1;
         communityPanelOpen = true;
         communityPositionMode = false;
+        communityPositionCandidateReady = false;
         clearCommunityPreview();
     }
 
     function openCommunityCorrection(location) {
         if (!currentMapUser || isEditorAdmin || !location?.databaseId) return;
+        closeModeratorPanel();
+        closeMobileSidebar();
         communityRequestMode = 'correction';
         communityRequestMarker = location;
         communityFocusSubmissionId = null;
         communityRequestRevision += 1;
         communityPanelOpen = true;
         communityPositionMode = false;
+        communityPositionCandidateReady = false;
         clearCommunityPreview();
     }
 
     function closeCommunityPanel() {
         communityPanelOpen = false;
         communityPositionMode = false;
+        communityPositionCandidateReady = false;
         communityPoint = null;
         clearCommunityPreview();
     }
 
     async function handleCommunitySubmitted() {
         // Queue/status changed, but official markers only change after moderation approval.
+    }
+
+    /* ==========================================
+       MODERATION — MODERATOR ROLE (OUTSIDE EDITOR)
+       ========================================== */
+
+    let moderatorPanelOpen = $state(false);
+    let moderatorPoint = $state(null);
+    let moderatorPointRevision = 0;
+    let moderatorPositionMode = $state(false);
+    let moderatorPositionCandidateReady = $state(false);
+
+    function setModeratorCoordinates(x, y) {
+        moderatorPoint = { x: Number(x), y: Number(y), revision: ++moderatorPointRevision };
+    }
+
+    function handleModeratorPositionMode(active) {
+        moderatorPositionMode = active === true;
+        moderatorPositionCandidateReady = false;
+    }
+
+    function openModeratorPanel() {
+        if (!currentMapUser || !isMapModerator || isEditorAdmin) return;
+        closeCommunityPanel();
+        closeMobileSidebar();
+        moderatorPanelOpen = true;
+        moderatorPositionMode = false;
+        moderatorPositionCandidateReady = false;
+        clearEditorMarkerPreview();
+    }
+
+    function closeModeratorPanel() {
+        moderatorPanelOpen = false;
+        moderatorPositionMode = false;
+        moderatorPositionCandidateReady = false;
+        moderatorPoint = null;
+        clearEditorMarkerPreview();
+    }
+
+    function confirmModeratorMobilePosition() {
+        if (!isMobileLayout || !moderatorPositionMode || !moderatorPositionCandidateReady) return;
+        moderatorPositionMode = false;
+        moderatorPositionCandidateReady = false;
+    }
+
+    function closeModeratorMobilePosition() {
+        if (!isMobileLayout) return;
+        moderatorPositionMode = false;
+        moderatorPositionCandidateReady = false;
+    }
+
+    async function handleModeratorChanged() {
+        await loadGameMapData();
+        renderLocationMarkers();
+        renderMapLabels();
     }
 
     function getMapDeepLinkParams() {
@@ -1396,15 +1529,41 @@
             const x = Math.round(e.latlng.lng);
             const y = Math.round(e.latlng.lat);
 
+            // Contribuições: no mobile mantemos o modo ativo até o utilizador
+            // confirmar explicitamente a posição. No desktop preservamos o fluxo atual.
             if (communityPanelOpen && communityPositionMode && currentMapUser && !isEditorAdmin) {
                 setCommunityCoordinates(x, y);
-                communityPositionMode = false;
+                if (isMobileLayout) {
+                    communityPositionCandidateReady = true;
+                } else {
+                    communityPositionMode = false;
+                }
+                return;
+            }
+
+            // Moderadores usam a mesma ferramenta de revisão do admin, mas fora do Editor.
+            if (moderatorPanelOpen && moderatorPositionMode && currentMapUser && isMapModerator && !isEditorAdmin) {
+                setModeratorCoordinates(x, y);
+                if (isMobileLayout) {
+                    moderatorPositionCandidateReady = true;
+                } else {
+                    moderatorPositionMode = false;
+                }
                 return;
             }
 
             if (!editorMode || !isEditorAdmin) return;
 
             if (editorTool === 'marker') {
+                if (isMobileLayout) {
+                    if (editorPositionMode !== 'marker') return;
+                    setEditorCoordinates(x, y);
+                    editorPositionCandidateReady = true;
+                    return;
+                }
+
+                // Desktop: manter o comportamento atual. Novos marcadores podem ser
+                // posicionados diretamente; existentes só quando "Alterar posição" está ativo.
                 if (editorSelectedMarkerId !== null && editorPositionMode !== 'marker') return;
                 setEditorCoordinates(x, y);
                 if (editorSelectedMarkerId !== null) editorPositionMode = null;
@@ -1412,6 +1571,14 @@
             }
 
             if (editorTool === 'label') {
+                if (isMobileLayout) {
+                    if (editorPositionMode !== 'label') return;
+                    setEditorCoordinates(x, y);
+                    editorPositionCandidateReady = true;
+                    return;
+                }
+
+                // Desktop: preservar criação/edição por clique direto no mapa.
                 if (editorSelectedLabelId !== null && editorPositionMode !== 'label') return;
                 setEditorCoordinates(x, y);
                 if (editorSelectedLabelId !== null) editorPositionMode = null;
@@ -1420,7 +1587,11 @@
 
             if (editorTool === 'moderation' && editorPositionMode === 'moderation') {
                 setEditorCoordinates(x, y);
-                editorPositionMode = null;
+                if (isMobileLayout) {
+                    editorPositionCandidateReady = true;
+                } else {
+                    editorPositionMode = null;
+                }
             }
         });
 
@@ -1448,6 +1619,7 @@
         type="checkbox"
         id="mobile-menu-toggle"
         class="mobile-menu-checkbox"
+        bind:this={mobileMenuToggle}
     />
 
 
@@ -1481,7 +1653,11 @@
     <!-- EDITOR — só é mostrado a administradores confirmados -->
 
     {#if editorAccessChecked && isEditorAdmin}
-    <div class:position-picking={editorPositionMode !== null} class="editor-ui">
+    <div
+        class:position-picking={editorPositionMode !== null}
+        class:mobile-map-picking={isMobileLayout && editorPositionMode !== null}
+        class="editor-ui"
+    >
 
         <button
             id="editor-toggle"
@@ -1522,6 +1698,13 @@
                 >
                     {editorToolText.moderation}
                 </button>
+                <button
+                    type="button"
+                    class:active={editorTool === 'users'}
+                    onclick={() => setEditorTool('users')}
+                >
+                    {editorToolText.users}
+                </button>
             </div>
 
             <div class="editor-scroll-area">
@@ -1542,6 +1725,7 @@
                         onPositionModeChange={(active) => handleEditorPositionMode('marker', active)}
                         onMoveStateChange={handleEditorMoveStateChange}
                         onOriginalVisibilityChange={handleEditorOriginalVisibilityChange}
+                        mobilePositionFlow={isMobileLayout}
                     />
                 {:else if editorTool === 'label'}
                     <MapLabelEditorPanel
@@ -1558,6 +1742,7 @@
                         onPositionModeChange={(active) => handleEditorPositionMode('label', active)}
                         onMoveStateChange={handleEditorLabelMoveStateChange}
                         onOriginalVisibilityChange={handleEditorLabelOriginalVisibilityChange}
+                        mobilePositionFlow={isMobileLayout}
                     />
                 {:else if editorTool === 'category'}
                     <CategoryManagerPanel
@@ -1568,7 +1753,7 @@
                         standalone={true}
                         onChanged={handleEditorDataChanged}
                     />
-                {:else}
+                {:else if editorTool === 'moderation'}
                     <ModerationPanel
                         gameId={GAME_ID}
                         language={currentLanguage}
@@ -1582,11 +1767,44 @@
                         onPositionModeChange={(active) => handleEditorPositionMode('moderation', active)}
                         onChanged={handleEditorDataChanged}
                         onPreview={previewEditorMarker}
+                        mobilePositionFlow={isMobileLayout}
+                    />
+                {:else if editorTool === 'users'}
+                    <UserManagementPanel
+                        language={currentLanguage}
+                        active={editorMode}
                     />
                 {/if}
             </div>
         {/if}
     </div>
+    {/if}
+
+    {#if moderatorPanelOpen && currentMapUser && isMapModerator && !isEditorAdmin}
+        <div
+            class:mobile-map-picking={isMobileLayout && moderatorPositionMode}
+            class="moderator-ui"
+        >
+            <div class="moderator-scroll-area">
+                <ModerationPanel
+                    gameId={GAME_ID}
+                    language={currentLanguage}
+                    active={moderatorPanelOpen}
+                    point={moderatorPoint}
+                    {categories}
+                    {categoryGroups}
+                    {mapDefinitions}
+                    {locations}
+                    positionModeActive={moderatorPositionMode}
+                    onPositionModeChange={handleModeratorPositionMode}
+                    onChanged={handleModeratorChanged}
+                    onPreview={previewEditorMarker}
+                    mobilePositionFlow={isMobileLayout}
+                    showClose={true}
+                    onClose={closeModeratorPanel}
+                />
+            </div>
+        </div>
     {/if}
 
     {#if communityPanelOpen && currentMapUser && !isEditorAdmin}
@@ -1604,13 +1822,56 @@
             {categoryGroups}
             {mapDefinitions}
             positionModeActive={communityPositionMode}
-            onPositionModeChange={(active) => communityPositionMode = active}
+            onPositionModeChange={handleCommunityPositionMode}
+            mobilePositionFlow={isMobileLayout}
             onPreview={previewCommunityMarker}
             onClose={closeCommunityPanel}
             onSubmitted={handleCommunitySubmitted}
         />
     {/if}
 
+
+    {#if isMobileLayout && communityPositionMode}
+        <div class="mobile-position-confirm" role="status">
+            <span>{communityPositionCandidateReady
+                ? (currentLanguage === 'pt' ? 'Posição escolhida.' : 'Position selected.')
+                : (currentLanguage === 'pt' ? 'Toca no mapa para escolher a posição.' : 'Tap the map to choose a position.')}</span>
+            <div class="mobile-position-actions">
+                <button type="button" class="confirm" disabled={!communityPositionCandidateReady} onclick={confirmCommunityMobilePosition}>
+                    {currentLanguage === 'pt' ? 'Confirmar posição' : 'Confirm position'}
+                </button>
+                <button type="button" class="cancel" aria-label={currentLanguage === 'pt' ? 'Voltar' : 'Back'} onclick={closeCommunityMobilePosition}>✕</button>
+            </div>
+        </div>
+    {/if}
+
+    {#if isMobileLayout && editorMode && editorPositionMode !== null}
+        <div class="mobile-position-confirm" role="status">
+            <span>{editorPositionCandidateReady
+                ? (currentLanguage === 'pt' ? 'Posição escolhida.' : 'Position selected.')
+                : (currentLanguage === 'pt' ? 'Toca no mapa para escolher a posição.' : 'Tap the map to choose a position.')}</span>
+            <div class="mobile-position-actions">
+                <button type="button" class="confirm" disabled={!editorPositionCandidateReady} onclick={confirmEditorMobilePosition}>
+                    {currentLanguage === 'pt' ? 'Confirmar posição' : 'Confirm position'}
+                </button>
+                <button type="button" class="cancel" aria-label={currentLanguage === 'pt' ? 'Voltar' : 'Back'} onclick={closeEditorMobilePosition}>✕</button>
+            </div>
+        </div>
+    {/if}
+
+    {#if isMobileLayout && moderatorPanelOpen && moderatorPositionMode}
+        <div class="mobile-position-confirm" role="status">
+            <span>{moderatorPositionCandidateReady
+                ? (currentLanguage === 'pt' ? 'Posição escolhida.' : 'Position selected.')
+                : (currentLanguage === 'pt' ? 'Toca no mapa para escolher a posição.' : 'Tap the map to choose a position.')}</span>
+            <div class="mobile-position-actions">
+                <button type="button" class="confirm" disabled={!moderatorPositionCandidateReady} onclick={confirmModeratorMobilePosition}>
+                    {currentLanguage === 'pt' ? 'Confirmar posição' : 'Confirm position'}
+                </button>
+                <button type="button" class="cancel" aria-label={currentLanguage === 'pt' ? 'Voltar' : 'Back'} onclick={closeModeratorMobilePosition}>✕</button>
+            </div>
+        </div>
+    {/if}
 
     <!-- CONTEÚDO PRINCIPAL -->
 
@@ -1627,6 +1888,9 @@
                     <div class="community-sidebar-actions">
                         <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
                         <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
+                        {#if isMapModerator}
+                            <button class="moderator-action" type="button" onclick={openModeratorPanel}>⚖ {currentLanguage === 'pt' ? 'Moderação' : 'Moderation'}</button>
+                        {/if}
                     </div>
                 {/if}
 
@@ -1769,6 +2033,9 @@
                     <div class="community-sidebar-actions">
                         <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
                         <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
+                        {#if isMapModerator}
+                            <button class="moderator-action" type="button" onclick={openModeratorPanel}>⚖ {currentLanguage === 'pt' ? 'Moderação' : 'Moderation'}</button>
+                        {/if}
                     </div>
                 {/if}
 
@@ -2009,6 +2276,8 @@
         overscroll-behavior: contain;
         scrollbar-gutter: stable;
         pointer-events: auto;
+        touch-action: pan-y;
+        -webkit-overflow-scrolling: touch;
     }
 
     .editor-scroll-area::-webkit-scrollbar { width: 8px; }
@@ -2096,6 +2365,89 @@
 
     :global(.deepmap-editor-preview-popup .leaflet-popup-content-wrapper) {
         outline: 1px solid rgba(200,163,85,.55);
+    }
+
+    /* Painel de moderação dedicado — visível para moderadores sem lhes dar o Editor. */
+    .moderator-ui {
+        position: fixed;
+        top: calc(var(--deepmap-site-header-height, 72px) + var(--deepmap-game-subheader-height, 54px) + 12px);
+        right: 16px;
+        bottom: 12px;
+        width: min(430px, calc(100vw - 32px));
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        padding: 8px;
+        border: 1px solid rgba(200,163,85,.42);
+        border-radius: 12px;
+        background: rgba(10,10,13,.97);
+        box-shadow: 0 16px 44px rgba(0,0,0,.55);
+        z-index: 999998;
+        box-sizing: border-box;
+        touch-action: pan-y;
+        overscroll-behavior: contain;
+    }
+
+    .moderator-scroll-area {
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overflow-x: hidden;
+        touch-action: pan-y;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .mobile-position-confirm {
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        width: min(440px, calc(100vw - 20px));
+        display: grid;
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid rgba(47,143,255,.65);
+        border-radius: 12px;
+        background: rgba(10,10,14,.96);
+        box-shadow: 0 12px 38px rgba(0,0,0,.58);
+        color: #e8e8ec;
+        font-size: .78rem;
+        font-weight: 700;
+        z-index: 1000001;
+        box-sizing: border-box;
+        pointer-events: auto;
+        touch-action: manipulation;
+    }
+
+    .mobile-position-actions {
+        display: grid;
+        grid-template-columns: 1fr 42px;
+        gap: 7px;
+    }
+
+    .mobile-position-actions button {
+        min-height: 40px;
+        border-radius: 8px;
+        font-weight: 900;
+        cursor: pointer;
+    }
+
+    .mobile-position-actions .confirm {
+        border: 1px solid #2f8fff;
+        background: rgba(47,143,255,.17);
+        color: #a9d1ff;
+    }
+
+    .mobile-position-actions .confirm:disabled {
+        opacity: .42;
+        cursor: default;
+    }
+
+    .mobile-position-actions .cancel {
+        border: 1px solid #45454f;
+        background: #18181d;
+        color: #b8b8c0;
     }
 
 
@@ -2738,6 +3090,24 @@
         }
 
         .editor-ui.position-picking { max-height: 42dvh; }
+        .editor-ui.mobile-map-picking { display: none !important; }
+
+        .moderator-ui {
+            top: auto;
+            left: 8px;
+            right: 8px;
+            bottom: 8px;
+            width: auto;
+            max-height: min(72dvh, calc(100dvh - var(--deepmap-site-header-height, 62px) - var(--deepmap-game-subheader-height, 52px) - 18px));
+        }
+        .moderator-ui.mobile-map-picking { display: none !important; }
+        .moderator-scroll-area,
+        .editor-scroll-area {
+            touch-action: pan-y;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-y: contain;
+        }
+
         .editor-toggle { min-height: 38px; }
         .editor-tool-tabs {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2901,4 +3271,5 @@
     .community-sidebar-actions { display:grid; gap:6px; margin:0 0 12px; padding-bottom:12px; border-bottom:1px solid #2c2c34; }
     .community-sidebar-actions button { padding:8px 9px; border:1px solid #4f4632; border-radius:7px; background:#17171c; color:#d8b86f; font-weight:800; cursor:pointer; text-align:left; }
     .community-sidebar-actions button:first-child { border-color:#c8a355; background:rgba(200,163,85,.1); }
+    .community-sidebar-actions button.moderator-action { border-color:#65758d; color:#a9c8ed; background:rgba(65,104,150,.1); }
 </style>

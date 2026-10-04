@@ -20,6 +20,7 @@
         onPreview = () => {},
         onSelectionChange = () => {},
         positionModeActive = false,
+        mobilePositionFlow = false,
         onPositionModeChange = () => {},
         onMoveStateChange = () => {},
         onOriginalVisibilityChange = () => {}
@@ -65,6 +66,7 @@
             deleteError: 'Could not delete the zone title.',
             confirmDelete: 'Delete this zone title? This cannot be undone.',
             clickMap: 'New title: click the map to choose its position. Existing title: use Change position.',
+            choosePosition: 'Choose position',
             changePosition: 'Change position',
             choosingPosition: 'Click the map…',
             showOriginal: 'Show original location',
@@ -109,6 +111,7 @@
             deleteError: 'Não foi possível eliminar o título de zona.',
             confirmDelete: 'Eliminar este título de zona? Esta ação não pode ser anulada.',
             clickMap: 'Novo título: clica no mapa para escolher a posição. Título existente: usa Mudar posição.',
+            choosePosition: 'Escolher posição',
             changePosition: 'Mudar posição',
             choosingPosition: 'Clica no mapa…',
             showOriginal: 'Mostrar localização original',
@@ -273,8 +276,14 @@
     }
 
     function togglePositionMode() {
-        if (editingId === null || saving || deleting) return;
+        if (saving || deleting) return;
+        if (!mobilePositionFlow && editingId === null) return;
         onPositionModeChange(!positionModeActive);
+    }
+
+    function startNewLabel() {
+        resetForm({ keepCoordinates: !mobilePositionFlow });
+        if (mobilePositionFlow) onPositionModeChange(true);
     }
 
     async function save(nextPublished) {
@@ -344,7 +353,7 @@
         if (editingId !== null) {
             labelMoved = true;
             onMoveStateChange(true);
-            onPositionModeChange(false);
+            if (!mobilePositionFlow) onPositionModeChange(false);
         }
     });
 
@@ -390,7 +399,7 @@
         <div class="library">
             <div class="library-heading">
                 <strong>{t.existing}</strong>
-                <button class="small-button" type="button" onclick={() => resetForm({ keepCoordinates: true })} disabled={saving || deleting}>{t.newButton}</button>
+                <button class="small-button" type="button" onclick={startNewLabel} disabled={saving || deleting}>{t.newButton}</button>
             </div>
 
             <label>
@@ -435,7 +444,34 @@
             </label>
         </div>
 
-        {#if selected}
+        {#if mobilePositionFlow}
+            <div class="position-toolbar mobile-position-toolbar">
+                <button
+                    class:active={positionModeActive}
+                    class="position-button"
+                    type="button"
+                    onclick={togglePositionMode}
+                    disabled={saving || deleting}
+                >
+                    {positionModeActive ? t.choosingPosition : editingId === null ? t.choosePosition : t.changePosition}
+                </button>
+
+                {#if selected && labelMoved}
+                    <label class="original-location-toggle">
+                        <input
+                            type="checkbox"
+                            bind:checked={showOriginalLocation}
+                            onchange={() => onOriginalVisibilityChange(showOriginalLocation)}
+                            disabled={saving || deleting}
+                        />
+                        <span>{t.showOriginal}</span>
+                    </label>
+                {/if}
+            </div>
+            {#if selected && labelMoved && showOriginalLocation}
+                <small class="position-help">{t.showOriginalHelp}</small>
+            {/if}
+        {:else if selected}
             <div class="position-toolbar">
                 <button
                     class:active={positionModeActive}
@@ -522,6 +558,7 @@
     .check-row { margin:0; display:flex; }
     .check-row input { width:auto; accent-color:#c8a355; }
     .position-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin:-1px 0 8px; }
+    .mobile-position-toolbar .position-button { flex:1; min-height:38px; }
     .position-button { padding:7px 10px; border:1px solid #66593b; border-radius:5px; background:#17171c; color:#d8b86f; font-size:.69rem; font-weight:800; cursor:pointer; }
     .position-button.active { border-color:#d8b86f; background:rgba(200,163,85,.14); box-shadow:0 0 0 2px rgba(200,163,85,.09); }
     .original-location-toggle { display:flex; align-items:center; gap:6px; margin:0; padding:6px 8px; border:1px solid #2c2c34; border-radius:5px; background:rgba(10,10,13,.52); cursor:pointer; }
