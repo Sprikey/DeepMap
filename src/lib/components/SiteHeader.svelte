@@ -98,6 +98,8 @@
         box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
         backdrop-filter: blur(14px);
         font-family: 'Segoe UI', Arial, sans-serif;
+        touch-action: pan-x pan-y;
+        overscroll-behavior: contain;
     }
 
     .site-header-inner {
@@ -237,6 +239,8 @@
 
     .mobile-nav {
         display: none;
+        touch-action: pan-y;
+        overscroll-behavior: contain;
     }
 
     .sr-only {

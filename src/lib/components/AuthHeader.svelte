@@ -3,6 +3,7 @@
     import { page } from '$app/state';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { getDisplayName, getAvatarPresentation } from '$lib/avatar/avatars.js';
+    import NotificationBell from '$lib/components/NotificationBell.svelte';
 
     // Componente reutilizável: podemos usá-lo no mapa e, mais tarde, na homepage.
     let { language = 'en' } = $props();
@@ -52,6 +53,7 @@
 {#if checkingSession}
     <span class="auth-placeholder" aria-label={language === 'pt' ? 'A verificar sessão' : 'Checking session'}></span>
 {:else if user}
+    <NotificationBell userId={user.id} {language} />
     <!-- Avatar: abrir o perfil do utilizador autenticado. -->
     <a
         href="/profile"

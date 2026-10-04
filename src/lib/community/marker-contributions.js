@@ -139,12 +139,14 @@ export async function reviewMarkerSubmission({
     supabase,
     submissionId,
     decision,
-    reviewNote = ''
+    reviewNote = '',
+    payloadOverride = null
 }) {
-    const { data, error } = await supabase.rpc('review_marker_submission', {
+    const { data, error } = await supabase.rpc('review_marker_submission_v2', {
         p_submission_id: submissionId,
         p_decision: decision,
-        p_review_note: reviewNote?.trim() || null
+        p_review_note: reviewNote?.trim() || null,
+        p_payload_override: payloadOverride
     });
 
     if (error) throw error;

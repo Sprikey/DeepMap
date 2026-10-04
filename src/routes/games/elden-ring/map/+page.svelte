@@ -38,6 +38,7 @@
     let map;
     let Leaflet;
     let mapImageOverlay = null;
+    let locationMarkersById = new Map();
 
     // O Editor 2.0 é privado. Esta flag serve apenas para decidir se a UI
     // aparece; as permissões reais de escrita continuam protegidas por RLS.
@@ -72,6 +73,7 @@
         } finally {
             editorAccessChecked = true;
             if (map && Leaflet) renderLocationMarkers();
+            handleContributionDeepLink();
         }
     }
 
@@ -114,6 +116,7 @@
     let categoryVisibility = $state({
         ...fallbackCategoryVisibility
     });
+    let mapLabelsVisible = $state(true);
 
     // Os mesmos dados alimentam os filtros desktop e mobile e reagem quando
     // as categorias passam dos ficheiros legacy para o Supabase.
@@ -211,6 +214,21 @@
         renderLocationMarkers();
     }
 
+    function toggleMapLabels() {
+        mapLabelsVisible = !mapLabelsVisible;
+
+        const activeLabelGroup = mapLabelLayerGroups[activeMapLayer];
+        if (activeLabelGroup && map) {
+            if (mapLabelsVisible) {
+                if (!map.hasLayer(activeLabelGroup)) activeLabelGroup.addTo(map);
+            } else if (map.hasLayer(activeLabelGroup)) {
+                map.removeLayer(activeLabelGroup);
+            }
+        }
+
+        renderMapLabels();
+    }
+
 
     /* ==========================================
        MAPAS / CAMADAS
@@ -234,7 +252,7 @@
         }
 
         markerLayerGroups[activeMapLayer]?.addTo(map);
-        mapLabelLayerGroups[activeMapLayer]?.addTo(map);
+        if (mapLabelsVisible) mapLabelLayerGroups[activeMapLayer]?.addTo(map);
     }
 
     function setActiveMapLayer(layerId) {
@@ -252,7 +270,7 @@
         activeMapLayer = layerId;
 
         markerLayerGroups[activeMapLayer]?.addTo(map);
-        mapLabelLayerGroups[activeMapLayer]?.addTo(map);
+        if (mapLabelsVisible) mapLabelLayerGroups[activeMapLayer]?.addTo(map);
 
         if (definition.image) {
             const bounds = getMapBounds(definition);
@@ -475,15 +493,10 @@
 
         const mediaHTML = buildLocationMediaHtml(location);
         const contentHTML = buildLocationContentHtml(location);
+        // Público: apenas o criador original. Edições/aprovações ficam no painel admin.
         const attributionRows = [
             location.publishedByUsername
-                ? [currentLanguage === 'pt' ? 'Publicado por' : 'Published by', location.publishedByUsername]
-                : null,
-            location.modifiedByUsername
-                ? [currentLanguage === 'pt' ? 'Modificado por' : 'Modified by', location.modifiedByUsername]
-                : null,
-            location.approvedByUsername
-                ? [currentLanguage === 'pt' ? 'Aprovado por' : 'Approved by', location.approvedByUsername]
+                ? [currentLanguage === 'pt' ? 'Criado por' : 'Created by', location.publishedByUsername]
                 : null
         ].filter(Boolean);
 
@@ -619,6 +632,36 @@
     }
 
 
+    function ensurePopupInsideMap(marker) {
+        if (!map || !mapContainer || !marker) return;
+
+        const adjust = () => {
+            const popupElement = marker?.getPopup?.()?.getElement?.();
+            if (!popupElement || !mapContainer) return;
+            const mapRect = mapContainer.getBoundingClientRect();
+            const popupRect = popupElement.getBoundingClientRect();
+            const margin = window.innerWidth <= 768 ? 10 : 16;
+            const safeLeft = mapRect.left + margin;
+            const safeRight = mapRect.right - margin;
+            const safeTop = mapRect.top + margin;
+            const safeBottom = mapRect.bottom - margin;
+            let dx = 0;
+            let dy = 0;
+            if (popupRect.left < safeLeft) dx = popupRect.left - safeLeft;
+            else if (popupRect.right > safeRight) dx = popupRect.right - safeRight;
+            if (popupRect.top < safeTop) dy = popupRect.top - safeTop;
+            else if (popupRect.bottom > safeBottom) dy = popupRect.bottom - safeBottom;
+            if (dx || dy) map.panBy([dx, dy], { animate: true, duration: 0.22 });
+        };
+
+        requestAnimationFrame(() => {
+            marker.getPopup()?.update?.();
+            adjust();
+            setTimeout(adjust, 120);
+        });
+    }
+
+
     /* ==========================================
        MARCADORES SVG
        ========================================== */
@@ -706,6 +749,7 @@
         for (const group of Object.values(markerLayerGroups)) {
             group.clearLayers();
         }
+        locationMarkersById = new Map();
 
         for (const location of locations) {
             const renderCategory = getCategoryForRender(location.categoryId);
@@ -744,6 +788,10 @@
                 {
                     maxWidth: 360,
                     minWidth: 220,
+                    autoPan: true,
+                    keepInView: true,
+                    autoPanPaddingTopLeft: [18, 18],
+                    autoPanPaddingBottomRight: [18, 18],
                     className: 'deepmap-leaflet-popup'
                 }
             );
@@ -751,6 +799,7 @@
             marker.on('popupopen', () => {
                 setupPopupMedia(marker);
                 setupPopupActions(marker, location);
+                ensurePopupInsideMap(marker);
             });
 
             // Tooltip traduzido ao passar o rato.
@@ -789,6 +838,7 @@
             });
 
             marker.addTo(group);
+            if (location.databaseId != null) locationMarkersById.set(Number(location.databaseId), marker);
         }
     }
 
@@ -824,6 +874,8 @@
         for (const group of Object.values(mapLabelLayerGroups)) {
             group.clearLayers();
         }
+
+        if (!mapLabelsVisible) return;
 
         for (const label of mapLabels) {
             const group = mapLabelLayerGroups[label.mapLayer];
@@ -1136,6 +1188,7 @@
     let communityRequestMode = $state('create');
     let communityRequestMarker = $state(null);
     let communityRequestRevision = $state(0);
+    let communityFocusSubmissionId = $state(null);
     let communityPoint = $state(null);
     let communityPointRevision = $state(0);
     let communityPositionMode = $state(false);
@@ -1185,16 +1238,18 @@
         if (!currentMapUser || isEditorAdmin) return;
         communityRequestMode = 'create';
         communityRequestMarker = null;
+        communityFocusSubmissionId = null;
         communityRequestRevision += 1;
         communityPanelOpen = true;
         communityPositionMode = false;
         clearCommunityPreview();
     }
 
-    function openCommunityMine() {
+    function openCommunityMine(focusSubmissionId = null) {
         if (!currentMapUser || isEditorAdmin) return;
         communityRequestMode = 'mine';
         communityRequestMarker = null;
+        communityFocusSubmissionId = focusSubmissionId == null ? null : Number(focusSubmissionId);
         communityRequestRevision += 1;
         communityPanelOpen = true;
         communityPositionMode = false;
@@ -1205,6 +1260,7 @@
         if (!currentMapUser || isEditorAdmin || !location?.databaseId) return;
         communityRequestMode = 'correction';
         communityRequestMarker = location;
+        communityFocusSubmissionId = null;
         communityRequestRevision += 1;
         communityPanelOpen = true;
         communityPositionMode = false;
@@ -1220,6 +1276,37 @@
 
     async function handleCommunitySubmitted() {
         // Queue/status changed, but official markers only change after moderation approval.
+    }
+
+    function getMapDeepLinkParams() {
+        if (typeof window === 'undefined') return { markerId: null, contributionId: null };
+        const params = new URLSearchParams(window.location.search);
+        const markerId = Number(params.get('marker'));
+        const contributionId = Number(params.get('contribution'));
+        return {
+            markerId: Number.isFinite(markerId) && markerId > 0 ? markerId : null,
+            contributionId: Number.isFinite(contributionId) && contributionId > 0 ? contributionId : null
+        };
+    }
+
+    function openMarkerDeepLink(markerId) {
+        if (!map || markerId == null) return false;
+        const location = locations.find((item) => Number(item.databaseId) === Number(markerId));
+        const marker = locationMarkersById.get(Number(markerId));
+        if (!location || !marker) return false;
+        if (location.mapLayer && location.mapLayer !== activeMapLayer) setActiveMapLayer(location.mapLayer);
+        map.setView(location.coordinates, Math.max(map.getZoom(), -1), { animate: true });
+        setTimeout(() => {
+            marker.openPopup();
+            ensurePopupInsideMap(marker);
+        }, 180);
+        return true;
+    }
+
+    function handleContributionDeepLink() {
+        const { contributionId } = getMapDeepLinkParams();
+        if (!contributionId || !currentMapUser || isEditorAdmin) return;
+        openCommunityMine(contributionId);
     }
 
 
@@ -1299,6 +1386,9 @@
         renderLocationMarkers();
         renderMapLabels();
 
+        const { markerId: deepLinkMarkerId } = getMapDeepLinkParams();
+        if (deepLinkMarkerId) setTimeout(() => openMarkerDeepLink(deepLinkMarkerId), 120);
+
 
         /* CLIQUE NO MAPA — EDITOR */
 
@@ -1325,6 +1415,12 @@
                 if (editorSelectedLabelId !== null && editorPositionMode !== 'label') return;
                 setEditorCoordinates(x, y);
                 if (editorSelectedLabelId !== null) editorPositionMode = null;
+                return;
+            }
+
+            if (editorTool === 'moderation' && editorPositionMode === 'moderation') {
+                setEditorCoordinates(x, y);
+                editorPositionMode = null;
             }
         });
 
@@ -1385,7 +1481,7 @@
     <!-- EDITOR — só é mostrado a administradores confirmados -->
 
     {#if editorAccessChecked && isEditorAdmin}
-    <div class="editor-ui">
+    <div class:position-picking={editorPositionMode !== null} class="editor-ui">
 
         <button
             id="editor-toggle"
@@ -1477,8 +1573,13 @@
                         gameId={GAME_ID}
                         language={currentLanguage}
                         active={editorMode}
+                        point={editorPoint}
                         {categories}
+                        {categoryGroups}
+                        {mapDefinitions}
                         {locations}
+                        positionModeActive={editorPositionMode === 'moderation'}
+                        onPositionModeChange={(active) => handleEditorPositionMode('moderation', active)}
                         onChanged={handleEditorDataChanged}
                         onPreview={previewEditorMarker}
                     />
@@ -1497,6 +1598,7 @@
             requestMode={communityRequestMode}
             requestMarker={communityRequestMarker}
             requestRevision={communityRequestRevision}
+            focusSubmissionId={communityFocusSubmissionId}
             point={communityPoint}
             {categories}
             {categoryGroups}
@@ -1551,6 +1653,14 @@
                         onclick={() => setAllCategoryVisibility(false)}
                     >
                         {currentTexts.hide_all}
+                    </button>
+                </div>
+
+                <div class="filter-group filter-group-special">
+                    <h3>{currentLanguage === 'pt' ? 'Mapa' : 'Map'}</h3>
+                    <button type="button" class="filter-row zone-label-filter" class:inactive={!mapLabelsVisible} aria-pressed={mapLabelsVisible} onclick={toggleMapLabels}>
+                        <span class="filter-icon zone-label-icon" aria-hidden="true">T</span>
+                        <span class="filter-text">{currentLanguage === 'pt' ? 'Títulos das zonas' : 'Zone titles'}</span>
                     </button>
                 </div>
 
@@ -1688,6 +1798,14 @@
 
                 </div>
 
+                <div class="filter-group filter-group-special">
+                    <h3>{currentLanguage === 'pt' ? 'Mapa' : 'Map'}</h3>
+                    <button type="button" class="filter-row zone-label-filter" class:inactive={!mapLabelsVisible} aria-pressed={mapLabelsVisible} onclick={toggleMapLabels}>
+                        <span class="filter-icon zone-label-icon" aria-hidden="true">T</span>
+                        <span class="filter-text">{currentLanguage === 'pt' ? 'Títulos das zonas' : 'Zone titles'}</span>
+                    </button>
+                </div>
+
 
                 <!-- CATEGORIAS MOBILE -->
 
@@ -1789,6 +1907,8 @@
         padding: 0 16px;
         box-sizing: border-box;
         z-index: 30000;
+        touch-action: pan-x pan-y;
+        overscroll-behavior: contain;
     }
 
     .game-brand {
@@ -1876,6 +1996,8 @@
         min-height: 0;
         z-index: 999999 !important;
         pointer-events: none;
+        touch-action: pan-y;
+        overscroll-behavior: contain;
     }
 
     .editor-scroll-area {
@@ -2013,6 +2135,8 @@
         box-sizing: border-box;
         z-index: 9000;
         overflow: hidden;
+        touch-action: pan-y;
+        overscroll-behavior: contain;
     }
 
     .sidebar-content {
@@ -2154,6 +2278,21 @@
         box-shadow:
             0 0 0 2px rgba(255, 255, 255, 0.07);
     }
+
+
+    .zone-label-icon {
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(232,215,164,.45);
+        border-radius: 5px;
+        color: #e8d7a4;
+        background: rgba(232,215,164,.08);
+        font-family: Georgia, serif;
+        font-size: .8rem;
+        font-weight: 800;
+    }
+
+    .filter-group-special { margin-bottom: 16px; }
 
     .filter-row.inactive {
         opacity: 0.38;
@@ -2581,7 +2720,33 @@
         }
 
         .editor-ui {
-            display: none !important;
+            display: flex !important;
+            top: auto !important;
+            left: 8px !important;
+            right: 8px !important;
+            bottom: 8px !important;
+            width: auto;
+            max-height: min(70dvh, calc(100dvh - var(--deepmap-site-header-height, 62px) - var(--deepmap-game-subheader-height, 52px) - 18px));
+        }
+
+        .editor-ui:has(.editor-scroll-area) {
+            padding: 8px;
+            border: 1px solid rgba(200,163,85,.42);
+            border-radius: 12px;
+            background: rgba(10,10,13,.97);
+            box-shadow: 0 -12px 42px rgba(0,0,0,.55);
+        }
+
+        .editor-ui.position-picking { max-height: 42dvh; }
+        .editor-toggle { min-height: 38px; }
+        .editor-tool-tabs {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            overflow: visible;
+        }
+        .editor-scroll-area {
+            margin-top: 6px;
+            padding-right: 2px;
+            overflow-x: hidden;
         }
 
         .desktop-sidebar {
@@ -2596,6 +2761,9 @@
         :global(.deepmap-popup) {
             min-width: 210px;
             max-width: calc(100vw - 34px);
+            max-height: calc(100dvh - var(--deepmap-site-header-height, 62px) - var(--deepmap-game-subheader-height, 52px) - 34px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
         }
 
         :global(.deepmap-popup-media) {
@@ -2666,6 +2834,8 @@
             box-sizing: border-box;
             z-index: 1;
             overflow-y: auto;
+            touch-action: pan-y;
+            overscroll-behavior: contain;
         }
 
         .mobile-sidebar-header {
