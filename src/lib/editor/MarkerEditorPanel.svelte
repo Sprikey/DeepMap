@@ -181,6 +181,7 @@
     let videoUrl = $state('');
     let coordinateX = $state('');
     let coordinateY = $state('');
+    let positionBackup = null;
     let isPublished = $state(false);
     let showOriginalLocation = $state(false);
     let markerMoved = $state(false);
@@ -254,6 +255,7 @@
 
         showOriginalLocation = false;
         markerMoved = false;
+        positionBackup = null;
         clearMessages();
         onSelectionChange(null);
         onPositionModeChange(false);
@@ -282,6 +284,7 @@
         isPublished = marker.isPublished;
         showOriginalLocation = false;
         markerMoved = false;
+        positionBackup = null;
 
         clearMessages();
         onPositionModeChange(false);
@@ -445,10 +448,40 @@
         }
     }
 
+    function beginPositionSelection() {
+        if (saving || deleting || positionModeActive) return;
+        positionBackup = {
+            x: coordinateX,
+            y: coordinateY,
+            markerMoved,
+            showOriginalLocation
+        };
+        onPositionModeChange(true);
+    }
+
+    export function confirmPositionSelection() {
+        if (!positionModeActive) return;
+        positionBackup = null;
+        onPositionModeChange(false);
+    }
+
+    export function cancelPositionSelection() {
+        if (!positionModeActive) return;
+        if (positionBackup) {
+            coordinateX = positionBackup.x;
+            coordinateY = positionBackup.y;
+            markerMoved = positionBackup.markerMoved === true;
+            showOriginalLocation = positionBackup.showOriginalLocation === true;
+            onMoveStateChange(markerMoved);
+            onOriginalVisibilityChange(showOriginalLocation);
+        }
+        positionBackup = null;
+        onPositionModeChange(false);
+    }
+
     function togglePositionMode() {
-        if (saving || deleting) return;
-        if (!mobilePositionFlow && editingId === null) return;
-        onPositionModeChange(!positionModeActive);
+        if (positionModeActive) cancelPositionSelection();
+        else beginPositionSelection();
     }
 
     function cancelEditing() {
@@ -500,7 +533,6 @@
         if (editingId !== null) {
             markerMoved = true;
             onMoveStateChange(true);
-            if (!mobilePositionFlow) onPositionModeChange(false);
         }
     });
 
@@ -670,61 +702,33 @@
             </label>
         </div>
 
-        {#if mobilePositionFlow}
-            <div class="position-toolbar mobile-position-toolbar">
-                <button
-                    class:active={positionModeActive}
-                    class="position-button"
-                    type="button"
-                    onclick={togglePositionMode}
-                    disabled={saving || deleting}
-                >
-                    {positionModeActive ? t.choosingPosition : editingId === null ? t.choosePosition : t.changePosition}
-                </button>
+        <div class:mobile-position-toolbar={mobilePositionFlow} class="position-toolbar">
+            <button
+                class:active={positionModeActive}
+                class="position-button"
+                type="button"
+                onclick={togglePositionMode}
+                disabled={saving || deleting}
+            >
+                {positionModeActive ? t.choosingPosition : editingId === null ? t.choosePosition : t.changePosition}
+            </button>
 
-                {#if selectedMarker && markerMoved}
-                    <label class="original-location-toggle compact">
-                        <input
-                            type="checkbox"
-                            bind:checked={showOriginalLocation}
-                            onchange={() => onOriginalVisibilityChange(showOriginalLocation)}
-                            disabled={saving || deleting}
-                        />
-                        <span>{t.showOriginal}</span>
-                    </label>
-                {/if}
-            </div>
-            {#if selectedMarker && markerMoved && showOriginalLocation}
-                <small class="position-help">{t.showOriginalHelp}</small>
+            {#if selectedMarker && markerMoved}
+                <label class="original-location-toggle compact">
+                    <input
+                        type="checkbox"
+                        bind:checked={showOriginalLocation}
+                        onchange={() => onOriginalVisibilityChange(showOriginalLocation)}
+                        disabled={saving || deleting}
+                    />
+                    <span>{t.showOriginal}</span>
+                </label>
             {/if}
-        {:else if selectedMarker}
-            <div class="position-toolbar">
-                <button
-                    class:active={positionModeActive}
-                    class="position-button"
-                    type="button"
-                    onclick={togglePositionMode}
-                    disabled={saving || deleting}
-                >
-                    {positionModeActive ? t.choosingPosition : t.changePosition}
-                </button>
-
-                {#if markerMoved}
-                    <label class="original-location-toggle compact">
-                        <input
-                            type="checkbox"
-                            bind:checked={showOriginalLocation}
-                            onchange={() => onOriginalVisibilityChange(showOriginalLocation)}
-                            disabled={saving || deleting}
-                        />
-                        <span>{t.showOriginal}</span>
-                    </label>
-                {/if}
-            </div>
-            {#if markerMoved && showOriginalLocation}
-                <small class="position-help">{t.showOriginalHelp}</small>
-            {/if}
+        </div>
+        {#if selectedMarker && markerMoved && showOriginalLocation}
+            <small class="position-help">{t.showOriginalHelp}</small>
         {/if}
+
 
         {#if selectedMarker}
             <div class="audit-row">

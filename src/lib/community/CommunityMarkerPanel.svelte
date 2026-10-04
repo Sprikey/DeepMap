@@ -17,6 +17,7 @@
         language = 'en',
         active = false,
         userId = null,
+        userRole = 'user',
         requestMode = 'create',
         requestMarker = null,
         requestRevision = 0,
@@ -52,7 +53,7 @@
             reviewNote: 'Moderator note', revisions: 'versions', editableHint: 'You can edit this while it is pending. After approval, future changes require a new suggestion.',
             preview: 'Live preview', noContributions: 'You have no contributions yet.', currentMarker: 'Marker', status: 'Status',
             correctionHelp: 'Nothing changes on the official map until a moderator approves this suggestion.',
-            newHelp: 'New markers are reviewed before they become public.', openMine: 'View my contributions'
+            newHelp: 'New markers are reviewed before they become public.', moderatorNewHelp: 'As a moderator, your contribution is published immediately.', moderatorSubmit: 'Publish contribution', moderatorSubmitted: 'Contribution published.', openMine: 'View my contributions'
         },
         pt: {
             title: 'Contribuição da comunidade', addMarker: 'Adicionar marcador', myContributions: 'As minhas contribuições',
@@ -72,11 +73,12 @@
             reviewNote: 'Nota da moderação', revisions: 'versões', editableHint: 'Podes editar enquanto estiver pendente. Depois de aprovada, futuras alterações precisam de uma nova sugestão.',
             preview: 'Pré-visualização', noContributions: 'Ainda não tens contribuições.', currentMarker: 'Marcador', status: 'Estado',
             correctionHelp: 'Nada muda no mapa oficial até um moderador aprovar esta sugestão.',
-            newHelp: 'Os marcadores novos são revistos antes de ficarem públicos.', openMine: 'Ver as minhas contribuições'
+            newHelp: 'Os marcadores novos são revistos antes de ficarem públicos.', moderatorNewHelp: 'Como moderador, a tua contribuição é publicada imediatamente.', moderatorSubmit: 'Publicar contribuição', moderatorSubmitted: 'Contribuição publicada.', openMine: 'Ver as minhas contribuições'
         }
     };
 
     let t = $derived(TEXT[language] ?? TEXT.en);
+    let isModerator = $derived(userRole === 'moderator');
     let submissions = $state([]);
     let loading = $state(false);
     let saving = $state(false);
@@ -101,6 +103,7 @@
     let targetImageId = $state('');
     let coordinateX = $state('');
     let coordinateY = $state('');
+    let positionBackup = null;
     let note = $state('');
     let contentItems = $state([]);
     let fieldErrors = $state({});
@@ -166,6 +169,7 @@
         targetImageId = '';
         coordinateX = '';
         coordinateY = '';
+        positionBackup = null;
         note = '';
         contentItems = [];
         duplicatePendingId = null;
@@ -380,7 +384,7 @@
                     payload,
                     note
                 });
-                successMessage = t.submitted;
+                successMessage = isModerator ? t.moderatorSubmitted : t.submitted;
             } else {
                 await updateMarkerSubmission({
                     supabase,
@@ -476,8 +480,31 @@
         clearFieldError('category');
     }
 
+    function beginPositionSelection() {
+        if (positionModeActive || saving) return;
+        positionBackup = { x: coordinateX, y: coordinateY };
+        onPositionModeChange(true);
+    }
+
+    export function confirmPositionSelection() {
+        if (!positionModeActive) return;
+        positionBackup = null;
+        onPositionModeChange(false);
+    }
+
+    export function cancelPositionSelection() {
+        if (!positionModeActive) return;
+        if (positionBackup) {
+            coordinateX = positionBackup.x;
+            coordinateY = positionBackup.y;
+        }
+        positionBackup = null;
+        onPositionModeChange(false);
+    }
+
     function togglePosition() {
-        onPositionModeChange(!positionModeActive);
+        if (positionModeActive) cancelPositionSelection();
+        else beginPositionSelection();
     }
 
     $effect(() => {
@@ -500,7 +527,6 @@
         lastPointRevision = revision;
         coordinateX = String(point.x);
         coordinateY = String(point.y);
-        if (!mobilePositionFlow) onPositionModeChange(false);
     });
 
     // Map preview is intentionally lightweight: only the in-progress marker is touched.
@@ -580,7 +606,7 @@
                     </div>
                 {/if}
             {:else}
-                <p class="help">{submissionType === 'create' ? t.newHelp : t.correctionHelp}</p>
+                <p class="help">{submissionType === 'create' ? (isModerator ? t.moderatorNewHelp : t.newHelp) : t.correctionHelp}</p>
 
                 {#if submissionType === 'correction'}
                     <div class="target-marker"><span>{t.currentMarker}</span><strong>{localisedMarkerTitle(requestMarker ?? targetMarker)}</strong></div>
@@ -704,7 +730,7 @@
                 </label>
 
                 <div class="actions">
-                    <button class="primary" type="button" onclick={saveSubmission} disabled={saving || checkingDuplicate || (submissionType === 'correction' && editingSubmissionId === null && duplicatePendingId !== null)}>{editingSubmissionId === null ? t.submit : t.update}</button>
+                    <button class="primary" type="button" onclick={saveSubmission} disabled={saving || checkingDuplicate || (submissionType === 'correction' && editingSubmissionId === null && duplicatePendingId !== null)}>{editingSubmissionId === null ? (isModerator ? t.moderatorSubmit : t.submit) : t.update}</button>
                     {#if editingSubmissionId !== null}<button class="danger" type="button" onclick={cancelCurrentSubmission} disabled={saving}>{t.cancelSubmission}</button>{/if}
                     {#if submissionType === 'correction' && editingSubmissionId === null}<button type="button" onclick={onClose} disabled={saving}>{t.close}</button>{/if}
                 </div>
@@ -720,5 +746,6 @@
     .help,.muted,.mine-heading p{color:#9696a0;font-size:.78rem;line-height:1.4}.message{padding:9px 10px;border-radius:8px;font-size:.8rem}.message.error{background:#2a1518;color:#ffb4bd}.message.success{background:#16251b;color:#b9efc7}.submission-list{display:grid;gap:8px}.submission-card{display:grid;gap:3px;width:100%;padding:10px;border:1px solid #303039;border-radius:9px;background:#121217;color:#eee;text-align:left}.submission-card.pending{cursor:pointer}.submission-card.pending:hover{border-color:#c8a355}.submission-card.focused{border-color:#c8a355;box-shadow:0 0 0 2px rgba(200,163,85,.12);background:#1b1811}.submission-card small{color:#9b9ba5}.target-marker{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid #303039;border-radius:8px;background:#111116}.target-marker span{color:#999}
     .location-box{margin:12px 0;padding:10px;border:1px solid #303039;border-radius:9px;background:rgba(9,9,12,.42)}.coordinate-row{display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;gap:7px;margin:7px 0}.coordinate-row>.field-error{grid-column:2}
     .actions{justify-content:flex-start;flex-wrap:wrap;margin-top:12px}.actions .primary{border-color:#c8a355;background:#c8a355;color:#111;font-weight:800}.actions .danger{border-color:#6f343b;color:#ffc1c8}.actions button:disabled,.position-button:disabled{opacity:.55;cursor:not-allowed}
-    @media(max-width:700px){.community-panel{top:106px;left:10px;right:10px;width:auto;max-height:calc(100dvh - 120px)}.community-panel.position-picking:not(.mobile-position-flow){top:auto;bottom:10px;max-height:42dvh}.community-panel.mobile-position-flow.position-picking{display:none}.grid.two{grid-template-columns:1fr}.actions{position:sticky;bottom:-14px;z-index:4;margin:12px -14px -14px;padding:10px 14px;background:rgba(12,12,15,.985);border-top:1px solid #2b2b33}}
+    .community-panel.position-picking{display:none}
+    @media(max-width:700px){.community-panel{top:106px;left:10px;right:10px;width:auto;max-height:calc(100dvh - 120px)}.grid.two{grid-template-columns:1fr}.actions{position:sticky;bottom:-14px;z-index:4;margin:12px -14px -14px;padding:10px 14px;background:rgba(12,12,15,.985);border-top:1px solid #2b2b33}}
 </style>

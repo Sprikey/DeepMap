@@ -19,8 +19,6 @@
     import MarkerEditorPanel from '$lib/editor/MarkerEditorPanel.svelte';
     import CategoryManagerPanel from '$lib/editor/CategoryManagerPanel.svelte';
     import MapLabelEditorPanel from '$lib/editor/MapLabelEditorPanel.svelte';
-    import ModerationPanel from '$lib/editor/ModerationPanel.svelte';
-    import UserManagementPanel from '$lib/editor/UserManagementPanel.svelte';
     import CommunityMarkerPanel from '$lib/community/CommunityMarkerPanel.svelte';
 
     const GAME_ID = 'elden-ring';
@@ -44,11 +42,15 @@
     // O Editor 2.0 é privado. Esta flag serve apenas para decidir se a UI
     // aparece; as permissões reais de escrita continuam protegidas por RLS.
     let isEditorAdmin = $state(false);
-    let isMapModerator = $state(false);
     let editorAccessChecked = $state(false);
     let currentMapUser = $state(null);
+    let currentMapRole = $state('guest');
+    let isMapUserSuspended = $derived(currentMapRole === 'banned');
     let isMobileLayout = $state(false);
     let mobileMenuToggle;
+    let editorUiElement;
+    let markerEditorPanelRef;
+    let communityMarkerPanelRef;
 
 
     async function loadEditorAccess() {
@@ -59,16 +61,17 @@
             currentMapUser = userError ? null : userData.user;
 
             if (userError || !userData.user) {
+                currentMapRole = 'guest';
                 isEditorAdmin = false;
-                isMapModerator = false;
                 return;
             }
 
             const { data: role, error: roleError } = await supabase.rpc('get_deepmap_role');
 
             if (!roleError) {
-                isEditorAdmin = role === 'admin';
-                isMapModerator = role === 'moderator';
+                currentMapRole = typeof role === 'string' ? role : 'user';
+                isEditorAdmin = currentMapRole === 'admin';
+                if (isMapUserSuspended && communityPanelOpen) closeCommunityPanel();
                 return;
             }
 
@@ -76,19 +79,22 @@
             const { data: adminStatus, error: adminError } = await supabase.rpc('is_deepmap_admin');
             if (adminError) {
                 console.warn('DeepMap editor access check:', adminError.message);
+                currentMapRole = 'user';
                 isEditorAdmin = false;
-                isMapModerator = false;
                 return;
             }
 
+            currentMapRole = adminStatus === true ? 'admin' : 'user';
             isEditorAdmin = adminStatus === true;
-            isMapModerator = false;
         } catch (error) {
             console.warn('DeepMap editor access check:', error);
             isEditorAdmin = false;
-            isMapModerator = false;
         } finally {
             editorAccessChecked = true;
+            if (typeof window !== 'undefined' && isEditorAdmin) {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('editor') === '1') editorMode = true;
+            }
             if (map && Leaflet) renderLocationMarkers();
             handleContributionDeepLink();
         }
@@ -97,9 +103,32 @@
     onMount(() => {
         const media = window.matchMedia('(max-width: 768px)');
         const syncMobileLayout = () => { isMobileLayout = media.matches; };
+        const handleEditorOutsidePointer = (event) => {
+            if (!isMobileLayout || !editorMode || editorPositionMode !== null || !editorUiElement) return;
+            if (editorUiElement.contains(event.target)) return;
+            toggleEditor();
+        };
+        const handleHeaderPanelOpen = () => {
+            // Header/avatar tem sempre prioridade visual. Se existir uma posição
+            // ainda por confirmar, tratamo-la como cancelada antes de fechar o painel.
+            if (editorPositionMode === 'marker') markerEditorPanelRef?.cancelPositionSelection?.();
+            if (communityPositionMode) communityMarkerPanelRef?.cancelPositionSelection?.();
+            if (editorMode) toggleEditor();
+            if (communityPanelOpen) closeCommunityPanel();
+            closeMobileSidebar();
+        };
+        const handleAccountStatusChanged = () => { void loadEditorAccess(); };
         syncMobileLayout();
         media.addEventListener?.('change', syncMobileLayout);
-        return () => media.removeEventListener?.('change', syncMobileLayout);
+        document.addEventListener('pointerdown', handleEditorOutsidePointer);
+        window.addEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
+        window.addEventListener('deepmap:account-status-changed', handleAccountStatusChanged);
+        return () => {
+            media.removeEventListener?.('change', syncMobileLayout);
+            document.removeEventListener('pointerdown', handleEditorOutsidePointer);
+            window.removeEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
+            window.removeEventListener('deepmap:account-status-changed', handleAccountStatusChanged);
+        };
     });
 
 
@@ -310,7 +339,7 @@
             ).addTo(map);
 
             mapImageOverlay.bringToBack();
-            map.setMaxBounds(bounds);
+            map.setMaxBounds(Leaflet.latLngBounds(bounds).pad(0.12));
             map.fitBounds(bounds);
         }
     }
@@ -590,56 +619,65 @@
     function setupPopupMedia(marker) {
         const popupElement = marker?.getPopup?.()?.getElement?.();
         const mediaRoot = popupElement?.querySelector('.deepmap-popup-media');
-        if (!mediaRoot || mediaRoot.dataset.ready === 'true') return;
+        if (!mediaRoot) return;
 
         const slides = [...mediaRoot.querySelectorAll('.deepmap-popup-media-slide')];
-        if (slides.length <= 1) {
-            mediaRoot.dataset.ready = 'true';
-            return;
-        }
+        if (slides.length <= 1) return;
 
         const counter = mediaRoot.querySelector('[data-media-counter]');
         const previous = mediaRoot.querySelector('[data-media-prev]');
         const next = mediaRoot.querySelector('[data-media-next]');
-        let activeIndex = 0;
+        let activeIndex = Number(mediaRoot.dataset.activeIndex ?? 0);
         let touchStartX = null;
 
         function show(index) {
             activeIndex = (index + slides.length) % slides.length;
+            mediaRoot.dataset.activeIndex = String(activeIndex);
             slides.forEach((slide, slideIndex) => {
                 slide.classList.toggle('active', slideIndex === activeIndex);
             });
             if (counter) counter.textContent = `${activeIndex + 1}/${slides.length}`;
+            // Não usar popup.update() aqui: quando o conteúdo do popup é uma
+            // string, o Leaflet volta a escrever o innerHTML e destrói os
+            // handlers das setas. Basta reajustar a posição após a troca.
+            requestAnimationFrame(() => ensurePopupInsideMap(marker));
         }
 
-        previous?.addEventListener('click', (event) => {
+        if (previous) previous.onclick = (event) => {
             event.preventDefault();
             event.stopPropagation();
             show(activeIndex - 1);
-        });
+        };
 
-        next?.addEventListener('click', (event) => {
+        if (next) next.onclick = (event) => {
             event.preventDefault();
             event.stopPropagation();
             show(activeIndex + 1);
-        });
+        };
 
-        mediaRoot.addEventListener('touchstart', (event) => {
+        mediaRoot.ontouchstart = (event) => {
             touchStartX = event.touches?.[0]?.clientX ?? null;
-        }, { passive: true });
+        };
 
-        mediaRoot.addEventListener('touchend', (event) => {
+        mediaRoot.ontouchend = (event) => {
             if (touchStartX === null) return;
             const endX = event.changedTouches?.[0]?.clientX ?? touchStartX;
             const delta = endX - touchStartX;
             touchStartX = null;
-
             if (Math.abs(delta) < 35) return;
             show(activeIndex + (delta < 0 ? 1 : -1));
-        }, { passive: true });
+        };
 
-        mediaRoot.dataset.ready = 'true';
-        show(0);
+        // Uma imagem pode terminar de carregar depois de o popup abrir e
+        // alterar ligeiramente as dimensões. Reposicionamos sem reconstruir
+        // o DOM para manter a galeria clicável.
+        mediaRoot.querySelectorAll('img').forEach((image) => {
+            if (!image.complete) {
+                image.addEventListener('load', () => ensurePopupInsideMap(marker), { once: true });
+            }
+        });
+
+        show(activeIndex);
     }
 
 
@@ -660,29 +698,30 @@
     function ensurePopupInsideMap(marker) {
         if (!map || !mapContainer || !marker) return;
 
-        const adjust = () => {
+        requestAnimationFrame(() => {
             const popupElement = marker?.getPopup?.()?.getElement?.();
-            if (!popupElement || !mapContainer) return;
+            if (!popupElement || !map?.hasLayer?.(marker)) return;
+
             const mapRect = mapContainer.getBoundingClientRect();
             const popupRect = popupElement.getBoundingClientRect();
-            const margin = window.innerWidth <= 768 ? 10 : 16;
+            const margin = window.innerWidth <= 768 ? 12 : 18;
             const safeLeft = mapRect.left + margin;
             const safeRight = mapRect.right - margin;
             const safeTop = mapRect.top + margin;
             const safeBottom = mapRect.bottom - margin;
+
             let dx = 0;
             let dy = 0;
+
             if (popupRect.left < safeLeft) dx = popupRect.left - safeLeft;
             else if (popupRect.right > safeRight) dx = popupRect.right - safeRight;
+
             if (popupRect.top < safeTop) dy = popupRect.top - safeTop;
             else if (popupRect.bottom > safeBottom) dy = popupRect.bottom - safeBottom;
-            if (dx || dy) map.panBy([dx, dy], { animate: true, duration: 0.22 });
-        };
 
-        requestAnimationFrame(() => {
-            marker.getPopup()?.update?.();
-            adjust();
-            setTimeout(adjust, 120);
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                map.panBy([dx, dy], { animate: true, duration: 0.18 });
+            }
         });
     }
 
@@ -976,8 +1015,8 @@
     let editorPointRevision = 0;
 
     let editorToolText = $derived(currentLanguage === 'pt'
-        ? { markers: 'Marcadores', labels: 'Títulos de zona', categories: 'Categorias e ícones', moderation: 'Moderação', users: 'Utilizadores' }
-        : { markers: 'Markers', labels: 'Zone titles', categories: 'Categories & icons', moderation: 'Moderation', users: 'Users' }
+        ? { markers: 'Marcadores', labels: 'Títulos de zona', categories: 'Categorias e ícones' }
+        : { markers: 'Markers', labels: 'Zone titles', categories: 'Categories & icons' }
     );
 
     function getCategoryForRender(categoryId) {
@@ -1109,15 +1148,16 @@
         editorPositionCandidateReady = false;
     }
 
-    function confirmEditorMobilePosition() {
-        if (!isMobileLayout || editorPositionMode === null || !editorPositionCandidateReady) return;
-        editorPositionMode = null;
+    function confirmEditorPosition() {
+        if (editorPositionMode === null || !editorPositionCandidateReady) return;
+        if (editorPositionMode === 'marker') markerEditorPanelRef?.confirmPositionSelection?.();
+        else editorPositionMode = null;
         editorPositionCandidateReady = false;
     }
 
-    function closeEditorMobilePosition() {
-        if (!isMobileLayout) return;
-        editorPositionMode = null;
+    function cancelEditorPosition() {
+        if (editorPositionMode === 'marker') markerEditorPanelRef?.cancelPositionSelection?.();
+        else editorPositionMode = null;
         editorPositionCandidateReady = false;
     }
 
@@ -1204,7 +1244,9 @@
     function toggleEditor() {
         if (!isEditorAdmin) return;
 
-        editorMode = !editorMode;
+        const opening = !editorMode;
+        editorMode = opening;
+        if (opening) closeMobileSidebar();
 
         if (!editorMode) {
             editorPoint = null;
@@ -1250,15 +1292,15 @@
         communityPositionCandidateReady = false;
     }
 
-    function confirmCommunityMobilePosition() {
-        if (!isMobileLayout || !communityPositionMode || !communityPositionCandidateReady) return;
-        communityPositionMode = false;
+    function confirmCommunityPosition() {
+        if (!communityPositionMode || !communityPositionCandidateReady) return;
+        communityMarkerPanelRef?.confirmPositionSelection?.();
         communityPositionCandidateReady = false;
     }
 
-    function closeCommunityMobilePosition() {
-        if (!isMobileLayout) return;
-        communityPositionMode = false;
+    function cancelCommunityPosition() {
+        if (!communityPositionMode) return;
+        communityMarkerPanelRef?.cancelPositionSelection?.();
         communityPositionCandidateReady = false;
     }
 
@@ -1302,9 +1344,13 @@
         communityPoint = { x: Number(x), y: Number(y), revision: ++communityPointRevision };
     }
 
+    function openSuspensionStatus() {
+        if (typeof window !== 'undefined') window.location.href = '/suspended';
+    }
+
     function openCommunityCreate() {
         if (!currentMapUser || isEditorAdmin) return;
-        closeModeratorPanel();
+        if (isMapUserSuspended) { openSuspensionStatus(); return; }
         closeMobileSidebar();
         communityRequestMode = 'create';
         communityRequestMarker = null;
@@ -1318,7 +1364,7 @@
 
     function openCommunityMine(focusSubmissionId = null) {
         if (!currentMapUser || isEditorAdmin) return;
-        closeModeratorPanel();
+        if (isMapUserSuspended) { openSuspensionStatus(); return; }
         closeMobileSidebar();
         communityRequestMode = 'mine';
         communityRequestMarker = null;
@@ -1332,7 +1378,7 @@
 
     function openCommunityCorrection(location) {
         if (!currentMapUser || isEditorAdmin || !location?.databaseId) return;
-        closeModeratorPanel();
+        if (isMapUserSuspended) { openSuspensionStatus(); return; }
         closeMobileSidebar();
         communityRequestMode = 'correction';
         communityRequestMarker = location;
@@ -1357,68 +1403,27 @@
     }
 
     /* ==========================================
-       MODERATION — MODERATOR ROLE (OUTSIDE EDITOR)
+       DEEP LINKS
        ========================================== */
 
-    let moderatorPanelOpen = $state(false);
-    let moderatorPoint = $state(null);
-    let moderatorPointRevision = 0;
-    let moderatorPositionMode = $state(false);
-    let moderatorPositionCandidateReady = $state(false);
-
-    function setModeratorCoordinates(x, y) {
-        moderatorPoint = { x: Number(x), y: Number(y), revision: ++moderatorPointRevision };
-    }
-
-    function handleModeratorPositionMode(active) {
-        moderatorPositionMode = active === true;
-        moderatorPositionCandidateReady = false;
-    }
-
-    function openModeratorPanel() {
-        if (!currentMapUser || !isMapModerator || isEditorAdmin) return;
-        closeCommunityPanel();
-        closeMobileSidebar();
-        moderatorPanelOpen = true;
-        moderatorPositionMode = false;
-        moderatorPositionCandidateReady = false;
-        clearEditorMarkerPreview();
-    }
-
-    function closeModeratorPanel() {
-        moderatorPanelOpen = false;
-        moderatorPositionMode = false;
-        moderatorPositionCandidateReady = false;
-        moderatorPoint = null;
-        clearEditorMarkerPreview();
-    }
-
-    function confirmModeratorMobilePosition() {
-        if (!isMobileLayout || !moderatorPositionMode || !moderatorPositionCandidateReady) return;
-        moderatorPositionMode = false;
-        moderatorPositionCandidateReady = false;
-    }
-
-    function closeModeratorMobilePosition() {
-        if (!isMobileLayout) return;
-        moderatorPositionMode = false;
-        moderatorPositionCandidateReady = false;
-    }
-
-    async function handleModeratorChanged() {
-        await loadGameMapData();
-        renderLocationMarkers();
-        renderMapLabels();
-    }
-
     function getMapDeepLinkParams() {
-        if (typeof window === 'undefined') return { markerId: null, contributionId: null };
+        if (typeof window === 'undefined') return { markerId: null, contributionId: null, reviewX: null, reviewY: null, reviewLayer: null, reviewCategory: null };
         const params = new URLSearchParams(window.location.search);
-        const markerId = Number(params.get('marker'));
-        const contributionId = Number(params.get('contribution'));
+        const markerRaw = params.get('marker');
+        const contributionRaw = params.get('contribution');
+        const reviewXRaw = params.get('reviewX');
+        const reviewYRaw = params.get('reviewY');
+        const markerId = markerRaw == null ? NaN : Number(markerRaw);
+        const contributionId = contributionRaw == null ? NaN : Number(contributionRaw);
+        const reviewX = reviewXRaw == null ? NaN : Number(reviewXRaw);
+        const reviewY = reviewYRaw == null ? NaN : Number(reviewYRaw);
         return {
             markerId: Number.isFinite(markerId) && markerId > 0 ? markerId : null,
-            contributionId: Number.isFinite(contributionId) && contributionId > 0 ? contributionId : null
+            contributionId: Number.isFinite(contributionId) && contributionId > 0 ? contributionId : null,
+            reviewX: reviewXRaw !== null && Number.isFinite(reviewX) ? reviewX : null,
+            reviewY: reviewYRaw !== null && Number.isFinite(reviewY) ? reviewY : null,
+            reviewLayer: params.get('layer') || null,
+            reviewCategory: params.get('category') || null
         };
     }
 
@@ -1438,8 +1443,23 @@
 
     function handleContributionDeepLink() {
         const { contributionId } = getMapDeepLinkParams();
-        if (!contributionId || !currentMapUser || isEditorAdmin) return;
+        if (!contributionId || !currentMapUser || isEditorAdmin || isMapUserSuspended) return;
         openCommunityMine(contributionId);
+    }
+
+    function openReviewCoordinateDeepLink() {
+        const { reviewX, reviewY, reviewLayer, reviewCategory } = getMapDeepLinkParams();
+        if (!map || reviewX === null || reviewY === null) return false;
+        if (reviewLayer && mapDefinitions[reviewLayer] && reviewLayer !== activeMapLayer) setActiveMapLayer(reviewLayer);
+        previewEditorMarker({
+            coordinateX: reviewX,
+            coordinateY: reviewY,
+            categoryId: reviewCategory || null,
+            mapLayer: reviewLayer || activeMapLayer,
+            previewOnly: true
+        }, { pan: false, lightweight: true });
+        map.setView([reviewY, reviewX], Math.max(map.getZoom(), -1), { animate: true });
+        return true;
     }
 
 
@@ -1471,7 +1491,7 @@
             mapContainer,
             {
                 crs: L.CRS.Simple,
-                maxBounds: bounds,
+                maxBounds: L.latLngBounds(bounds).pad(0.12),
                 maxBoundsViscosity: 0.8,
                 attributionControl: false,
                 minZoom: -3,
@@ -1519,8 +1539,9 @@
         renderLocationMarkers();
         renderMapLabels();
 
-        const { markerId: deepLinkMarkerId } = getMapDeepLinkParams();
-        if (deepLinkMarkerId) setTimeout(() => openMarkerDeepLink(deepLinkMarkerId), 120);
+        const { markerId: deepLinkMarkerId, reviewX: deepLinkReviewX, reviewY: deepLinkReviewY } = getMapDeepLinkParams();
+        if (deepLinkReviewX !== null && deepLinkReviewY !== null) setTimeout(() => openReviewCoordinateDeepLink(), 120);
+        else if (deepLinkMarkerId) setTimeout(() => openMarkerDeepLink(deepLinkMarkerId), 120);
 
 
         /* CLIQUE NO MAPA — EDITOR */
@@ -1529,44 +1550,20 @@
             const x = Math.round(e.latlng.lng);
             const y = Math.round(e.latlng.lat);
 
-            // Contribuições: no mobile mantemos o modo ativo até o utilizador
-            // confirmar explicitamente a posição. No desktop preservamos o fluxo atual.
+            // Contribuições: desktop e mobile usam o mesmo fluxo explícito.
+            // O clique apenas propõe a posição; Confirmar/Cancelar decide o resultado.
             if (communityPanelOpen && communityPositionMode && currentMapUser && !isEditorAdmin) {
                 setCommunityCoordinates(x, y);
-                if (isMobileLayout) {
-                    communityPositionCandidateReady = true;
-                } else {
-                    communityPositionMode = false;
-                }
-                return;
-            }
-
-            // Moderadores usam a mesma ferramenta de revisão do admin, mas fora do Editor.
-            if (moderatorPanelOpen && moderatorPositionMode && currentMapUser && isMapModerator && !isEditorAdmin) {
-                setModeratorCoordinates(x, y);
-                if (isMobileLayout) {
-                    moderatorPositionCandidateReady = true;
-                } else {
-                    moderatorPositionMode = false;
-                }
+                communityPositionCandidateReady = true;
                 return;
             }
 
             if (!editorMode || !isEditorAdmin) return;
 
             if (editorTool === 'marker') {
-                if (isMobileLayout) {
-                    if (editorPositionMode !== 'marker') return;
-                    setEditorCoordinates(x, y);
-                    editorPositionCandidateReady = true;
-                    return;
-                }
-
-                // Desktop: manter o comportamento atual. Novos marcadores podem ser
-                // posicionados diretamente; existentes só quando "Alterar posição" está ativo.
-                if (editorSelectedMarkerId !== null && editorPositionMode !== 'marker') return;
+                if (editorPositionMode !== 'marker') return;
                 setEditorCoordinates(x, y);
-                if (editorSelectedMarkerId !== null) editorPositionMode = null;
+                editorPositionCandidateReady = true;
                 return;
             }
 
@@ -1627,14 +1624,16 @@
 
     <header class="game-subheader">
 
-        <label
-            for="mobile-menu-toggle"
-            class="mobile-toggle"
-            aria-label={currentTexts.open_menu}
-        >
-            <span class="menu-icon">☰</span>
-            <span class="close-icon">✕</span>
-        </label>
+        {#if !(isMobileLayout && editorMode)}
+            <label
+                for="mobile-menu-toggle"
+                class="mobile-toggle"
+                aria-label={currentTexts.open_menu}
+            >
+                <span class="menu-icon">☰</span>
+                <span class="close-icon">✕</span>
+            </label>
+        {/if}
 
         <div class="game-brand">
             <span class="game-title">Elden Ring</span>
@@ -1654,7 +1653,9 @@
 
     {#if editorAccessChecked && isEditorAdmin}
     <div
+        bind:this={editorUiElement}
         class:position-picking={editorPositionMode !== null}
+        class:marker-position-picking={editorPositionMode === 'marker'}
         class:mobile-map-picking={isMobileLayout && editorPositionMode !== null}
         class="editor-ui"
     >
@@ -1691,25 +1692,12 @@
                 >
                     {editorToolText.categories}
                 </button>
-                <button
-                    type="button"
-                    class:active={editorTool === 'moderation'}
-                    onclick={() => setEditorTool('moderation')}
-                >
-                    {editorToolText.moderation}
-                </button>
-                <button
-                    type="button"
-                    class:active={editorTool === 'users'}
-                    onclick={() => setEditorTool('users')}
-                >
-                    {editorToolText.users}
-                </button>
             </div>
 
             <div class="editor-scroll-area">
                 {#if editorTool === 'marker'}
                     <MarkerEditorPanel
+                        bind:this={markerEditorPanelRef}
                         gameId={GAME_ID}
                         language={currentLanguage}
                         active={editorMode}
@@ -1753,66 +1741,20 @@
                         standalone={true}
                         onChanged={handleEditorDataChanged}
                     />
-                {:else if editorTool === 'moderation'}
-                    <ModerationPanel
-                        gameId={GAME_ID}
-                        language={currentLanguage}
-                        active={editorMode}
-                        point={editorPoint}
-                        {categories}
-                        {categoryGroups}
-                        {mapDefinitions}
-                        {locations}
-                        positionModeActive={editorPositionMode === 'moderation'}
-                        onPositionModeChange={(active) => handleEditorPositionMode('moderation', active)}
-                        onChanged={handleEditorDataChanged}
-                        onPreview={previewEditorMarker}
-                        mobilePositionFlow={isMobileLayout}
-                    />
-                {:else if editorTool === 'users'}
-                    <UserManagementPanel
-                        language={currentLanguage}
-                        active={editorMode}
-                    />
                 {/if}
             </div>
         {/if}
     </div>
     {/if}
 
-    {#if moderatorPanelOpen && currentMapUser && isMapModerator && !isEditorAdmin}
-        <div
-            class:mobile-map-picking={isMobileLayout && moderatorPositionMode}
-            class="moderator-ui"
-        >
-            <div class="moderator-scroll-area">
-                <ModerationPanel
-                    gameId={GAME_ID}
-                    language={currentLanguage}
-                    active={moderatorPanelOpen}
-                    point={moderatorPoint}
-                    {categories}
-                    {categoryGroups}
-                    {mapDefinitions}
-                    {locations}
-                    positionModeActive={moderatorPositionMode}
-                    onPositionModeChange={handleModeratorPositionMode}
-                    onChanged={handleModeratorChanged}
-                    onPreview={previewEditorMarker}
-                    mobilePositionFlow={isMobileLayout}
-                    showClose={true}
-                    onClose={closeModeratorPanel}
-                />
-            </div>
-        </div>
-    {/if}
-
-    {#if communityPanelOpen && currentMapUser && !isEditorAdmin}
+    {#if communityPanelOpen && currentMapUser && !isEditorAdmin && !isMapUserSuspended}
         <CommunityMarkerPanel
+            bind:this={communityMarkerPanelRef}
             gameId={GAME_ID}
             language={currentLanguage}
             active={communityPanelOpen}
             userId={currentMapUser.id}
+            userRole={currentMapRole}
             requestMode={communityRequestMode}
             requestMarker={communityRequestMarker}
             requestRevision={communityRequestRevision}
@@ -1831,44 +1773,36 @@
     {/if}
 
 
-    {#if isMobileLayout && communityPositionMode}
-        <div class="mobile-position-confirm" role="status">
+    {#if communityPositionMode}
+        <div class:desktop-position-confirm={!isMobileLayout} class="mobile-position-confirm" role="status">
             <span>{communityPositionCandidateReady
                 ? (currentLanguage === 'pt' ? 'Posição escolhida.' : 'Position selected.')
-                : (currentLanguage === 'pt' ? 'Toca no mapa para escolher a posição.' : 'Tap the map to choose a position.')}</span>
+                : (currentLanguage === 'pt'
+                    ? (isMobileLayout ? 'Toca no mapa para escolher a posição.' : 'Clica no mapa para escolher a posição.')
+                    : (isMobileLayout ? 'Tap the map to choose a position.' : 'Click the map to choose a position.'))}</span>
             <div class="mobile-position-actions">
-                <button type="button" class="confirm" disabled={!communityPositionCandidateReady} onclick={confirmCommunityMobilePosition}>
-                    {currentLanguage === 'pt' ? 'Confirmar posição' : 'Confirm position'}
+                <button type="button" class="confirm" disabled={!communityPositionCandidateReady} onclick={confirmCommunityPosition}>
+                    {currentLanguage === 'pt' ? 'Confirmar' : 'Confirm'}
                 </button>
-                <button type="button" class="cancel" aria-label={currentLanguage === 'pt' ? 'Voltar' : 'Back'} onclick={closeCommunityMobilePosition}>✕</button>
+                <button type="button" class="cancel" onclick={cancelCommunityPosition}>
+                    {currentLanguage === 'pt' ? 'Cancelar' : 'Cancel'}
+                </button>
             </div>
         </div>
     {/if}
 
-    {#if isMobileLayout && editorMode && editorPositionMode !== null}
-        <div class="mobile-position-confirm" role="status">
+    {#if editorMode && editorPositionMode !== null && (isMobileLayout || editorPositionMode === 'marker')}
+        <div class:desktop-position-confirm={!isMobileLayout} class="mobile-position-confirm" role="status">
             <span>{editorPositionCandidateReady
                 ? (currentLanguage === 'pt' ? 'Posição escolhida.' : 'Position selected.')
-                : (currentLanguage === 'pt' ? 'Toca no mapa para escolher a posição.' : 'Tap the map to choose a position.')}</span>
+                : (currentLanguage === 'pt' ? 'Clica no mapa para escolher a posição.' : 'Click the map to choose a position.')}</span>
             <div class="mobile-position-actions">
-                <button type="button" class="confirm" disabled={!editorPositionCandidateReady} onclick={confirmEditorMobilePosition}>
-                    {currentLanguage === 'pt' ? 'Confirmar posição' : 'Confirm position'}
+                <button type="button" class="confirm" disabled={!editorPositionCandidateReady} onclick={confirmEditorPosition}>
+                    {currentLanguage === 'pt' ? 'Confirmar' : 'Confirm'}
                 </button>
-                <button type="button" class="cancel" aria-label={currentLanguage === 'pt' ? 'Voltar' : 'Back'} onclick={closeEditorMobilePosition}>✕</button>
-            </div>
-        </div>
-    {/if}
-
-    {#if isMobileLayout && moderatorPanelOpen && moderatorPositionMode}
-        <div class="mobile-position-confirm" role="status">
-            <span>{moderatorPositionCandidateReady
-                ? (currentLanguage === 'pt' ? 'Posição escolhida.' : 'Position selected.')
-                : (currentLanguage === 'pt' ? 'Toca no mapa para escolher a posição.' : 'Tap the map to choose a position.')}</span>
-            <div class="mobile-position-actions">
-                <button type="button" class="confirm" disabled={!moderatorPositionCandidateReady} onclick={confirmModeratorMobilePosition}>
-                    {currentLanguage === 'pt' ? 'Confirmar posição' : 'Confirm position'}
+                <button type="button" class="cancel" onclick={cancelEditorPosition}>
+                    {currentLanguage === 'pt' ? 'Cancelar' : 'Cancel'}
                 </button>
-                <button type="button" class="cancel" aria-label={currentLanguage === 'pt' ? 'Voltar' : 'Back'} onclick={closeModeratorMobilePosition}>✕</button>
             </div>
         </div>
     {/if}
@@ -1885,13 +1819,16 @@
 
 
                 {#if editorAccessChecked && currentMapUser && !isEditorAdmin}
-                    <div class="community-sidebar-actions">
-                        <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
-                        <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
-                        {#if isMapModerator}
-                            <button class="moderator-action" type="button" onclick={openModeratorPanel}>⚖ {currentLanguage === 'pt' ? 'Moderação' : 'Moderation'}</button>
-                        {/if}
-                    </div>
+                    {#if isMapUserSuspended}
+                        <div class="community-sidebar-actions suspended-actions">
+                            <a href="/suspended">{currentLanguage === 'pt' ? 'Conta suspensa — ver estado' : 'Account suspended — view status'}</a>
+                        </div>
+                    {:else}
+                        <div class="community-sidebar-actions">
+                            <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
+                            <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
+                        </div>
+                    {/if}
                 {/if}
 
                 <h2>{currentTexts.filters}</h2>
@@ -2030,13 +1967,16 @@
 
 
                 {#if editorAccessChecked && currentMapUser && !isEditorAdmin}
-                    <div class="community-sidebar-actions">
-                        <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
-                        <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
-                        {#if isMapModerator}
-                            <button class="moderator-action" type="button" onclick={openModeratorPanel}>⚖ {currentLanguage === 'pt' ? 'Moderação' : 'Moderation'}</button>
-                        {/if}
-                    </div>
+                    {#if isMapUserSuspended}
+                        <div class="community-sidebar-actions suspended-actions">
+                            <a href="/suspended">{currentLanguage === 'pt' ? 'Conta suspensa — ver estado' : 'Account suspended — view status'}</a>
+                        </div>
+                    {:else}
+                        <div class="community-sidebar-actions">
+                            <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
+                            <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
+                        </div>
+                    {/if}
                 {/if}
 
                 <!-- SHOW ALL / HIDE ALL MOBILE -->
@@ -2261,10 +2201,15 @@
         display: flex;
         flex-direction: column;
         min-height: 0;
-        z-index: 999999 !important;
+        /* Fica abaixo do header global (50k), para avatar/sino nunca serem tapados. */
+        z-index: 20000 !important;
         pointer-events: none;
         touch-action: pan-y;
         overscroll-behavior: contain;
+    }
+
+    .editor-ui.marker-position-picking {
+        display: none !important;
     }
 
     .editor-scroll-area {
@@ -2311,7 +2256,7 @@
 
     .editor-tool-tabs {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 6px;
         margin-top: 8px;
         padding: 6px;
@@ -2367,37 +2312,6 @@
         outline: 1px solid rgba(200,163,85,.55);
     }
 
-    /* Painel de moderação dedicado — visível para moderadores sem lhes dar o Editor. */
-    .moderator-ui {
-        position: fixed;
-        top: calc(var(--deepmap-site-header-height, 72px) + var(--deepmap-game-subheader-height, 54px) + 12px);
-        right: 16px;
-        bottom: 12px;
-        width: min(430px, calc(100vw - 32px));
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        padding: 8px;
-        border: 1px solid rgba(200,163,85,.42);
-        border-radius: 12px;
-        background: rgba(10,10,13,.97);
-        box-shadow: 0 16px 44px rgba(0,0,0,.55);
-        z-index: 999998;
-        box-sizing: border-box;
-        touch-action: pan-y;
-        overscroll-behavior: contain;
-    }
-
-    .moderator-scroll-area {
-        min-height: 0;
-        flex: 1 1 auto;
-        overflow-y: auto;
-        overflow-x: hidden;
-        touch-action: pan-y;
-        overscroll-behavior-y: contain;
-        -webkit-overflow-scrolling: touch;
-    }
-
     .mobile-position-confirm {
         position: fixed;
         left: 50%;
@@ -2414,7 +2328,7 @@
         color: #e8e8ec;
         font-size: .78rem;
         font-weight: 700;
-        z-index: 1000001;
+        z-index: 25000;
         box-sizing: border-box;
         pointer-events: auto;
         touch-action: manipulation;
@@ -2422,7 +2336,7 @@
 
     .mobile-position-actions {
         display: grid;
-        grid-template-columns: 1fr 42px;
+        grid-template-columns: 1fr auto;
         gap: 7px;
     }
 
@@ -2791,7 +2705,10 @@
         width: auto;
         min-width: 220px;
         max-width: min(340px, calc(100vw - 48px));
+        max-height: calc(100dvh - var(--deepmap-site-header-height, 62px) - var(--deepmap-game-subheader-height, 52px) - 42px);
+        overflow-y: auto;
         overflow-wrap: anywhere;
+        overscroll-behavior: contain;
     }
 
     :global(.deepmap-popup-media) {
@@ -3092,16 +3009,6 @@
         .editor-ui.position-picking { max-height: 42dvh; }
         .editor-ui.mobile-map-picking { display: none !important; }
 
-        .moderator-ui {
-            top: auto;
-            left: 8px;
-            right: 8px;
-            bottom: 8px;
-            width: auto;
-            max-height: min(72dvh, calc(100dvh - var(--deepmap-site-header-height, 62px) - var(--deepmap-game-subheader-height, 52px) - 18px));
-        }
-        .moderator-ui.mobile-map-picking { display: none !important; }
-        .moderator-scroll-area,
         .editor-scroll-area {
             touch-action: pan-y;
             -webkit-overflow-scrolling: touch;
@@ -3271,5 +3178,42 @@
     .community-sidebar-actions { display:grid; gap:6px; margin:0 0 12px; padding-bottom:12px; border-bottom:1px solid #2c2c34; }
     .community-sidebar-actions button { padding:8px 9px; border:1px solid #4f4632; border-radius:7px; background:#17171c; color:#d8b86f; font-weight:800; cursor:pointer; text-align:left; }
     .community-sidebar-actions button:first-child { border-color:#c8a355; background:rgba(200,163,85,.1); }
-    .community-sidebar-actions button.moderator-action { border-color:#65758d; color:#a9c8ed; background:rgba(65,104,150,.1); }
+
+    .mobile-position-confirm.desktop-position-confirm {
+        left: auto;
+        right: 22px;
+        bottom: 22px;
+        width: auto;
+        max-width: min(390px, calc(100vw - 44px));
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 9px 8px 11px;
+        transform: none;
+        font-size: .72rem;
+    }
+
+    .desktop-position-confirm .mobile-position-actions {
+        display: flex;
+        grid-template-columns: none;
+        flex: 0 0 auto;
+    }
+
+    .desktop-position-confirm .mobile-position-actions button {
+        min-height: 34px;
+        padding: 0 10px;
+    }
+
+    .suspended-actions a {
+        display: block;
+        padding: 9px 10px;
+        border: 1px solid #704047;
+        border-radius: 8px;
+        background: #211216;
+        color: #ffb4bd;
+        text-align: center;
+        text-decoration: none;
+        font-size: .72rem;
+        font-weight: 800;
+    }
 </style>
