@@ -44,6 +44,7 @@
     // @username público: associado ao UUID em public.profiles, não ao nome editável.
     let username = $state(null);
     let usernameChangedAt = $state(null);
+    let usernameIsGenerated = $state(false);
     // A privacidade do perfil é guardada na coluna public.profiles.is_public.
     let profileIsPublic = $state(true);
     let privacySaving = $state(false);
@@ -72,7 +73,7 @@
             : null
     );
     let usernameOnCooldown = $derived(
-        usernameAvailableAfter !== null && Date.now() < usernameAvailableAfter.getTime()
+        !usernameIsGenerated && usernameAvailableAfter !== null && Date.now() < usernameAvailableAfter.getTime()
     );
     let usernameNextChangeText = $derived(
         usernameAvailableAfter
@@ -315,13 +316,10 @@
             }
 
             if (usernameChanged) {
-                const query = username
-                    ? supabase.from('profiles').update({ username: candidate }).eq('id', user.id)
-                    : supabase.from('profiles').insert({ id: user.id, username: candidate });
-
-                const { data, error } = await query
-                    .select('username, username_changed_at')
-                    .single();
+                const { data: usernameRows, error } = await supabase.rpc('set_deepmap_username', {
+                    p_username: candidate
+                });
+                const data = Array.isArray(usernameRows) ? usernameRows[0] : usernameRows;
 
                 if (error || !data) {
                     if (error?.code === '23505') usernameCheckStatus = 'taken';
@@ -336,6 +334,7 @@
 
                 username = data.username;
                 usernameChangedAt = data.username_changed_at ?? null;
+                usernameIsGenerated = data.username_is_generated === true;
             }
 
             profileEditMode = false;
@@ -372,6 +371,7 @@
         usernameUserId = null;
         username = null;
         usernameChangedAt = null;
+        usernameIsGenerated = false;
         profileIsPublic = true;
         privacySaving = false;
         privacyError = '';
@@ -393,6 +393,7 @@
         usernameUserId = userId;
         username = null;
         usernameChangedAt = null;
+        usernameIsGenerated = false;
         profileIsPublic = true;
         privacyError = '';
         privacySuccess = '';
@@ -405,7 +406,7 @@
         try {
             const { data, error } = await getSupabaseBrowserClient()
                 .from('profiles')
-                .select('username, username_changed_at, is_public')
+                .select('username, username_changed_at, username_is_generated, is_public')
                 .eq('id', userId)
                 .maybeSingle();
 
@@ -416,6 +417,7 @@
             }
             username = data?.username ?? null;
             usernameChangedAt = data?.username_changed_at ?? null;
+            usernameIsGenerated = data?.username_is_generated === true;
             profileIsPublic = data?.is_public ?? true;
         } catch {
             if (ticket === usernameLoadVersion) usernameLoadError = t.username_load_error;
@@ -594,11 +596,10 @@
         const supabase = getSupabaseBrowserClient();
 
         try {
-            // Evita upsert: as permissões SQL só autorizam UPDATE da coluna username.
-            const query = username
-                ? supabase.from('profiles').update({ username: candidate }).eq('id', user.id)
-                : supabase.from('profiles').insert({ id: user.id, username: candidate });
-            const { data, error } = await query.select('username, username_changed_at').single();
+            const { data: usernameRows, error } = await supabase.rpc('set_deepmap_username', {
+                p_username: candidate
+            });
+            const data = Array.isArray(usernameRows) ? usernameRows[0] : usernameRows;
 
             if (error || !data) {
                 if (error?.code === '23505') {
@@ -618,6 +619,7 @@
 
             username = data.username;
             usernameChangedAt = data.username_changed_at ?? null;
+            usernameIsGenerated = data.username_is_generated === true;
             editingUsername = false;
             usernameCooldownNotice = false;
             usernameInput = '';

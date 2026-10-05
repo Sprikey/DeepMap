@@ -4,7 +4,8 @@
     let {
         language = 'en',
         value = $bindable([]),
-        disabled = false
+        disabled = false,
+        showPortuguese = true
     } = $props();
 
     const TEXT = {
@@ -90,14 +91,16 @@
                             {disabled}
                         />
                     </label>
-                    <label>
-                        <span>{t.textPt} ({t.optional})</span>
-                        <input
-                            value={item.textPt ?? ''}
-                            oninput={(event) => setItem(index, 'textPt', event.currentTarget.value)}
-                            {disabled}
-                        />
-                    </label>
+                    {#if showPortuguese}
+                        <label>
+                            <span>{t.textPt} ({t.optional})</span>
+                            <input
+                                value={item.textPt ?? ''}
+                                oninput={(event) => setItem(index, 'textPt', event.currentTarget.value)}
+                                {disabled}
+                            />
+                        </label>
+                    {/if}
                 </article>
             {/each}
         </div>

@@ -1,4 +1,5 @@
 <script>
+    import { tick } from 'svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { normaliseHttpUrl } from '$lib/map/media.js';
     import { loadDeepMapGameData } from '$lib/map/map-data.js';
@@ -10,13 +11,10 @@
 
     let { language = 'en', active = true } = $props();
 
-    const PENDING_PAGE_SIZE = 20;
-    const HISTORY_PAGE_SIZE = 10;
-
     const TEXT = {
         en: {
             title: 'Global moderation', pending: 'Pending', history: 'History', approved: 'Approved', rejected: 'Rejected',
-            refresh: 'Refresh', allMaps: 'All maps', map: 'Map', noPending: 'No pending submissions.', noHistory: 'No submissions in this history.',
+            refresh: 'Refresh', refreshing: 'Refreshing…', refreshed: 'Updated just now ✓', allMaps: 'All maps', map: 'Map', perPage: 'Per page', noPending: 'No pending submissions.', noHistory: 'No submissions in this history.',
             page: 'Page', submittedBy: 'Submitted by', reviewedBy: 'Reviewed by', reviewedAt: 'Reviewed', marker: 'Marker',
             newMarker: 'New marker', correction: 'Correction', versions: 'versions', review: 'Review / edit submission',
             reviewHelp: 'You can correct the submitted data before approving it.', layer: 'Map layer', type: 'Type', category: 'Category',
@@ -26,11 +24,11 @@
             addImage: 'Add image', reportImage: 'Report existing image', targetImage: 'Image ID', note: 'Contributor note', moderatorNote: 'Moderator note',
             approve: 'Approve', reject: 'Reject', close: 'Close', working: 'Working…', approvedOk: 'Submission approved.', rejectedOk: 'Submission rejected.',
             loadError: 'Could not load moderation queue.', reviewError: 'Could not review this submission.', openMap: 'Open on map', content: 'Additional content',
-            changes: 'Submitted data', current: 'Current', suggested: 'Suggested', finalVersion: 'Final version to publish', comparison: 'Change comparison', comparisonHelp: 'Only fields that actually changed are shown.', noStructuredChanges: 'No structured fields changed. Check the contributor note below.', noCurrentMarker: 'The current marker could not be loaded for comparison.', images: 'Images', addImageSummary: 'Add image', reportImageSummary: 'Report image', gameUnavailable: 'This game is not registered in the admin registry yet.'
+            changes: 'Submitted data', current: 'Current', suggested: 'Suggested', finalVersion: 'Final version to publish', comparison: 'Change comparison', comparisonHelp: 'Only fields that actually changed are shown.', noStructuredChanges: 'No structured fields changed. Check the contributor note below.', noCurrentMarker: 'The current marker could not be loaded for comparison.', images: 'Images', addImageSummary: 'Add image', reportImageSummary: 'Report image', gameUnavailable: 'This game is not registered in the admin registry yet.', historyDetails: 'Decision details', submittedAt: 'Submitted', decision: 'Decision', viewDetails: 'View details', revisionsHistory: 'Revision history', revision: 'Revision', by: 'by', legacyDetails: 'Full revision details are not available for this older record.'
         },
         pt: {
             title: 'Moderação global', pending: 'Pendentes', history: 'Histórico', approved: 'Aprovados', rejected: 'Reprovados',
-            refresh: 'Atualizar', allMaps: 'Todos os mapas', map: 'Mapa', noPending: 'Sem submissões pendentes.', noHistory: 'Ainda não existem submissões neste histórico.',
+            refresh: 'Atualizar', refreshing: 'A atualizar…', refreshed: 'Atualizado agora ✓', allMaps: 'Todos os mapas', map: 'Mapa', perPage: 'Por página', noPending: 'Sem submissões pendentes.', noHistory: 'Ainda não existem submissões neste histórico.',
             page: 'Página', submittedBy: 'Enviado por', reviewedBy: 'Revisto por', reviewedAt: 'Revisto', marker: 'Marcador',
             newMarker: 'Novo marcador', correction: 'Correção', versions: 'versões', review: 'Rever / editar submissão',
             reviewHelp: 'Podes corrigir os dados submetidos antes de aprovar.', layer: 'Camada do mapa', type: 'Tipo', category: 'Categoria',
@@ -40,15 +38,18 @@
             addImage: 'Adicionar imagem', reportImage: 'Reportar imagem existente', targetImage: 'ID da imagem', note: 'Nota do utilizador', moderatorNote: 'Nota da moderação',
             approve: 'Aprovar', reject: 'Rejeitar', close: 'Fechar', working: 'A processar…', approvedOk: 'Submissão aprovada.', rejectedOk: 'Submissão reprovada.',
             loadError: 'Não foi possível carregar a fila de moderação.', reviewError: 'Não foi possível rever esta submissão.', openMap: 'Abrir no mapa', content: 'Conteúdo adicional',
-            changes: 'Dados submetidos', current: 'Atual', suggested: 'Sugerido', finalVersion: 'Versão final a publicar', comparison: 'Comparação da alteração', comparisonHelp: 'São mostrados apenas os campos que realmente mudaram.', noStructuredChanges: 'Não existem campos estruturados alterados. Revê a nota do utilizador abaixo.', noCurrentMarker: 'Não foi possível carregar o marcador atual para comparação.', images: 'Imagens', addImageSummary: 'Adicionar imagem', reportImageSummary: 'Reportar imagem', gameUnavailable: 'Este jogo ainda não está registado no painel de administração.'
+            changes: 'Dados submetidos', current: 'Atual', suggested: 'Sugerido', finalVersion: 'Versão final a publicar', comparison: 'Comparação da alteração', comparisonHelp: 'São mostrados apenas os campos que realmente mudaram.', noStructuredChanges: 'Não existem campos estruturados alterados. Revê a nota do utilizador abaixo.', noCurrentMarker: 'Não foi possível carregar o marcador atual para comparação.', images: 'Imagens', addImageSummary: 'Adicionar imagem', reportImageSummary: 'Reportar imagem', gameUnavailable: 'Este jogo ainda não está registado no painel de administração.', historyDetails: 'Detalhes da decisão', submittedAt: 'Enviado', decision: 'Decisão', viewDetails: 'Ver detalhes', revisionsHistory: 'Histórico de versões', revision: 'Versão', by: 'por', legacyDetails: 'Os detalhes completos das versões não estão disponíveis para este registo antigo.'
         }
     };
 
-    let t = $derived(TEXT[language] ?? TEXT.en);
+    let languageKey = $derived(String(language ?? '').toLowerCase().startsWith('pt') ? 'pt' : 'en');
+    let t = $derived(TEXT[languageKey] ?? TEXT.en);
     let mode = $state('pending');
     let historyStatus = $state('approved');
     let gameFilter = $state('all');
     let page = $state(1);
+    let pendingPageSize = $state(10);
+    let historyPageSize = $state(10);
     let items = $state([]);
     let total = $state(0);
     let selectedId = $state(null);
@@ -82,9 +83,14 @@
     let reviewTargetImageId = $state('');
     let reviewNote = $state('');
     let fieldErrors = $state({});
+    let historyRevisions = $state([]);
+    let historyRevisionsLoading = $state(false);
+    let historyRevisionsLoaded = $state(false);
+    let refreshFeedback = $state('');
+    let reviewColumnElement = $state(null);
 
     let selected = $derived(selectedId == null ? null : items.find((item) => item.id === selectedId) ?? null);
-    let pageSize = $derived(mode === 'history' ? HISTORY_PAGE_SIZE : PENDING_PAGE_SIZE);
+    let pageSize = $derived(mode === 'history' ? historyPageSize : pendingPageSize);
     let pageCount = $derived(Math.max(1, Math.ceil(total / pageSize)));
     let sortedGroups = $derived([...categoryGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
     let sortedCategories = $derived(Object.values(categories).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
@@ -104,7 +110,7 @@
         if (!value) return '—';
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return '—';
-        return new Intl.DateTimeFormat(language === 'pt' ? 'pt-PT' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+        return new Intl.DateTimeFormat(languageKey === 'pt' ? 'pt-PT' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
     }
 
     function visiblePages() {
@@ -306,10 +312,10 @@
             map_layer: reviewMapLayer,
             category_id: reviewCategoryId,
             title_en: reviewTitleEn.trim(),
-            title_pt: reviewTitlePt.trim() || reviewTitleEn.trim(),
+            title_pt: reviewTitlePt.trim() || null,
             region_id: reviewRegionId.trim(),
             description_en: reviewDescriptionEn.trim(),
-            description_pt: reviewDescriptionPt.trim(),
+            description_pt: reviewDescriptionPt.trim() || null,
             video_url: reviewVideoUrl.trim(),
             coordinate_x: Number(reviewCoordinateX),
             coordinate_y: Number(reviewCoordinateY),
@@ -374,9 +380,59 @@
         }
     }
 
+    async function loadHistoryRevisions(submissionId) {
+        historyRevisions = [];
+        historyRevisionsLoaded = false;
+        if (mode !== 'history' || submissionId == null) return;
+        historyRevisionsLoading = true;
+        try {
+            const { data, error } = await getSupabaseBrowserClient().rpc('get_marker_submission_revisions', {
+                p_submission_id: submissionId
+            });
+            if (error) throw error;
+            historyRevisions = (data ?? []).map((row) => ({
+                revisionNo: Number(row.revision_no ?? 0),
+                editedUsername: row.edited_username ?? null,
+                payload: row.payload ?? {},
+                note: row.note ?? '',
+                createdAt: row.created_at
+            }));
+        } catch (error) {
+            console.warn('DeepMap moderation revisions:', error?.message ?? error);
+            historyRevisions = [];
+        } finally {
+            historyRevisionsLoading = false;
+            historyRevisionsLoaded = true;
+        }
+    }
+
+
+    async function handlePageSizeChange() {
+        page = 1;
+        selectedId = null;
+        historyRevisions = [];
+        historyRevisionsLoaded = false;
+        await tick();
+        await load();
+    }
+
+    async function refreshQueue() {
+        if (loading || working) return;
+        refreshFeedback = '';
+        await load();
+        if (!errorMessage) {
+            refreshFeedback = t.refreshed;
+            window.setTimeout(() => {
+                if (refreshFeedback === t.refreshed) refreshFeedback = '';
+            }, 2200);
+        }
+    }
+
     async function selectSubmission(item) {
         if (selectedId === item.id) {
             selectedId = null;
+            historyRevisions = [];
+            historyRevisionsLoaded = false;
             fieldErrors = {};
             return;
         }
@@ -387,7 +443,11 @@
             const registered = await ensureGameContext(item.gameId);
             selectedId = item.id;
             populateReviewForm(item);
+            if (mode === 'history') await loadHistoryRevisions(item.id);
             if (!registered) errorMessage = t.gameUnavailable;
+            if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) {
+                window.setTimeout(() => reviewColumnElement?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+            }
         } catch (error) {
             console.error('DeepMap moderation game context:', error);
             errorMessage = t.loadError;
@@ -429,6 +489,7 @@
         mode = nextMode;
         page = 1;
         selectedId = null;
+        historyRevisions = [];
         await load();
     }
 
@@ -438,6 +499,7 @@
         mode = 'history';
         page = 1;
         selectedId = null;
+        historyRevisions = [];
         await load();
     }
 
@@ -445,6 +507,7 @@
         gameFilter = event.currentTarget.value;
         page = 1;
         selectedId = null;
+        historyRevisions = [];
         await load();
     }
 
@@ -452,6 +515,7 @@
         if (nextPage < 1 || nextPage > pageCount || nextPage === page) return;
         page = nextPage;
         selectedId = null;
+        historyRevisions = [];
         await load();
     }
 
@@ -476,7 +540,7 @@
         </div>
         <div class="toolbar-actions">
             <label class="map-filter"><span>{t.map}</span><select value={gameFilter} onchange={setGameFilter}><option value="all">{t.allMaps}</option>{#each deepMapGames as game}<option value={game.id}>{game.name}</option>{/each}</select></label>
-            <button type="button" onclick={load} disabled={loading || working}>{t.refresh}</button>
+            <label class="page-size"><span>{t.perPage}</span>{#if mode === 'history'}<select bind:value={historyPageSize} onchange={handlePageSizeChange} disabled={loading || working}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select>{:else}<select bind:value={pendingPageSize} onchange={handlePageSizeChange} disabled={loading || working}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select>{/if}</label><div class="refresh-control"><button type="button" onclick={refreshQueue} disabled={loading || working}>{loading ? t.refreshing : t.refresh}</button>{#if refreshFeedback}<small class="refresh-feedback" role="status">{refreshFeedback}</small>{/if}</div>
         </div>
     </div>
 
@@ -501,7 +565,7 @@
                         <button class:selected={selectedId === item.id} type="button" onclick={() => selectSubmission(item)}>
                             <span class="queue-top"><b>{getDeepMapGameName(item.gameId)}</b><em>#{item.id}</em></span>
                             <strong>{item.type === 'create' ? t.newMarker : t.correction}</strong>
-                            <small>@{item.submittedUsername ?? '—'} · {item.revisionCount} {t.versions}{#if item.status !== 'pending'} · {formatDate(item.reviewedAt)}{/if}</small>
+                            <small>@{item.submittedUsername ?? '—'} · {item.revisionCount} {t.versions}{#if item.status !== 'pending'} · {formatDate(item.reviewedAt)} · {t.viewDetails}{/if}</small>
                         </button>
                     {/each}
                 </div>
@@ -516,7 +580,7 @@
             {/if}
         </div>
 
-        <div class="review-column">
+        <div class="review-column" bind:this={reviewColumnElement}>
             {#if selected}
                 <article class="review-card">
                     <div class="review-head">
@@ -583,13 +647,77 @@
                         <label><span>{t.moderatorNote} ({t.optional})</span><textarea rows="2" bind:value={reviewNote} disabled={working}></textarea></label>
                         <div class="actions"><button class="approve" type="button" onclick={() => review('approved')} disabled={working}>{working ? t.working : t.approve}</button><button class="reject" type="button" onclick={() => review('rejected')} disabled={working}>{t.reject}</button><button type="button" onclick={() => { selectedId = null; }} disabled={working}>{t.close}</button></div>
                     {:else}
-                        <div class="proposal"><strong>{t.changes}</strong>{#if selected.payload?.category_id}<p>{t.category}: {localisedCategory(selected.payload.category_id)}</p>{/if}{#if selected.payload?.title_en}<p>EN: {selected.payload.title_en}</p>{/if}{#if selected.payload?.title_pt}<p>PT: {selected.payload.title_pt}</p>{/if}{#if selected.payload?.coordinate_x != null && selected.payload?.coordinate_y != null}<p>{t.coordinates}: X {selected.payload.coordinate_x} · Y {selected.payload.coordinate_y}</p>{/if}{#if selected.payload?.content_items?.length}<div><b>{t.content}</b>{#each selected.payload.content_items as contentItem}<p><span>{contentTypeLabel(contentItem.type, language)}:</span> {contentItem[`text_${language}`] || contentItem.text_en || contentItem.text_pt || '—'}</p>{/each}</div>{/if}</div>
+                        <section class="history-result" aria-label={t.historyDetails}>
+                            <strong>{t.historyDetails}</strong>
+                            <div>
+                                <span>{t.decision}<b>{selected.status === 'approved' ? t.approved : t.rejected}</b></span>
+                                <span>{t.submittedAt}<b>{formatDate(selected.createdAt)}</b></span>
+                                <span>{t.reviewedBy}<b>@{selected.reviewedUsername ?? '—'}</b></span>
+                                <span>{t.reviewedAt}<b>{formatDate(selected.reviewedAt)}</b></span>
+                            </div>
+                        </section>
+
+                        {#if selected.type === 'correction' && selected.status === 'rejected' && targetLocation(selected)}
+                            {@const historicalComparisonRows = correctionComparisonRows(selected)}
+                            {#if historicalComparisonRows.length}
+                                <section class="comparison-panel" aria-label={t.comparison}>
+                                    <div class="comparison-heading"><strong>{t.comparison}</strong><small>{t.comparisonHelp}</small></div>
+                                    <div class="comparison-table">
+                                        <div class="comparison-header"><span></span><b>{t.current}</b><b>{t.suggested}</b></div>
+                                        {#each historicalComparisonRows as row (row.key)}
+                                            <div class="comparison-row">
+                                                <strong>{row.label}</strong>
+                                                <div class="comparison-value current-value"><small class="value-label">{t.current}</small>{row.before}</div>
+                                                <div class="comparison-value suggested-value"><small class="value-label">{t.suggested}</small>{row.suggested}</div>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </section>
+                            {/if}
+                        {/if}
+
+                        {#if historyRevisionsLoading}
+                            <div class="revision-history"><strong>{t.revisionsHistory}</strong><p>…</p></div>
+                        {:else if historyRevisions.length}
+                            <section class="revision-history" aria-label={t.revisionsHistory}>
+                                <strong>{t.revisionsHistory}</strong>
+                                <div class="revision-list">
+                                    {#each historyRevisions as revision (revision.revisionNo)}
+                                        <article>
+                                            <header><b>{t.revision} {revision.revisionNo}</b><span>{revision.editedUsername ? `@${revision.editedUsername}` : '—'} · {formatDate(revision.createdAt)}</span></header>
+                                            {#if revision.payload?.title_en}<p>EN: {revision.payload.title_en}</p>{/if}
+                                            {#if revision.payload?.title_pt}<p>PT: {revision.payload.title_pt}</p>{/if}
+                                            {#if revision.payload?.category_id}<p>{t.category}: {localisedCategory(revision.payload.category_id)}</p>{/if}
+                                            {#if revision.payload?.coordinate_x != null && revision.payload?.coordinate_y != null}<p>{t.coordinates}: X {revision.payload.coordinate_x} · Y {revision.payload.coordinate_y}</p>{/if}
+                                            {#if revision.note}<p><span>{t.note}:</span> {revision.note}</p>{/if}
+                                        </article>
+                                    {/each}
+                                </div>
+                            </section>
+                        {:else if historyRevisionsLoaded && selected.revisionCount === 0}
+                            <section class="revision-history legacy-history" aria-label={t.revisionsHistory}><strong>{t.revisionsHistory}</strong><p>{t.legacyDetails}</p></section>
+                        {/if}
+
+                        <div class="proposal">
+                            <strong>{t.changes}</strong>
+                            {#if selected.payload?.map_layer}<p>{t.layer}: {selected.payload.map_layer}</p>{/if}
+                            {#if selected.payload?.category_id}<p>{t.category}: {localisedCategory(selected.payload.category_id)}</p>{/if}
+                            {#if selected.payload?.title_en}<p>EN: {selected.payload.title_en}</p>{/if}
+                            {#if selected.payload?.title_pt}<p>PT: {selected.payload.title_pt}</p>{/if}
+                            {#if selected.payload?.region_id}<p>{t.region}: {selected.payload.region_id}</p>{/if}
+                            {#if selected.payload?.description_en}<p>{t.descriptionEn}: {selected.payload.description_en}</p>{/if}
+                            {#if selected.payload?.description_pt}<p>{t.descriptionPt}: {selected.payload.description_pt}</p>{/if}
+                            {#if selected.payload?.video_url}<p>{t.video}: {selected.payload.video_url}</p>{/if}
+                            {#if selected.payload?.coordinate_x != null && selected.payload?.coordinate_y != null}<p>{t.coordinates}: X {selected.payload.coordinate_x} · Y {selected.payload.coordinate_y}</p>{/if}
+                            {#if selected.payload?.image_url}<p>{t.imageUrl}: {selected.payload.image_url}</p>{/if}
+                            {#if selected.payload?.content_items?.length}<div><b>{t.content}</b>{#each selected.payload.content_items as contentItem}<p><span>{contentTypeLabel(contentItem.type, language)}:</span> {contentItem[`text_${language}`] || contentItem.text_en || contentItem.text_pt || '—'}</p>{/each}</div>{/if}
+                        </div>
                         {#if selected.note}<p class="note"><b>{t.note}:</b> {selected.note}</p>{/if}
                         {#if selected.reviewNote}<p class="note"><b>{t.moderatorNote}:</b> {selected.reviewNote}</p>{/if}
                     {/if}
                 </article>
             {:else}
-                <div class="review-placeholder"><strong>{mode === 'pending' ? t.pending : t.history}</strong><p>{language === 'pt' ? 'Seleciona uma submissão para a rever.' : 'Select a submission to review it.'}</p></div>
+                <div class="review-placeholder"><strong>{mode === 'pending' ? t.pending : t.history}</strong><p>{languageKey === 'pt' ? 'Seleciona uma submissão para a rever.' : 'Select a submission to review it.'}</p></div>
             {/if}
         </div>
     </div>
@@ -597,7 +725,7 @@
 {/if}
 
 <style>
-    .global-moderation{display:grid;gap:16px;color:#eee}.toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}.toolbar h2{margin:2px 0 0;font-size:1.35rem}.eyebrow{color:#c8a355;font-size:.68rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em}.toolbar-actions{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.toolbar button,.toolbar select,.mode-tabs button,.pagination button,.review-head-actions button,.review-head-actions a,.actions button{border:1px solid #3b3b45;border-radius:8px;background:#17171c;color:#ddd;cursor:pointer;text-decoration:none}.toolbar button{padding:9px 12px}.map-filter{display:grid;gap:4px}.map-filter span{font-size:.68rem;color:#999}.map-filter select{min-width:170px;padding:8px;background:#111116;color:#eee}.mode-tabs{display:flex;gap:7px;flex-wrap:wrap}.mode-tabs button{padding:8px 12px;font-weight:800}.mode-tabs button.active,.pagination button.active{border-color:#c8a355;background:#211d14;color:#f0d28a}.moderation-layout{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:14px;align-items:start}.queue-column,.review-column{min-width:0}.queue{display:grid;gap:7px}.queue>button{display:grid;gap:4px;padding:10px;border:1px solid #303039;border-radius:9px;background:#111115;color:#ddd;text-align:left;cursor:pointer}.queue>button:hover,.queue>button.selected{border-color:#c8a355;background:#1d1a13}.queue-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.queue-top b{color:#d8b86f;font-size:.72rem}.queue-top em{color:#73737d;font-size:.66rem;font-style:normal}.queue small{color:#9696a0}.pagination{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin-top:10px}.pagination button{min-width:32px;height:32px}.review-card,.review-placeholder,.empty{border:1px solid #303039;border-radius:12px;background:#101014}.review-card{display:grid;gap:12px;padding:14px}.review-placeholder,.empty{min-height:150px;display:grid;place-items:center;align-content:center;gap:6px;padding:18px;color:#92929c;text-align:center}.review-placeholder strong,.empty strong{color:#e4e4e7}.review-placeholder p{margin:0}.review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.review-head h3{margin:3px 0 0}.review-head-actions{display:flex;gap:6px;flex-wrap:wrap}.review-head-actions a,.review-head-actions button{padding:7px 9px;font-size:.72rem}.review-head-actions a{border-color:#66593b;color:#d8b86f}.meta-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.meta-grid span{display:grid;color:#8f8f98;font-size:.68rem}.meta-grid strong{color:#eee;font-size:.78rem}.comparison-panel{display:grid;gap:9px;padding:11px;border:1px solid #303039;border-radius:10px;background:#0b0b0f}.comparison-heading{display:grid;gap:3px}.comparison-heading strong{color:#d8b86f}.comparison-heading small{color:#8f8f98}.comparison-table{display:grid;gap:6px}.comparison-header,.comparison-row{display:grid;grid-template-columns:minmax(110px,.55fr) minmax(0,1fr) minmax(0,1fr);gap:7px;align-items:stretch}.comparison-header{padding:0 3px;color:#8f8f98;font-size:.68rem}.comparison-header b:last-child{color:#d8b86f}.comparison-row>strong{align-self:start;padding:9px 8px;color:#aaa;font-size:.7rem}.comparison-value{padding:9px;border:1px solid #2f2f38;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.76rem;line-height:1.4}.value-label{display:none;margin-bottom:3px;color:#777;font-size:.6rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em}.current-value{background:#111116;color:#aaa}.suggested-value{border-color:#5f5338;background:#1b1811;color:#eee}.comparison-empty{margin:0;color:#9a9aa4;font-size:.76rem}.review-intro{display:grid;gap:3px;padding-top:9px;border-top:1px solid #2b2b33}.review-intro strong{color:#d8b86f}.review-intro small{color:#8f8f98}.form-grid{display:grid;gap:9px}.form-grid.two{grid-template-columns:1fr 1fr}label{display:grid;gap:5px}label span,legend{color:#aaa;font-size:.7rem;font-weight:700}input,select,textarea{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1px solid #34343e;border-radius:8px;background:#0d0d11;color:#eee;font:inherit}textarea{resize:vertical}label.invalid input,label.invalid select,label.invalid textarea{border-color:#c85f67}.field-error{color:#ff9da7;font-size:.66rem}.location-box{margin:0;padding:10px;border:1px solid #303039;border-radius:9px}.coordinate-row{display:grid;grid-template-columns:36px minmax(0,1fr);gap:7px;align-items:center;margin:7px 0}.coordinate-row>.field-error{grid-column:2}.actions{display:flex;gap:8px;flex-wrap:wrap;padding-top:9px;border-top:1px solid #2d2d35;background:#101014}.actions button{padding:9px 12px}.actions .approve{border-color:#c8a355;background:#c8a355;color:#111;font-weight:900}.actions .reject{border-color:#704047;color:#ffc0c8}.note{margin:0;color:#c7c7ce;font-size:.78rem}.proposal{padding:10px;border:1px solid #2f2f38;border-radius:9px;background:#0b0b0e}.proposal>strong{color:#c8a355}.proposal p{margin:5px 0;color:#c1c1c8;font-size:.78rem}.proposal p span{color:#d8b86f;font-weight:800}.message{margin:0;padding:9px;border-radius:8px}.message.error{background:#2b1519;color:#ffc0c8}.message.success{background:#15251a;color:#bcebc7}
-    @media(max-width:900px){.moderation-layout{grid-template-columns:1fr}.queue-column{max-height:38vh;overflow:auto;touch-action:pan-y}.review-column{min-height:0}.meta-grid{grid-template-columns:1fr 1fr}}
-    @media(max-width:600px){.comparison-header{display:none}.comparison-row{grid-template-columns:1fr;gap:5px;padding:8px 0;border-bottom:1px solid #25252d}.comparison-row:last-child{border-bottom:0}.comparison-row>strong{padding:0 2px;color:#d6d6dc}.comparison-value{padding:7px 8px;font-size:.7rem}.value-label{display:block}.toolbar{align-items:stretch;flex-direction:column}.toolbar-actions,.map-filter,.map-filter select{width:100%}.toolbar button{flex:1}.mode-tabs{display:grid;grid-template-columns:repeat(3,1fr)}.mode-tabs button{padding:8px 5px}.review-card{padding:10px}.review-head{flex-direction:column}.review-head-actions{width:100%}.review-head-actions a,.review-head-actions button{flex:1;text-align:center}.meta-grid,.form-grid.two{grid-template-columns:1fr}.actions{margin:4px 0 0;padding:10px 0 0}.actions button{flex:1}.queue-column{max-height:32vh}}
+    .global-moderation{display:grid;gap:16px;color:#eee}.toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}.toolbar h2{margin:2px 0 0;font-size:1.35rem}.eyebrow{color:#c8a355;font-size:.68rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em}.toolbar-actions{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.toolbar button,.toolbar select,.mode-tabs button,.pagination button,.review-head-actions button,.review-head-actions a,.actions button{border:1px solid #3b3b45;border-radius:8px;background:#17171c;color:#ddd;cursor:pointer;text-decoration:none}.toolbar button{padding:9px 12px}.refresh-control{display:grid;justify-items:end;gap:4px}.refresh-feedback{color:#8fd3a3;font-size:.64rem;font-weight:800;white-space:nowrap}.legacy-history{border-style:dashed}.map-filter,.page-size{display:grid;min-width:110px;gap:4px}.map-filter span,.page-size span{white-space:nowrap;font-size:.68rem;color:#999}.map-filter select{min-width:170px;padding:8px;background:#111116;color:#eee}.page-size select{width:100%;min-width:92px;padding:8px;background:#111116;color:#eee}.mode-tabs{display:flex;gap:7px;flex-wrap:wrap}.mode-tabs button{padding:8px 12px;font-weight:800}.mode-tabs button.active,.pagination button.active{border-color:#c8a355;background:#211d14;color:#f0d28a}.moderation-layout{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:14px;align-items:start}.queue-column,.review-column{min-width:0}.queue{display:grid;gap:7px}.queue>button{display:grid;gap:4px;padding:10px;border:1px solid #303039;border-radius:9px;background:#111115;color:#ddd;text-align:left;cursor:pointer}.queue>button:hover,.queue>button.selected{border-color:#c8a355;background:#1d1a13}.queue-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.queue-top b{color:#d8b86f;font-size:.72rem}.queue-top em{color:#73737d;font-size:.66rem;font-style:normal}.queue small{color:#9696a0}.pagination{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin-top:10px}.pagination button{min-width:32px;height:32px}.review-card,.review-placeholder,.empty{border:1px solid #303039;border-radius:12px;background:#101014}.review-card{display:grid;gap:12px;padding:14px}.review-placeholder,.empty{min-height:150px;display:grid;place-items:center;align-content:center;gap:6px;padding:18px;color:#92929c;text-align:center}.review-placeholder strong,.empty strong{color:#e4e4e7}.review-placeholder p{margin:0}.review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.review-head h3{margin:3px 0 0}.review-head-actions{display:flex;gap:6px;flex-wrap:wrap}.review-head-actions a,.review-head-actions button{padding:7px 9px;font-size:.72rem}.review-head-actions a{border-color:#66593b;color:#d8b86f}.meta-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.meta-grid span{display:grid;color:#8f8f98;font-size:.68rem}.meta-grid strong{color:#eee;font-size:.78rem}.comparison-panel{display:grid;gap:9px;padding:11px;border:1px solid #303039;border-radius:10px;background:#0b0b0f}.comparison-heading{display:grid;gap:3px}.comparison-heading strong{color:#d8b86f}.comparison-heading small{color:#8f8f98}.comparison-table{display:grid;gap:6px}.comparison-header,.comparison-row{display:grid;grid-template-columns:minmax(110px,.55fr) minmax(0,1fr) minmax(0,1fr);gap:7px;align-items:stretch}.comparison-header{padding:0 3px;color:#8f8f98;font-size:.68rem}.comparison-header b:last-child{color:#d8b86f}.comparison-row>strong{align-self:start;padding:9px 8px;color:#aaa;font-size:.7rem}.comparison-value{padding:9px;border:1px solid #2f2f38;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.76rem;line-height:1.4}.value-label{display:none;margin-bottom:3px;color:#777;font-size:.6rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em}.current-value{background:#111116;color:#aaa}.suggested-value{border-color:#5f5338;background:#1b1811;color:#eee}.comparison-empty{margin:0;color:#9a9aa4;font-size:.76rem}.review-intro{display:grid;gap:3px;padding-top:9px;border-top:1px solid #2b2b33}.review-intro strong{color:#d8b86f}.review-intro small{color:#8f8f98}.form-grid{display:grid;gap:9px}.form-grid.two{grid-template-columns:1fr 1fr}label{display:grid;gap:5px}label span,legend{color:#aaa;font-size:.7rem;font-weight:700}input,select,textarea{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1px solid #34343e;border-radius:8px;background:#0d0d11;color:#eee;font:inherit}textarea{resize:vertical}label.invalid input,label.invalid select,label.invalid textarea{border-color:#c85f67}.field-error{color:#ff9da7;font-size:.66rem}.location-box{margin:0;padding:10px;border:1px solid #303039;border-radius:9px}.coordinate-row{display:grid;grid-template-columns:36px minmax(0,1fr);gap:7px;align-items:center;margin:7px 0}.coordinate-row>.field-error{grid-column:2}.actions{display:flex;gap:8px;flex-wrap:wrap;padding-top:9px;border-top:1px solid #2d2d35;background:#101014}.actions button{padding:9px 12px}.actions .approve{border-color:#c8a355;background:#c8a355;color:#111;font-weight:900}.actions .reject{border-color:#704047;color:#ffc0c8}.note{margin:0;color:#c7c7ce;font-size:.78rem}.revision-history{display:grid;gap:8px;padding:10px;border:1px solid #303039;border-radius:9px;background:#0c0c10}.revision-history>strong{color:#d8b86f}.revision-history>p{margin:0;color:#8f8f98}.revision-list{display:grid;gap:7px}.revision-list article{padding:8px;border:1px solid #292931;border-radius:8px;background:#111116}.revision-list header{display:flex;justify-content:space-between;gap:10px;margin-bottom:5px}.revision-list header b{color:#e4c982;font-size:.72rem}.revision-list header span{color:#777;font-size:.64rem}.revision-list p{margin:4px 0;color:#b9b9c1;font-size:.72rem;overflow-wrap:anywhere}.revision-list p span{color:#d8b86f;font-weight:800}.history-result{display:grid;gap:8px;padding:10px;border:1px solid #3b3526;border-radius:9px;background:#15130e}.history-result>strong{color:#d8b86f}.history-result>div{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.history-result span{display:grid;gap:2px;color:#8f8f98;font-size:.66rem}.history-result b{color:#e7e7eb;font-size:.75rem}.proposal{padding:10px;border:1px solid #2f2f38;border-radius:9px;background:#0b0b0e}.proposal>strong{color:#c8a355}.proposal p{margin:5px 0;color:#c1c1c8;font-size:.78rem}.proposal p span{color:#d8b86f;font-weight:800}.message{margin:0;padding:9px;border-radius:8px}.message.error{background:#2b1519;color:#ffc0c8}.message.success{background:#15251a;color:#bcebc7}
+    @media(max-width:900px){.history-result>div{grid-template-columns:1fr 1fr}.moderation-layout{grid-template-columns:1fr}.queue-column{max-height:38vh;overflow:auto;touch-action:pan-y}.review-column{min-height:0}.meta-grid{grid-template-columns:1fr 1fr}}
+    @media(max-width:600px){.history-result>div{grid-template-columns:1fr}.comparison-header{display:none}.comparison-row{grid-template-columns:1fr;gap:5px;padding:8px 0;border-bottom:1px solid #25252d}.comparison-row:last-child{border-bottom:0}.comparison-row>strong{padding:0 2px;color:#d6d6dc}.comparison-value{padding:7px 8px;font-size:.7rem}.value-label{display:block}.toolbar{align-items:stretch;flex-direction:column}.toolbar-actions,.map-filter,.map-filter select{width:100%}.page-size{min-width:110px}.refresh-control{width:100%;justify-items:stretch}.refresh-feedback{text-align:center}.toolbar button{flex:1}.mode-tabs{display:grid;grid-template-columns:repeat(3,1fr)}.mode-tabs button{padding:8px 5px}.review-card{padding:10px}.review-head{flex-direction:column}.review-head-actions{width:100%}.review-head-actions a,.review-head-actions button{flex:1;text-align:center}.meta-grid,.form-grid.two{grid-template-columns:1fr}.actions{margin:4px 0 0;padding:10px 0 0}.actions button{flex:1}.queue-column{max-height:32vh}}
 </style>

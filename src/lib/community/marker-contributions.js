@@ -1,3 +1,11 @@
+
+export async function ensureContributorProfile({ supabase }) {
+    const { data, error } = await supabase.rpc('ensure_deepmap_profile');
+    if (error) throw error;
+    if (!data || !String(data).trim()) throw new Error('USERNAME_REQUIRED');
+    return String(data).trim();
+}
+
 export function normaliseSubmission(row) {
     return {
         id: Number(row.id),
@@ -32,6 +40,27 @@ export async function loadMarkerSubmissions({ supabase, gameId, scope = 'mine' }
 }
 
 
+
+
+export async function loadMyMarkerSubmissionsPage({
+    supabase,
+    gameId,
+    limit = 20,
+    offset = 0
+}) {
+    const { data, error } = await supabase.rpc('get_my_marker_submissions_page', {
+        p_game_id: gameId,
+        p_limit: limit,
+        p_offset: offset
+    });
+
+    if (error) throw error;
+    const rows = data ?? [];
+    return {
+        items: rows.map(normaliseSubmission),
+        total: rows.length ? Number(rows[0].total_count ?? 0) : 0
+    };
+}
 
 export async function loadMarkerSubmissionsPage({
     supabase,

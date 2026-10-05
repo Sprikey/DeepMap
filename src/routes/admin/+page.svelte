@@ -22,6 +22,8 @@
     onMount(() => {
         language = getSiteLanguage();
         const unsubscribe = subscribeSiteLanguage((next) => { language = next; });
+        const requestedSection = new URL(window.location.href).searchParams.get('section');
+        if (['maps','moderation','users','audit'].includes(requestedSection)) section = requestedSection;
         void (async()=>{
             const supabase=getSupabaseBrowserClient();
             const {data:userData}=await supabase.auth.getUser();

@@ -51,6 +51,7 @@
             slug: 'Slug',
             titleEn: 'Title — EN',
             titlePt: 'Title — PT',
+            optional: 'optional',
             descriptionEn: 'Description — EN',
             descriptionPt: 'Description — PT',
             region: 'Region',
@@ -70,7 +71,7 @@
             saved: 'Marker saved.',
             deleted: 'Marker deleted.',
             clickMap: 'New marker: click the map to choose its position. Existing marker: use Change position.',
-            required: 'Fill both titles, category, layer and valid coordinates.',
+            required: 'Fill the English title, category, layer and valid coordinates.',
             slugInvalid: 'Slug must use lowercase letters, numbers and hyphens.',
             loadError: 'Could not load editor markers.',
             saveError: 'Could not save the marker.',
@@ -111,6 +112,7 @@
             slug: 'Slug',
             titleEn: 'Título — EN',
             titlePt: 'Título — PT',
+            optional: 'opcional',
             descriptionEn: 'Descrição — EN',
             descriptionPt: 'Descrição — PT',
             region: 'Região',
@@ -130,7 +132,7 @@
             saved: 'Marcador guardado.',
             deleted: 'Marcador eliminado.',
             clickMap: 'Novo marcador: clica no mapa para escolher a posição. Marcador existente: usa Mudar posição.',
-            required: 'Preenche os dois títulos, categoria, camada e coordenadas válidas.',
+            required: 'Preenche o título EN, categoria, camada e coordenadas válidas.',
             slugInvalid: 'O slug só pode ter letras minúsculas, números e hífenes.',
             loadError: 'Não foi possível carregar os marcadores do editor.',
             saveError: 'Não foi possível guardar o marcador.',
@@ -374,7 +376,6 @@
             !marker.mapLayer ||
             !marker.categoryId ||
             !marker.titleEn.trim() ||
-            !marker.titlePt.trim() ||
             !Number.isFinite(marker.coordinateX) ||
             !Number.isFinite(marker.coordinateY)
         ) {
@@ -685,7 +686,7 @@
             </label>
 
             <label>
-                <span>{t.titlePt}</span>
+                <span>{t.titlePt} ({t.optional})</span>
                 <input bind:value={titlePt} disabled={saving || deleting} />
             </label>
         </div>
@@ -768,7 +769,7 @@
         </label>
 
         <label>
-            <span>{t.descriptionPt}</span>
+            <span>{t.descriptionPt} ({t.optional})</span>
             <textarea rows="3" bind:value={descriptionPt} disabled={saving || deleting}></textarea>
         </label>
 

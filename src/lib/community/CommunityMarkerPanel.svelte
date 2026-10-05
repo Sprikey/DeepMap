@@ -1,4 +1,5 @@
 <script>
+    import { tick } from 'svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { normaliseHttpUrl } from '$lib/map/media.js';
     import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
@@ -7,8 +8,10 @@
     import {
         cancelMarkerSubmission,
         createMarkerSubmission,
+        ensureContributorProfile,
         findPendingMarkerCorrection,
-        loadMarkerSubmissions,
+        loadMyMarkerSubmissionsPage,
+        normaliseSubmission,
         updateMarkerSubmission
     } from '$lib/community/marker-contributions.js';
 
@@ -38,7 +41,7 @@
         en: {
             title: 'Community contribution', addMarker: 'Add marker', myContributions: 'My contributions',
             suggestCorrection: 'Suggest a correction', pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled',
-            editPending: 'Edit pending submission', close: 'Close', refresh: 'Refresh', newContribution: 'New contribution',
+            editPending: 'Edit pending submission', close: 'Close', refresh: 'Refresh', refreshing: 'Refreshing…', refreshed: 'Updated just now ✓', perPage: 'Per page', page: 'Page', newContribution: 'New contribution',
             layer: 'Map layer', type: 'Type', category: 'Category', chooseCategory: 'Choose a category…', titleEn: 'Title — EN', titlePt: 'Title — PT',
             region: 'Region', descriptionEn: 'Description — EN', descriptionPt: 'Description — PT', video: 'Video URL', image: 'Image URL',
             coordinates: 'Location', x: 'X', y: 'Y', choosePosition: 'Choose position', choosingPosition: 'Click the map…',
@@ -49,7 +52,7 @@
             imageProblem: 'Explain what is wrong with this image.', required: 'Check the highlighted required fields.',
             requiredField: 'Required field.', invalidUrl: 'Use a valid http(s) URL.', optional: 'optional',
             duplicatePending: 'You already have a pending correction for this marker. Open My contributions to edit it.',
-            signIn: 'Sign in to contribute.', loadError: 'Could not load your contributions.', saveError: 'Could not save the contribution.',
+            signIn: 'Sign in to contribute.', usernameRequired: 'Your account needs a @username before you can contribute.', loadError: 'Could not load your contributions.', saveError: 'Could not save the contribution.',
             reviewNote: 'Moderator note', revisions: 'versions', editableHint: 'You can edit this while it is pending. After approval, future changes require a new suggestion.',
             preview: 'Live preview', noContributions: 'You have no contributions yet.', currentMarker: 'Marker', status: 'Status',
             correctionHelp: 'Nothing changes on the official map until a moderator approves this suggestion.',
@@ -58,7 +61,7 @@
         pt: {
             title: 'Contribuição da comunidade', addMarker: 'Adicionar marcador', myContributions: 'As minhas contribuições',
             suggestCorrection: 'Sugerir correção', pending: 'Pendente', approved: 'Aprovada', rejected: 'Rejeitada', cancelled: 'Cancelada',
-            editPending: 'Editar submissão pendente', close: 'Fechar', refresh: 'Atualizar', newContribution: 'Nova contribuição',
+            editPending: 'Editar submissão pendente', close: 'Fechar', refresh: 'Atualizar', refreshing: 'A atualizar…', refreshed: 'Atualizado agora ✓', perPage: 'Por página', page: 'Página', newContribution: 'Nova contribuição',
             layer: 'Camada do mapa', type: 'Tipo', category: 'Categoria', chooseCategory: 'Escolhe uma categoria…', titleEn: 'Título — EN', titlePt: 'Título — PT',
             region: 'Região', descriptionEn: 'Descrição — EN', descriptionPt: 'Descrição — PT', video: 'URL do vídeo', image: 'URL da imagem',
             coordinates: 'Localização', x: 'X', y: 'Y', choosePosition: 'Escolher posição', choosingPosition: 'Clica no mapa…',
@@ -69,7 +72,7 @@
             imageProblem: 'Explica o problema desta imagem.', required: 'Revê os campos obrigatórios assinalados.',
             requiredField: 'Campo obrigatório.', invalidUrl: 'Usa um URL http(s) válido.', optional: 'opcional',
             duplicatePending: 'Já tens uma alteração pendente para este marcador. Abre As minhas contribuições para a editares.',
-            signIn: 'Inicia sessão para contribuir.', loadError: 'Não foi possível carregar as tuas contribuições.', saveError: 'Não foi possível guardar a contribuição.',
+            signIn: 'Inicia sessão para contribuir.', usernameRequired: 'A tua conta precisa de um @username antes de poderes contribuir.', loadError: 'Não foi possível carregar as tuas contribuições.', saveError: 'Não foi possível guardar a contribuição.',
             reviewNote: 'Nota da moderação', revisions: 'versões', editableHint: 'Podes editar enquanto estiver pendente. Depois de aprovada, futuras alterações precisam de uma nova sugestão.',
             preview: 'Pré-visualização', noContributions: 'Ainda não tens contribuições.', currentMarker: 'Marcador', status: 'Estado',
             correctionHelp: 'Nada muda no mapa oficial até um moderador aprovar esta sugestão.',
@@ -79,8 +82,14 @@
 
     let t = $derived(TEXT[language] ?? TEXT.en);
     let isModerator = $derived(userRole === 'moderator');
+    let canEditPortuguese = $derived(userRole === 'moderator' || userRole === 'admin');
     let submissions = $state([]);
+    let submissionsTotal = $state(0);
+    let submissionsPage = $state(1);
+    let submissionsPageSize = $state(10);
     let loading = $state(false);
+    let refreshFeedback = $state('');
+    let refreshTimer;
     let saving = $state(false);
     let errorMessage = $state('');
     let successMessage = $state('');
@@ -127,6 +136,15 @@
     );
     let pending = $derived(submissions.filter((item) => item.status === 'pending'));
     let previous = $derived(submissions.filter((item) => item.status !== 'pending'));
+    let submissionsPageCount = $derived(Math.max(1, Math.ceil(submissionsTotal / submissionsPageSize)));
+
+    function visibleSubmissionPages() {
+        const maxVisible = 5;
+        let start = Math.max(1, submissionsPage - Math.floor(maxVisible / 2));
+        let end = Math.min(submissionsPageCount, start + maxVisible - 1);
+        start = Math.max(1, end - maxVisible + 1);
+        return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+    }
 
     function localisedLabel(item) {
         return item?.label?.[language] ?? item?.label?.en ?? item?.label?.pt ?? item?.id ?? '';
@@ -221,19 +239,50 @@
         }
     }
 
-    async function refreshSubmissions() {
-        if (!userId) return;
+    async function refreshSubmissions({ manual = false } = {}) {
+        if (!userId || loading) return;
         loading = true;
         errorMessage = '';
+        if (manual) {
+            refreshFeedback = '';
+            if (refreshTimer) clearTimeout(refreshTimer);
+        }
         try {
-            submissions = await loadMarkerSubmissions({
+            const result = await loadMyMarkerSubmissionsPage({
                 supabase: getSupabaseBrowserClient(),
                 gameId,
-                scope: 'mine'
+                limit: submissionsPageSize,
+                offset: (submissionsPage - 1) * submissionsPageSize
             });
+            submissions = result.items;
+            submissionsTotal = result.total;
+            if (submissionsPage > submissionsPageCount) {
+                submissionsPage = submissionsPageCount;
+                const retry = await loadMyMarkerSubmissionsPage({
+                    supabase: getSupabaseBrowserClient(),
+                    gameId,
+                    limit: submissionsPageSize,
+                    offset: (submissionsPage - 1) * submissionsPageSize
+                });
+                submissions = retry.items;
+                submissionsTotal = retry.total;
+            }
             focusedSubmissionId = focusSubmissionId == null ? null : Number(focusSubmissionId);
+            if (focusedSubmissionId !== null && !submissions.some((item) => item.id === focusedSubmissionId)) {
+                const { data: focusedRow, error: focusedError } = await getSupabaseBrowserClient()
+                    .from('marker_submissions')
+                    .select('id, game_id, marker_id, submission_type, correction_kind, status, submitted_by, payload, note, reviewed_by, reviewed_at, review_note, created_at, updated_at')
+                    .eq('id', focusedSubmissionId)
+                    .eq('submitted_by', userId)
+                    .maybeSingle();
+                if (!focusedError && focusedRow) submissions = [normaliseSubmission({ ...focusedRow, revision_count: 0, total_count: submissionsTotal }), ...submissions];
+            }
             if (focusedSubmissionId !== null) {
                 setTimeout(() => document.getElementById(`contribution-${focusedSubmissionId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
+            }
+            if (manual) {
+                refreshFeedback = t.refreshed;
+                refreshTimer = setTimeout(() => { refreshFeedback = ''; }, 2200);
             }
         } catch (error) {
             console.error('DeepMap community submissions:', error);
@@ -243,16 +292,28 @@
         }
     }
 
+    async function handleSubmissionsPageSizeChange() {
+        submissionsPage = 1;
+        await tick();
+        await refreshSubmissions();
+    }
+
+    async function goSubmissionsPage(next) {
+        if (next < 1 || next > submissionsPageCount || next === submissionsPage) return;
+        submissionsPage = next;
+        await refreshSubmissions();
+    }
+
     function payloadForCurrentForm() {
         if (submissionType === 'create') {
             return {
                 map_layer: mapLayer,
                 category_id: categoryId,
                 title_en: titleEn.trim(),
-                title_pt: titlePt.trim() || titleEn.trim(),
+                ...(canEditPortuguese ? { title_pt: titlePt.trim() || null } : {}),
                 region_id: regionId.trim(),
                 description_en: descriptionEn.trim(),
-                description_pt: descriptionPt.trim(),
+                ...(canEditPortuguese ? { description_pt: descriptionPt.trim() || null } : {}),
                 video_url: videoUrl.trim(),
                 image_url: imageUrl.trim(),
                 coordinate_x: Number(coordinateX),
@@ -267,10 +328,10 @@
                 map_layer: targetMarker?.mapLayer ?? 'surface',
                 marker_title: localisedMarkerTitle(targetMarker),
                 title_en: titleEn.trim(),
-                title_pt: titlePt.trim(),
+                ...(canEditPortuguese ? { title_pt: titlePt.trim() || null } : {}),
                 region_id: regionId.trim(),
                 description_en: descriptionEn.trim(),
-                description_pt: descriptionPt.trim(),
+                ...(canEditPortuguese ? { description_pt: descriptionPt.trim() || null } : {}),
                 video_url: videoUrl.trim()
             };
         }
@@ -371,6 +432,7 @@
         saving = true;
         try {
             const supabase = getSupabaseBrowserClient();
+            await ensureContributorProfile({ supabase });
             const payload = payloadForCurrentForm();
 
             if (editingSubmissionId === null) {
@@ -403,7 +465,7 @@
             view = 'mine';
         } catch (error) {
             console.error('DeepMap save community submission:', error);
-            errorMessage = error?.code === '23505' ? t.duplicatePending : t.saveError;
+            errorMessage = error?.code === '23505' ? t.duplicatePending : (String(error?.message ?? error).includes('USERNAME_REQUIRED') ? t.usernameRequired : t.saveError);
         } finally {
             saving = false;
         }
@@ -572,7 +634,7 @@
         {:else}
             <nav class="community-tabs">
                 <button class:active={view === 'form' && submissionType === 'create'} type="button" onclick={openCreate}>{t.addMarker}</button>
-                <button class:active={view === 'mine'} type="button" onclick={() => { view = 'mine'; void refreshSubmissions(); }}>{t.myContributions}</button>
+                <button class:active={view === 'mine'} type="button" onclick={() => { view = 'mine'; submissionsPage = 1; void refreshSubmissions(); }}>{t.myContributions}</button>
             </nav>
 
             {#if errorMessage}<p class="message error">{errorMessage}</p>{/if}
@@ -581,10 +643,13 @@
             {#if view === 'mine'}
                 <div class="mine-heading">
                     <p>{t.editableHint}</p>
-                    <button class="small-button" type="button" onclick={refreshSubmissions} disabled={loading}>{t.refresh}</button>
+                    <div class="mine-actions">
+                        <label class="page-size"><span>{t.perPage}</span><select bind:value={submissionsPageSize} onchange={handleSubmissionsPageSizeChange} disabled={loading}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select></label>
+                        <div class="refresh-control"><button class="small-button" type="button" onclick={() => refreshSubmissions({ manual: true })} disabled={loading}>{loading?t.refreshing:t.refresh}</button>{#if refreshFeedback}<small class="refresh-feedback" role="status">{refreshFeedback}</small>{/if}</div>
+                    </div>
                 </div>
 
-                {#if loading}
+                {#if loading && !submissions.length}
                     <p class="muted">…</p>
                 {:else if !submissions.length}
                     <p class="muted">{t.noContributions}</p>
@@ -604,6 +669,9 @@
                             </article>
                         {/each}
                     </div>
+                    {#if submissionsTotal > submissionsPageSize}
+                        <nav class="pagination" aria-label={`${t.page} ${submissionsPage}`}><button type="button" onclick={()=>goSubmissionsPage(submissionsPage-1)} disabled={loading||submissionsPage<=1}>‹</button>{#each visibleSubmissionPages() as p}<button class:active={p===submissionsPage} type="button" onclick={()=>goSubmissionsPage(p)} disabled={loading}>{p}</button>{/each}<button type="button" onclick={()=>goSubmissionsPage(submissionsPage+1)} disabled={loading||submissionsPage>=submissionsPageCount}>›</button></nav>
+                    {/if}
                 {/if}
             {:else}
                 <p class="help">{submissionType === 'create' ? (isModerator ? t.moderatorNewHelp : t.newHelp) : t.correctionHelp}</p>
@@ -660,17 +728,21 @@
                 {/if}
 
                 {#if submissionType === 'create' || correctionKind === 'text'}
-                    <div class="grid two">
+                    <div class:single={!canEditPortuguese} class="grid two">
                         <label class:invalid={Boolean(fieldErrors.titleEn)}>
                             <span>{t.titleEn}{submissionType === 'create' ? ' *' : ` (${t.optional})`}</span>
                             <input bind:value={titleEn} oninput={() => clearFieldError('titleEn')} disabled={saving} />
                             {#if fieldErrors.titleEn}<small class="field-error">{fieldErrors.titleEn}</small>{/if}
                         </label>
-                        <label><span>{t.titlePt} ({t.optional})</span><input bind:value={titlePt} disabled={saving} /></label>
+                        {#if canEditPortuguese}
+                            <label><span>{t.titlePt} ({t.optional})</span><input bind:value={titlePt} disabled={saving} /></label>
+                        {/if}
                     </div>
                     <label><span>{t.region} ({t.optional})</span><input bind:value={regionId} disabled={saving} /></label>
                     <label><span>{t.descriptionEn} ({t.optional})</span><textarea rows="3" bind:value={descriptionEn} disabled={saving}></textarea></label>
-                    <label><span>{t.descriptionPt} ({t.optional})</span><textarea rows="3" bind:value={descriptionPt} disabled={saving}></textarea></label>
+                    {#if canEditPortuguese}
+                        <label><span>{t.descriptionPt} ({t.optional})</span><textarea rows="3" bind:value={descriptionPt} disabled={saving}></textarea></label>
+                    {/if}
                     <label class:invalid={Boolean(fieldErrors.video)}>
                         <span>{t.video} ({t.optional})</span>
                         <input type="url" bind:value={videoUrl} oninput={() => clearFieldError('video')} placeholder="https://…" disabled={saving} />
@@ -686,7 +758,7 @@
                 {/if}
 
                 {#if submissionType === 'create'}
-                    <MarkerContentEditor {language} bind:value={contentItems} disabled={saving} />
+                    <MarkerContentEditor {language} bind:value={contentItems} disabled={saving} showPortuguese={canEditPortuguese} />
                 {/if}
 
                 {#if submissionType === 'correction' && correctionKind === 'location'}
@@ -741,11 +813,11 @@
 
 <style>
     .community-panel{position:fixed;top:118px;right:18px;z-index:1300;width:min(430px,calc(100vw - 36px));max-height:calc(100vh - 140px);overflow:auto;padding:14px;border:1px solid #34343e;border-radius:12px;background:rgba(12,12,15,.98);box-shadow:0 18px 48px rgba(0,0,0,.48);color:#f0f0f2;touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-    .community-heading,.mine-heading,.actions{display:flex;align-items:center;justify-content:space-between;gap:10px}.community-heading{position:sticky;top:-14px;z-index:5;margin:-14px -14px 12px;padding:14px;background:rgba(12,12,15,.985);border-bottom:1px solid #2b2b33}.community-heading div{display:grid;gap:2px}.eyebrow{color:#c8a355;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.icon-button,.small-button,.community-tabs button,.correction-types button,.position-button,.actions button{border:1px solid #3a3a45;border-radius:8px;background:#17171c;color:#ddd;cursor:pointer}.icon-button{width:34px;height:34px}.small-button,.position-button,.actions button{padding:8px 11px}.community-tabs,.correction-types{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}.correction-types{grid-template-columns:repeat(2,1fr)}.community-tabs button,.correction-types button{padding:8px}.community-tabs button.active,.correction-types button.active,.position-button.active{border-color:#c8a355;color:#f1d58e;background:#211d14}.grid{display:grid;gap:10px}.grid.two{grid-template-columns:1fr 1fr}
+    .community-heading,.mine-heading,.actions{display:flex;align-items:center;justify-content:space-between;gap:10px}.community-heading{position:sticky;top:-14px;z-index:5;margin:-14px -14px 12px;padding:14px;background:rgba(12,12,15,.985);border-bottom:1px solid #2b2b33}.community-heading div{display:grid;gap:2px}.eyebrow{color:#c8a355;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.icon-button,.small-button,.community-tabs button,.correction-types button,.position-button,.actions button{border:1px solid #3a3a45;border-radius:8px;background:#17171c;color:#ddd;cursor:pointer}.icon-button{width:34px;height:34px}.small-button,.position-button,.actions button{padding:8px 11px}.community-tabs,.correction-types{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}.correction-types{grid-template-columns:repeat(2,1fr)}.community-tabs button,.correction-types button{padding:8px}.community-tabs button.active,.correction-types button.active,.position-button.active{border-color:#c8a355;color:#f1d58e;background:#211d14}.grid{display:grid;gap:10px}.grid.two{grid-template-columns:1fr 1fr}.grid.two.single{grid-template-columns:1fr}
     label{display:grid;gap:5px;margin:10px 0}label>span,legend{color:#b8b8c0;font-size:.72rem;font-weight:700}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #34343e;border-radius:8px;background:#0f0f13;color:#eee;padding:9px 10px;font:inherit}textarea{resize:vertical}input:focus,select:focus,textarea:focus{outline:none;border-color:#c8a355;box-shadow:0 0 0 2px rgba(200,163,85,.11)}label.invalid input,label.invalid select,label.invalid textarea,input.invalid{border-color:#c85f67!important;box-shadow:0 0 0 2px rgba(200,95,103,.12)}.field-error{color:#ff9da7;font-size:.68rem;line-height:1.3}
-    .help,.muted,.mine-heading p{color:#9696a0;font-size:.78rem;line-height:1.4}.message{padding:9px 10px;border-radius:8px;font-size:.8rem}.message.error{background:#2a1518;color:#ffb4bd}.message.success{background:#16251b;color:#b9efc7}.submission-list{display:grid;gap:8px}.submission-card{display:grid;gap:3px;width:100%;padding:10px;border:1px solid #303039;border-radius:9px;background:#121217;color:#eee;text-align:left}.submission-card.pending{cursor:pointer}.submission-card.pending:hover{border-color:#c8a355}.submission-card.focused{border-color:#c8a355;box-shadow:0 0 0 2px rgba(200,163,85,.12);background:#1b1811}.submission-card small{color:#9b9ba5}.target-marker{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid #303039;border-radius:8px;background:#111116}.target-marker span{color:#999}
+    .mine-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:16px}.mine-actions{display:flex;align-items:flex-end;gap:12px}.page-size{display:grid;gap:3px;min-width:120px}.page-size span{color:#888;font-size:.62rem;white-space:nowrap}.page-size select{width:100%;padding:7px 26px 7px 8px;border:1px solid #3a3a45;border-radius:8px;background:#17171c;color:#ddd}.refresh-control{display:grid;justify-items:end;gap:3px}.refresh-feedback{color:#8fd3a3;font-size:.62rem;font-weight:800;white-space:nowrap}.pagination{display:flex;justify-content:center;gap:5px;flex-wrap:wrap}.pagination button{min-width:32px;height:32px;border:1px solid #3a3a45;border-radius:8px;background:#17171c;color:#ddd;cursor:pointer}.pagination button.active{border-color:#c8a355;background:#211d14;color:#f0d28a}.pagination button:disabled{opacity:.5;cursor:not-allowed}.help,.muted,.mine-heading p{color:#9696a0;font-size:.78rem;line-height:1.4}.message{padding:9px 10px;border-radius:8px;font-size:.8rem}.message.error{background:#2a1518;color:#ffb4bd}.message.success{background:#16251b;color:#b9efc7}.submission-list{display:grid;gap:8px}.submission-card{display:grid;gap:3px;width:100%;padding:10px;border:1px solid #303039;border-radius:9px;background:#121217;color:#eee;text-align:left}.submission-card.pending{cursor:pointer}.submission-card.pending:hover{border-color:#c8a355}.submission-card.focused{border-color:#c8a355;box-shadow:0 0 0 2px rgba(200,163,85,.12);background:#1b1811}.submission-card small{color:#9b9ba5}.target-marker{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid #303039;border-radius:8px;background:#111116}.target-marker span{color:#999}
     .location-box{margin:12px 0;padding:10px;border:1px solid #303039;border-radius:9px;background:rgba(9,9,12,.42)}.coordinate-row{display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;gap:7px;margin:7px 0}.coordinate-row>.field-error{grid-column:2}
     .actions{justify-content:flex-start;flex-wrap:wrap;margin-top:12px}.actions .primary{border-color:#c8a355;background:#c8a355;color:#111;font-weight:800}.actions .danger{border-color:#6f343b;color:#ffc1c8}.actions button:disabled,.position-button:disabled{opacity:.55;cursor:not-allowed}
     .community-panel.position-picking{display:none}
-    @media(max-width:700px){.community-panel{top:106px;left:10px;right:10px;width:auto;max-height:calc(100dvh - 120px)}.grid.two{grid-template-columns:1fr}.actions{position:sticky;bottom:-14px;z-index:4;margin:12px -14px -14px;padding:10px 14px;background:rgba(12,12,15,.985);border-top:1px solid #2b2b33}}
+    @media(max-width:700px){.mine-heading{align-items:stretch;flex-direction:column}.mine-actions{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:end}.refresh-control{justify-items:stretch}.refresh-feedback{text-align:center}.community-panel{top:106px;left:10px;right:10px;width:auto;max-height:calc(100dvh - 120px)}.grid.two{grid-template-columns:1fr}.actions{position:sticky;bottom:-14px;z-index:4;margin:12px -14px -14px;padding:10px 14px;background:rgba(12,12,15,.985);border-top:1px solid #2b2b33}}
 </style>

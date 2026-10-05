@@ -75,7 +75,7 @@ function markerPayload(gameId, marker) {
         category_id: marker.categoryId,
         region_id: marker.regionId?.trim() || null,
         title_en: marker.titleEn.trim(),
-        title_pt: marker.titlePt.trim(),
+        title_pt: marker.titlePt?.trim() || null,
         coordinate_x: Number(marker.coordinateX),
         coordinate_y: Number(marker.coordinateY),
         description_en: marker.descriptionEn?.trim() || null,
