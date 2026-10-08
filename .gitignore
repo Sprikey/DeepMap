@@ -23,3 +23,6 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Codex temporary handoff
+codex-handoff.md
