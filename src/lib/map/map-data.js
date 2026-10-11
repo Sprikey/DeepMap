@@ -4,8 +4,8 @@
 
    Loader genérico para qualquer jogo/mapa.
 
-   O mapa fornece gameUuid/gameMapUuid para layers e legacyGameId
-   para as coleções ainda legacy. A entrada antiga continua disponível
+   O mapa fornece gameUuid para layers/taxonomy, gameMapUuid para layers,
+   e legacyGameId para markers/labels/attribution. A entrada antiga continua disponível
    para a moderação, que ainda não transporta contexto UUID.
    Também fornece:
    - cliente Supabase
@@ -51,6 +51,8 @@ function normaliseLayer(row) {
 function normaliseGroup(row) {
     return {
         id: row.id,
+        gameUuid: row.game_uuid,
+        groupUuid: row.group_uuid,
         label: { en: row.name_en, pt: row.name_pt },
         sortOrder: row.sort_order
     };
@@ -59,7 +61,10 @@ function normaliseGroup(row) {
 function normaliseCategory(row) {
     return {
         id: row.id,
+        gameUuid: row.game_uuid,
+        categoryUuid: row.category_uuid,
         group: row.group_id,
+        groupUuid: row.group_uuid,
         label: { en: row.name_en, pt: row.name_pt },
         icon: resolveAsset(row.icon_source, row.icon_ref),
         iconSource: row.icon_source,
@@ -350,13 +355,74 @@ async function loadUuidLayers({ supabase, gameUuid, gameMapUuid }) {
     return { value: keyedObject(data, normaliseLayer), source: 'supabase' };
 }
 
+/**
+ * @param {unknown} data
+ * @param {string} gameUuid
+ * @param {'group_uuid' | 'category_uuid'} uuidField
+ */
+function validateUuidTaxonomyRows(data, gameUuid, uuidField) {
+    if (!Array.isArray(data)) throw new Error('TAXONOMY_DATA_UNAVAILABLE');
+    const keys = new Set();
+    const uuids = new Set();
+    for (const row of data) {
+        if (!row || typeof row.id !== 'string' || !row.id.trim()
+            || row.game_uuid !== gameUuid || !isLayerUuid(row[uuidField])
+            || keys.has(row.id) || uuids.has(row[uuidField])) {
+            throw new Error('TAXONOMY_IDENTITY_CONTEXT_INVALID');
+        }
+        if (uuidField === 'category_uuid') {
+            if (row.group_id === null ? row.group_uuid !== null
+                : typeof row.group_id !== 'string' || !row.group_id.trim() || !isLayerUuid(row.group_uuid)) {
+                throw new Error('CATEGORY_GROUP_UUID_PAIR_INVALID');
+            }
+        }
+        keys.add(row.id);
+        uuids.add(row[uuidField]);
+    }
+    return data;
+}
+
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string }} options */
+async function loadUuidCategoryGroups({ supabase, gameUuid }) {
+    if (!isLayerUuid(gameUuid)) throw new Error('TAXONOMY_GAME_UUID_REQUIRED');
+    const { data, error } = await supabase
+        .from('marker_category_groups')
+        .select('id, game_id, game_uuid, group_uuid, name_en, name_pt, sort_order')
+        .eq('game_uuid', gameUuid)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('id', { ascending: true });
+    if (error) throw new Error('CATEGORY_GROUP_QUERY_UNAVAILABLE');
+    const rows = validateUuidTaxonomyRows(data, gameUuid, 'group_uuid');
+    return { value: rows.map(normaliseGroup), source: 'supabase' };
+}
+
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string }} options */
+async function loadUuidCategories({ supabase, gameUuid }) {
+    if (!isLayerUuid(gameUuid)) throw new Error('TAXONOMY_GAME_UUID_REQUIRED');
+    const { data, error } = await supabase
+        .from('marker_categories')
+        .select('id, game_id, game_uuid, category_uuid, group_id, group_uuid, name_en, name_pt, icon_source, icon_ref, color, marker_width, marker_height, symbol_size, sort_order')
+        .eq('game_uuid', gameUuid)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('id', { ascending: true });
+    if (error) throw new Error('CATEGORY_QUERY_UNAVAILABLE');
+    const rows = validateUuidTaxonomyRows(data, gameUuid, 'category_uuid');
+    // A referenced group need not appear in the public active-group collection.
+    return { value: keyedObject(rows, normaliseCategory), source: 'supabase' };
+}
+
+// Public path: UUID layers/taxonomy; markers, labels and attribution stay legacy.
 /** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, gameMapUuid: string, legacyGameId: string, fallback: any }} options */
 export async function loadDeepMapGameDataWithUuidLayers({ supabase, gameUuid, gameMapUuid, legacyGameId, fallback }) {
     return loadGameData({
         supabase,
         gameId: legacyGameId,
         fallback,
-        layersPromise: loadUuidLayers({ supabase, gameUuid, gameMapUuid })
+        layersPromise: loadUuidLayers({ supabase, gameUuid, gameMapUuid }),
+        groupsPromise: loadUuidCategoryGroups({ supabase, gameUuid }),
+        categoriesPromise: loadUuidCategories({ supabase, gameUuid })
     });
 }
 
@@ -375,11 +441,6 @@ export async function loadDeepMapGameData({ supabase, gameId, fallback }) {
         label: 'layers'
     });
 
-    return loadGameData({ supabase, gameId, fallback, layersPromise });
-}
-
-/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameId: string, fallback: any, layersPromise: Promise<{ value: any, source: string }> }} options */
-async function loadGameData({ supabase, gameId, fallback, layersPromise }) {
     const groupsPromise = queryWithMigrationFallback({
         query: supabase
             .from('marker_category_groups')
@@ -406,6 +467,11 @@ async function loadGameData({ supabase, gameId, fallback, layersPromise }) {
         label: 'categories'
     });
 
+    return loadGameData({ supabase, gameId, fallback, layersPromise, groupsPromise, categoriesPromise });
+}
+
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameId: string, fallback: any, layersPromise: Promise<{ value: any, source: string }>, groupsPromise: Promise<{ value: any, source: string }>, categoriesPromise: Promise<{ value: any, source: string }> }} options */
+async function loadGameData({ supabase, gameId, fallback, layersPromise, groupsPromise, categoriesPromise }) {
     const markersPromise = queryWithMigrationFallback({
         query: supabase
             .from('marcadores')

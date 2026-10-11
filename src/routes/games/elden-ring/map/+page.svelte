@@ -230,6 +230,7 @@
 
     async function loadGameMapData() {
         const supabase = getSupabaseBrowserClient();
+        // Layers and taxonomy use UUID ownership; only the remaining reads use GAME_ID.
         const data = await loadDeepMapGameDataWithUuidLayers({
             supabase,
             gameUuid: gameContext.gameUuid,
@@ -1502,7 +1503,7 @@
         // Falha fechada: sem sessão/RPC/admin, o Editor nem sequer aparece.
         void loadEditorAccess();
 
-        // Layers require UUID-owned DB rows; the other collections retain legacy fallback.
+        // Layers/taxonomy require DB rows; markers and labels retain legacy fallback.
         await loadGameMapData();
 
         if (!activeLayerUuid) throw new Error('Active layer UUID unavailable.');
