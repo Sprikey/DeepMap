@@ -4,8 +4,10 @@
 
    Loader genérico para qualquer jogo/mapa.
 
-   A página fornece apenas:
-   - gameId (ex.: "elden-ring")
+   O mapa fornece gameUuid/gameMapUuid para layers e legacyGameId
+   para as coleções ainda legacy. A entrada antiga continua disponível
+   para a moderação, que ainda não transporta contexto UUID.
+   Também fornece:
    - cliente Supabase
    - dados legacy de fallback durante a migração
 
@@ -33,6 +35,9 @@ function resolveAsset(source, ref) {
 function normaliseLayer(row) {
     return {
         id: row.id,
+        layerUuid: row.layer_uuid,
+        gameUuid: row.game_uuid,
+        gameMapUuid: row.game_map_id,
         label: { en: row.name_en, pt: row.name_pt },
         image: resolveAsset(row.image_source, row.image_ref),
         imageSource: row.image_source,
@@ -306,6 +311,56 @@ async function attachMarkerContent({ supabase, locations }) {
     }
 }
 
+const LAYER_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** @param {unknown} value */
+function isLayerUuid(value) {
+    return typeof value === 'string' && LAYER_UUID_PATTERN.test(value);
+}
+
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, gameMapUuid: string }} options */
+async function loadUuidLayers({ supabase, gameUuid, gameMapUuid }) {
+    if (!isLayerUuid(gameUuid) || !isLayerUuid(gameMapUuid)) {
+        throw new Error('LAYER_UUID_CONTEXT_REQUIRED');
+    }
+    const { data, error } = await supabase
+        .from('map_layers')
+        .select('id, game_id, game_uuid, game_map_id, layer_uuid, name_en, name_pt, image_source, image_ref, width, height, sort_order')
+        .eq('game_uuid', gameUuid)
+        .eq('game_map_id', gameMapUuid)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('id', { ascending: true });
+
+    if (error) throw new Error('LAYER_QUERY_UNAVAILABLE');
+    if (!Array.isArray(data) || !data.length) throw new Error('LAYER_DATA_UNAVAILABLE');
+
+    const keys = new Set();
+    const uuids = new Set();
+    for (const row of data) {
+        if (!row || typeof row.id !== 'string' || !row.id
+            || row.game_uuid !== gameUuid || row.game_map_id !== gameMapUuid
+            || !isLayerUuid(row.layer_uuid) || keys.has(row.id) || uuids.has(row.layer_uuid)) {
+            throw new Error('LAYER_IDENTITY_CONTEXT_INVALID');
+        }
+        keys.add(row.id);
+        uuids.add(row.layer_uuid);
+    }
+    // This collection is DB-owned: never merge static rows without UUID identity.
+    return { value: keyedObject(data, normaliseLayer), source: 'supabase' };
+}
+
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, gameMapUuid: string, legacyGameId: string, fallback: any }} options */
+export async function loadDeepMapGameDataWithUuidLayers({ supabase, gameUuid, gameMapUuid, legacyGameId, fallback }) {
+    return loadGameData({
+        supabase,
+        gameId: legacyGameId,
+        fallback,
+        layersPromise: loadUuidLayers({ supabase, gameUuid, gameMapUuid })
+    });
+}
+
+// Compatibility entry for the unchanged moderation consumer.
 export async function loadDeepMapGameData({ supabase, gameId, fallback }) {
     const layersPromise = queryWithMigrationFallback({
         query: supabase
@@ -320,6 +375,11 @@ export async function loadDeepMapGameData({ supabase, gameId, fallback }) {
         label: 'layers'
     });
 
+    return loadGameData({ supabase, gameId, fallback, layersPromise });
+}
+
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameId: string, fallback: any, layersPromise: Promise<{ value: any, source: string }> }} options */
+async function loadGameData({ supabase, gameId, fallback, layersPromise }) {
     const groupsPromise = queryWithMigrationFallback({
         query: supabase
             .from('marker_category_groups')

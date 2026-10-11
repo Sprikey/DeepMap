@@ -14,7 +14,7 @@
 
     import { locations as fallbackLocations } from '$lib/games/elden-ring/locations.js';
     import { mapDefinitions as fallbackMapDefinitions } from '$lib/games/elden-ring/maps.js';
-    import { loadDeepMapGameData } from '$lib/map/map-data.js';
+    import { loadDeepMapGameDataWithUuidLayers } from '$lib/map/map-data.js';
     import { getVideoEmbedUrl, normaliseHttpUrl } from '$lib/map/media.js';
     import MarkerEditorPanel from '$lib/editor/MarkerEditorPanel.svelte';
     import CategoryManagerPanel from '$lib/editor/CategoryManagerPanel.svelte';
@@ -230,9 +230,11 @@
 
     async function loadGameMapData() {
         const supabase = getSupabaseBrowserClient();
-        const data = await loadDeepMapGameData({
+        const data = await loadDeepMapGameDataWithUuidLayers({
             supabase,
-            gameId: GAME_ID,
+            gameUuid: gameContext.gameUuid,
+            gameMapUuid: gameContext.gameMapUuid,
+            legacyGameId: GAME_ID,
             fallback: {
                 mapDefinitions: { ...fallbackMapDefinitions },
                 categoryGroups: [...fallbackCategoryGroups],
@@ -241,6 +243,13 @@
                 mapLabels: []
             }
         });
+
+        // Keep the current surface renderer default, but require a real scoped layer.
+        const surface = data.mapDefinitions.surface;
+        if (!surface?.image || !(surface.width > 0) || !(surface.height > 0)
+            || !data.mapDefinitions[activeMapLayer]?.layerUuid) {
+            throw new Error('Current map layers are unavailable for this renderer.');
+        }
 
         mapDefinitions = data.mapDefinitions;
         categoryGroups = data.categoryGroups;
@@ -292,7 +301,11 @@
        MAPAS / CAMADAS
        ========================================== */
 
-    let activeMapLayer = 'surface';
+    let activeMapLayer = $state('surface');
+    // Derived from the renderer key and DB rows; there is no second selection state.
+    let activeLayerUuid = $derived((/** @type {{ layerUuid?: string } | undefined} */ (
+        Object.values(mapDefinitions).find((layer) => layer.id === activeMapLayer)
+    ))?.layerUuid ?? null);
     let markerLayerGroups = {};
     let mapLabelLayerGroups = {};
 
@@ -318,6 +331,12 @@
 
         const definition = mapDefinitions[layerId];
         if (!definition) return;
+
+        const identity = /** @type {{ layerUuid?: string, gameUuid?: string, gameMapUuid?: string }} */ (definition);
+        if (!identity.layerUuid || identity.gameUuid !== gameContext.gameUuid
+            || identity.gameMapUuid !== gameContext.gameMapUuid) {
+            throw new Error('Layer does not belong to the current map context.');
+        }
 
         for (const group of [...Object.values(markerLayerGroups), ...Object.values(mapLabelLayerGroups)]) {
             if (map.hasLayer(group)) {
@@ -1483,9 +1502,10 @@
         // Falha fechada: sem sessão/RPC/admin, o Editor nem sequer aparece.
         void loadEditorAccess();
 
-        // Primeiro tentamos Supabase. Enquanto a migração estiver incompleta,
-        // cada coleção em falta continua a usar os ficheiros legacy.
+        // Layers require UUID-owned DB rows; the other collections retain legacy fallback.
         await loadGameMapData();
+
+        if (!activeLayerUuid) throw new Error('Active layer UUID unavailable.');
 
         const L = await import('leaflet');
 
