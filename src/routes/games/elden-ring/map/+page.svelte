@@ -21,6 +21,10 @@
     import MapLabelEditorPanel from '$lib/editor/MapLabelEditorPanel.svelte';
     import CommunityMarkerPanel from '$lib/community/CommunityMarkerPanel.svelte';
 
+    let { data } = $props();
+    let gameContext = $derived(data.gameContext);
+
+    // Temporary compatibility identity for the existing legacy consumers.
     const GAME_ID = 'elden-ring';
     const PREVIEW_MARKER_COLOR = '#2f8fff';
     const PREVIEW_MARKER_OPACITY = 0.82;
@@ -1468,6 +1472,11 @@
        ========================================== */
 
     onMount(async () => {
+        // The UUID-native server context gates bootstrap; legacy payloads stay separate.
+        if (!gameContext?.gameUuid || !gameContext?.gameMapUuid) {
+            throw new Error('Public game context unavailable.');
+        }
+
         // A língua escolhida mantém-se ao navegar entre mapa e perfil.
         currentLanguage = getSiteLanguage();
 
