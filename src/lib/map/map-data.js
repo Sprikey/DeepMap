@@ -4,8 +4,8 @@
 
    Loader genérico para qualquer jogo/mapa.
 
-   O mapa fornece gameUuid para layers/taxonomy/markers, gameMapUuid para layers,
-   e legacyGameId para labels/attribution. A entrada antiga continua disponível
+   O mapa fornece gameUuid para layers/taxonomy/markers/labels, gameMapUuid para layers,
+   e legacyGameId apenas para attribution. A entrada antiga continua disponível
    para a moderação, que ainda não transporta contexto UUID.
    Também fornece:
    - cliente Supabase
@@ -131,6 +131,8 @@ function normaliseMarkerImage(row) {
 function normaliseMapLabel(row) {
     return {
         databaseId: row.id,
+        gameUuid: row.game_uuid,
+        layerUuid: row.layer_uuid,
         id: row.slug,
         slug: row.slug,
         mapLayer: row.map_layer,
@@ -417,7 +419,7 @@ async function loadUuidCategories({ supabase, gameUuid }) {
 }
 
 /** @param {unknown} value */
-function isMarkerDatabaseId(value) {
+function isDatabaseBigintId(value) {
     if (typeof value === 'number') return Number.isSafeInteger(value);
     if (typeof value !== 'string' || !/^-?[0-9]+$/.test(value)) return false;
     const id = BigInt(value);
@@ -444,7 +446,7 @@ async function loadUuidMarkers({ supabase, gameUuid, layersPromise, categoriesPr
     if (!Array.isArray(data)) throw new Error('MARKER_DATA_UNAVAILABLE');
     const categories = await categoriesPromise;
     for (const row of data) {
-        if (!row || !isMarkerDatabaseId(row.id) || row.game_uuid !== gameUuid
+        if (!row || !isDatabaseBigintId(row.id) || row.game_uuid !== gameUuid
             || !isLayerUuid(row.layer_uuid) || !layerByUuid.has(row.layer_uuid)
             || !isLayerUuid(row.category_uuid)
             || typeof row.map_layer !== 'string' || !row.map_layer.trim()
@@ -464,7 +466,40 @@ async function loadUuidMarkers({ supabase, gameUuid, layersPromise, categoriesPr
     return { value: data.map(normaliseMarker), source: 'supabase' };
 }
 
-// Public path: UUID layers/taxonomy/markers; labels and attribution stay legacy.
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, layersPromise: Promise<{ value: any, source: string }> }} options */
+async function loadUuidMapLabels({ supabase, gameUuid, layersPromise }) {
+    if (!isLayerUuid(gameUuid)) throw new Error('LABEL_GAME_UUID_REQUIRED');
+    const layers = await layersPromise;
+    const layerByUuid = new Map(Object.values(layers.value).map((layer) => [layer.layerUuid, layer]));
+    const layerUuids = [...layerByUuid.keys()];
+    if (!layerUuids.length || !layerUuids.every(isLayerUuid)) {
+        throw new Error('LABEL_LAYER_SCOPE_INVALID');
+    }
+    const { data, error } = await supabase
+        .from('map_labels')
+        .select('id, game_id, game_uuid, map_layer, layer_uuid, slug, text_en, text_pt, coordinate_x, coordinate_y, font_size, font_weight, color, opacity, uppercase, is_published')
+        .eq('game_uuid', gameUuid)
+        .eq('is_published', true)
+        .in('layer_uuid', layerUuids)
+        .order('id', { ascending: true });
+    if (error) throw new Error('LABEL_QUERY_UNAVAILABLE');
+    if (!Array.isArray(data)) throw new Error('LABEL_DATA_UNAVAILABLE');
+    for (const row of data) {
+        if (!row || !isDatabaseBigintId(row.id) || row.game_uuid !== gameUuid
+            || !isLayerUuid(row.layer_uuid) || !layerByUuid.has(row.layer_uuid)
+            || typeof row.map_layer !== 'string' || !row.map_layer.trim()
+            || typeof row.slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.slug)
+            || row.is_published !== true) {
+            throw new Error('LABEL_IDENTITY_CONTEXT_INVALID');
+        }
+        if (layerByUuid.get(row.layer_uuid).id !== row.map_layer) {
+            throw new Error('LABEL_LAYER_KEY_MISMATCH');
+        }
+    }
+    return { value: data.map(normaliseMapLabel), source: 'supabase' };
+}
+
+// Public path: UUID layers/taxonomy/markers/labels; only attribution stays legacy.
 /** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, gameMapUuid: string, legacyGameId: string, fallback: any }} options */
 export async function loadDeepMapGameDataWithUuidLayers({ supabase, gameUuid, gameMapUuid, legacyGameId, fallback }) {
     const layersPromise = loadUuidLayers({ supabase, gameUuid, gameMapUuid });
@@ -472,11 +507,11 @@ export async function loadDeepMapGameDataWithUuidLayers({ supabase, gameUuid, ga
     return loadGameData({
         supabase,
         gameId: legacyGameId,
-        fallback,
         layersPromise,
         groupsPromise: loadUuidCategoryGroups({ supabase, gameUuid }),
         categoriesPromise,
-        markersPromise: loadUuidMarkers({ supabase, gameUuid, layersPromise, categoriesPromise })
+        markersPromise: loadUuidMarkers({ supabase, gameUuid, layersPromise, categoriesPromise }),
+        labelsPromise: loadUuidMapLabels({ supabase, gameUuid, layersPromise })
     });
 }
 
@@ -554,11 +589,6 @@ export async function loadDeepMapGameData({ supabase, gameId, fallback }) {
         label: 'markers'
     });
 
-    return loadGameData({ supabase, gameId, fallback, layersPromise, groupsPromise, categoriesPromise, markersPromise });
-}
-
-/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameId: string, fallback: any, layersPromise: Promise<{ value: any, source: string }>, groupsPromise: Promise<{ value: any, source: string }>, categoriesPromise: Promise<{ value: any, source: string }>, markersPromise: Promise<{ value: any, source: string }> }} options */
-async function loadGameData({ supabase, gameId, fallback, layersPromise, groupsPromise, categoriesPromise, markersPromise }) {
     const labelsPromise = queryWithMigrationFallback({
         query: supabase
             .from('map_labels')
@@ -572,6 +602,11 @@ async function loadGameData({ supabase, gameId, fallback, layersPromise, groupsP
         label: 'map labels'
     });
 
+    return loadGameData({ supabase, gameId, layersPromise, groupsPromise, categoriesPromise, markersPromise, labelsPromise });
+}
+
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameId: string, layersPromise: Promise<{ value: any, source: string }>, groupsPromise: Promise<{ value: any, source: string }>, categoriesPromise: Promise<{ value: any, source: string }>, markersPromise: Promise<{ value: any, source: string }>, labelsPromise: Promise<{ value: any, source: string }> }} options */
+async function loadGameData({ supabase, gameId, layersPromise, groupsPromise, categoriesPromise, markersPromise, labelsPromise }) {
     const [layers, groups, categories, markers, labels] = await Promise.all([
         layersPromise,
         groupsPromise,
