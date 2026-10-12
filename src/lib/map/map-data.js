@@ -4,8 +4,8 @@
 
    Loader genérico para qualquer jogo/mapa.
 
-   O mapa fornece gameUuid para layers/taxonomy/markers/labels, gameMapUuid para layers,
-   e legacyGameId apenas para attribution. A entrada antiga continua disponível
+   O mapa fornece gameUuid para layers/taxonomy/markers/labels/attribution,
+   e gameMapUuid para layers. A entrada antiga continua disponível
    para a moderação, que ainda não transporta contexto UUID.
    Também fornece:
    - cliente Supabase
@@ -178,21 +178,36 @@ async function queryWithMigrationFallback({ query, fallbackValue, transform, mer
     }
 }
 
-async function attachPublicMarkerAttribution({ supabase, gameId, locations }) {
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameId: string, locations: any[] }} options */
+function loadLegacyPublicMarkerAttribution({ supabase, gameId, locations }) {
+    return attachPublicMarkerAttribution({
+        query: () => supabase.rpc('get_public_marker_attribution', { p_game_id: gameId }),
+        locations
+    });
+}
+
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, locations: any[] }} options */
+function loadUuidPublicMarkerAttribution({ supabase, gameUuid, locations }) {
+    return attachPublicMarkerAttribution({
+        query: () => supabase.rpc('get_public_marker_attribution_by_game_uuid', { p_game_uuid: gameUuid }),
+        locations
+    });
+}
+
+/** @param {{ query: () => PromiseLike<{ data: any[] | null, error: unknown }>, locations: any[] }} options */
+async function attachPublicMarkerAttribution({ query, locations }) {
     try {
-        const { data, error } = await supabase.rpc('get_public_marker_attribution', {
-            p_game_id: gameId
-        });
+        const { data, error } = await query();
 
         if (error) throw error;
 
         const attributionByMarker = new Map(
-            (data ?? []).map((row) => [Number(row.marker_id), row])
+            (data ?? []).map((row) => [String(row.marker_id), row])
         );
 
         return locations.map((location) => {
             const attribution = location.databaseId
-                ? attributionByMarker.get(Number(location.databaseId)) ?? null
+                ? attributionByMarker.get(String(location.databaseId)) ?? null
                 : null;
 
             return {
@@ -499,14 +514,15 @@ async function loadUuidMapLabels({ supabase, gameUuid, layersPromise }) {
     return { value: data.map(normaliseMapLabel), source: 'supabase' };
 }
 
-// Public path: UUID layers/taxonomy/markers/labels; only attribution stays legacy.
+// Public path: UUID layers/taxonomy/markers/labels/attribution.
+// legacyGameId remains an unused compatibility argument for existing callers.
 /** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, gameMapUuid: string, legacyGameId: string, fallback: any }} options */
 export async function loadDeepMapGameDataWithUuidLayers({ supabase, gameUuid, gameMapUuid, legacyGameId, fallback }) {
     const layersPromise = loadUuidLayers({ supabase, gameUuid, gameMapUuid });
     const categoriesPromise = loadUuidCategories({ supabase, gameUuid });
     return loadGameData({
         supabase,
-        gameId: legacyGameId,
+        attachAttribution: (locations) => loadUuidPublicMarkerAttribution({ supabase, gameUuid, locations }),
         layersPromise,
         groupsPromise: loadUuidCategoryGroups({ supabase, gameUuid }),
         categoriesPromise,
@@ -602,11 +618,15 @@ export async function loadDeepMapGameData({ supabase, gameId, fallback }) {
         label: 'map labels'
     });
 
-    return loadGameData({ supabase, gameId, layersPromise, groupsPromise, categoriesPromise, markersPromise, labelsPromise });
+    return loadGameData({
+        supabase,
+        attachAttribution: (locations) => loadLegacyPublicMarkerAttribution({ supabase, gameId, locations }),
+        layersPromise, groupsPromise, categoriesPromise, markersPromise, labelsPromise
+    });
 }
 
-/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameId: string, layersPromise: Promise<{ value: any, source: string }>, groupsPromise: Promise<{ value: any, source: string }>, categoriesPromise: Promise<{ value: any, source: string }>, markersPromise: Promise<{ value: any, source: string }>, labelsPromise: Promise<{ value: any, source: string }> }} options */
-async function loadGameData({ supabase, gameId, layersPromise, groupsPromise, categoriesPromise, markersPromise, labelsPromise }) {
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, attachAttribution: (locations: any[]) => Promise<any[]>, layersPromise: Promise<{ value: any, source: string }>, groupsPromise: Promise<{ value: any, source: string }>, categoriesPromise: Promise<{ value: any, source: string }>, markersPromise: Promise<{ value: any, source: string }>, labelsPromise: Promise<{ value: any, source: string }> }} options */
+async function loadGameData({ supabase, attachAttribution, layersPromise, groupsPromise, categoriesPromise, markersPromise, labelsPromise }) {
     const [layers, groups, categories, markers, labels] = await Promise.all([
         layersPromise,
         groupsPromise,
@@ -625,11 +645,7 @@ async function loadGameData({ supabase, gameId, layersPromise, groupsPromise, ca
         locations: locationsWithImages
     });
 
-    const locations = await attachPublicMarkerAttribution({
-        supabase,
-        gameId,
-        locations: locationsWithContent
-    });
+    const locations = await attachAttribution(locationsWithContent);
 
     return {
         mapDefinitions: layers.value,
