@@ -1,18 +1,19 @@
 <script>
+    import { untrack } from 'svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import {
         createEditorCategory,
         deleteEditorCategory,
         loadEditorCategories,
+        loadEditorCategoryGroups,
         slugifyCategoryId,
         updateEditorCategory
     } from '$lib/editor/category-editor.js';
 
     let {
-        gameId,
+        gameUuid,
+        legacyGameId,
         language = 'en',
-        categories = {},
-        categoryGroups = [],
         standalone = false,
         onChanged = async () => {}
     } = $props();
@@ -113,15 +114,22 @@
     let saving = $state(false);
     let deleting = $state(false);
     let loadingCategories = $state(false);
-    let loadedCategoriesOnce = false;
+    /** @type {string | null} */
+    let loadedGameUuid = null;
+    let categoryLoadRevision = 0;
+    let editorDataReady = $state(false);
+    /** @type {Awaited<ReturnType<typeof loadEditorCategories>>} */
     let adminCategories = $state([]);
+    /** @type {Awaited<ReturnType<typeof loadEditorCategoryGroups>>} */
+    let adminGroups = $state([]);
     let errorMessage = $state('');
     let successMessage = $state('');
-    let editingId = $state(null);
-    let activeGroupId = $state('');
+    /** @type {string | null} */
+    let selectedCategoryUuid = $state(null);
+    let activeGroupUuid = $state('');
 
     let categoryId = $state('');
-    let groupId = $state('');
+    let selectedGroupUuid = $state('');
     let nameEn = $state('');
     let namePt = $state('');
     let iconSource = $state('none');
@@ -134,17 +142,17 @@
     let isActive = $state(true);
 
     let sortedCategories = $derived(
-        (adminCategories.length ? adminCategories : Object.values(categories)).slice().sort(
+        adminCategories.slice().sort(
             (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
         )
     );
 
     let sortedGroups = $derived(
-        [...categoryGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        [...adminGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     );
 
     let visibleCategories = $derived(
-        sortedCategories.filter((category) => !activeGroupId || category.group === activeGroupId)
+        sortedCategories.filter((category) => !activeGroupUuid || category.groupUuid === activeGroupUuid || category.groupUuid === null)
     );
 
     let previewWidth = $derived(Number(markerSize) > 0 ? Number(markerSize) : 30);
@@ -171,9 +179,9 @@
     }
 
     function resetForm() {
-        editingId = null;
+        selectedCategoryUuid = null;
         categoryId = '';
-        groupId = activeGroupId || sortedGroups[0]?.id || '';
+        selectedGroupUuid = activeGroupUuid || sortedGroups[0]?.groupUuid || '';
         nameEn = '';
         namePt = '';
         iconSource = 'none';
@@ -188,10 +196,10 @@
 
     function loadCategory(category) {
         if (!category) return;
-        editingId = category.id;
+        selectedCategoryUuid = category.categoryUuid;
         categoryId = category.id;
-        groupId = category.group ?? '';
-        activeGroupId = category.group ?? activeGroupId;
+        selectedGroupUuid = category.groupUuid ?? '';
+        activeGroupUuid = category.groupUuid ?? activeGroupUuid;
         nameEn = category.label?.en ?? '';
         namePt = category.label?.pt ?? '';
         iconSource = category.iconSource ?? (category.icon ? 'static' : 'none');
@@ -205,16 +213,44 @@
     }
 
     async function refreshCategories() {
+        const requestedGameUuid = gameUuid;
+        const revision = ++categoryLoadRevision;
+        editorDataReady = false;
         loadingCategories = true;
         try {
-            adminCategories = await loadEditorCategories({
-                supabase: getSupabaseBrowserClient(),
-                gameId
-            });
+            const supabase = getSupabaseBrowserClient();
+            const [nextCategories, nextGroups] = await Promise.all([
+                loadEditorCategories({ supabase, gameUuid: requestedGameUuid }),
+                loadEditorCategoryGroups({ supabase, gameUuid: requestedGameUuid })
+            ]);
+            if (revision !== categoryLoadRevision || requestedGameUuid !== gameUuid) return false;
+            for (const category of nextCategories) {
+                if (category.groupUuid === null) continue;
+                const group = nextGroups.find((item) => item.groupUuid === category.groupUuid);
+                if (!group || group.id !== category.group) throw new Error('CATEGORY_GROUP_IDENTITY_CONFLICT');
+            }
+            adminCategories = nextCategories;
+            adminGroups = nextGroups;
+            if (!nextGroups.some((group) => group.groupUuid === activeGroupUuid)) {
+                activeGroupUuid = nextGroups[0]?.groupUuid ?? '';
+            }
+            const selected = nextCategories.find((category) => category.categoryUuid === selectedCategoryUuid);
+            if (selected) loadCategory(selected);
+            else resetForm();
+            editorDataReady = true;
+            return true;
         } catch (error) {
             console.error('DeepMap category editor load:', error);
+            if (revision === categoryLoadRevision && requestedGameUuid === gameUuid) {
+                adminCategories = [];
+                adminGroups = [];
+                activeGroupUuid = '';
+                resetForm();
+                errorMessage = t.saveError;
+            }
+            return false;
         } finally {
-            loadingCategories = false;
+            if (revision === categoryLoadRevision) loadingCategories = false;
         }
     }
 
@@ -224,14 +260,19 @@
             resetForm();
             return;
         }
-        const category = sortedCategories.find((item) => item.id === id) ?? categories[id];
+        const category = sortedCategories.find((item) => item.categoryUuid === id);
         if (category) loadCategory(category);
+        else {
+            resetForm();
+            errorMessage = t.saveError;
+        }
     }
 
-    function selectGroup(groupIdValue) {
-        activeGroupId = groupIdValue;
-        if (editingId === null) {
-            groupId = groupIdValue;
+    /** @param {string} groupUuidValue */
+    function selectGroup(groupUuidValue) {
+        activeGroupUuid = groupUuidValue;
+        if (selectedCategoryUuid === null) {
+            selectedGroupUuid = groupUuidValue;
             categoryId = '';
             nameEn = '';
             namePt = '';
@@ -243,19 +284,19 @@
             sortOrder = String(nextSortOrder());
             isActive = true;
             clearMessages();
-        } else if (groupId !== groupIdValue) {
-            editingId = null;
+        } else if (selectedGroupUuid !== groupUuidValue) {
+            selectedCategoryUuid = null;
             resetForm();
         }
     }
 
     function maybeCreateId() {
-        if (editingId !== null) return;
+        if (selectedCategoryUuid !== null) return;
         categoryId = slugifyCategoryId(nameEn);
     }
 
     function validate() {
-        if (!nameEn.trim() || !namePt.trim() || !groupId) return t.required;
+        if (!nameEn.trim() || !namePt.trim() || (selectedCategoryUuid === null && !selectedGroupUuid)) return t.required;
         if (!/^[a-z0-9]+(?:[_-][a-z0-9]+)*$/.test(categoryId)) return t.invalidId;
         if (iconSource !== 'none' && !iconRef.trim()) return t.invalidIcon;
         if (!/^#[0-9A-Fa-f]{6}$/.test(color)) return t.invalidColor;
@@ -263,7 +304,7 @@
     }
 
     async function saveCategory() {
-        if (saving) return;
+        if (saving || deleting || !editorDataReady || loadingCategories) return;
         clearMessages();
         maybeCreateId();
 
@@ -274,10 +315,11 @@
         }
 
         saving = true;
+        const mutationGameUuid = gameUuid;
         try {
             const category = {
                 id: categoryId,
-                groupId,
+                groupUuid: selectedGroupUuid || null,
                 nameEn,
                 namePt,
                 iconSource,
@@ -290,25 +332,25 @@
                 isActive
             };
 
-            if (editingId === null) {
-                await createEditorCategory({
+            const saved = selectedCategoryUuid === null
+                ? await createEditorCategory({
                     supabase: getSupabaseBrowserClient(),
-                    gameId,
+                    gameUuid: mutationGameUuid,
+                    legacyGameId,
+                    category
+                })
+                : await updateEditorCategory({
+                    supabase: getSupabaseBrowserClient(),
+                    gameUuid: mutationGameUuid,
+                    categoryUuid: selectedCategoryUuid,
                     category
                 });
-            } else {
-                await updateEditorCategory({
-                    supabase: getSupabaseBrowserClient(),
-                    gameId,
-                    categoryId: editingId,
-                    category
-                });
-            }
-
-            successMessage = t.saved;
-            editingId = categoryId;
-            await refreshCategories();
-            await onChanged({ action: 'category-save', categoryId });
+            if (mutationGameUuid !== gameUuid) return;
+            selectedCategoryUuid = saved.category_uuid;
+            const refreshed = await refreshCategories();
+            if (mutationGameUuid !== gameUuid) return;
+            await onChanged({ action: 'category-save', categoryId: category.id });
+            if (refreshed) successMessage = t.saved;
         } catch (error) {
             console.error('DeepMap category editor save:', error);
             errorMessage = error?.code === '23505' ? t.duplicate : t.saveError;
@@ -318,24 +360,26 @@
     }
 
     async function removeCategory() {
-        if (editingId === null || saving || deleting) return;
+        if (selectedCategoryUuid === null || saving || deleting || !editorDataReady || loadingCategories) return;
         if (!window.confirm(t.confirmDelete)) return;
 
         deleting = true;
+        const mutationGameUuid = gameUuid;
         clearMessages();
 
         try {
-            const deletedId = editingId;
+            const deletedId = categoryId;
             await deleteEditorCategory({
                 supabase: getSupabaseBrowserClient(),
-                gameId,
-                categoryId: deletedId
+                gameUuid: mutationGameUuid,
+                categoryUuid: selectedCategoryUuid
             });
-
+            if (mutationGameUuid !== gameUuid) return;
             resetForm();
-            await refreshCategories();
-            successMessage = t.deleted;
+            const refreshed = await refreshCategories();
+            if (mutationGameUuid !== gameUuid) return;
             await onChanged({ action: 'category-delete', categoryId: deletedId });
+            if (refreshed) successMessage = t.deleted;
         } catch (error) {
             console.error('DeepMap category editor delete:', error);
             errorMessage = error?.code === 'CATEGORY_IN_USE' || error?.code === '23503'
@@ -351,16 +395,22 @@
     });
 
     $effect(() => {
-        if (!expanded || loadedCategoriesOnce) return;
-        loadedCategoriesOnce = true;
-        void refreshCategories();
+        if (!expanded || loadedGameUuid === gameUuid) return;
+        loadedGameUuid = gameUuid;
+        untrack(() => {
+            adminCategories = [];
+            adminGroups = [];
+            activeGroupUuid = '';
+            resetForm();
+            void refreshCategories();
+        });
     });
 
     $effect(() => {
-        if (!expanded || !sortedGroups.length) return;
-        if (!activeGroupId) activeGroupId = sortedGroups[0]?.id ?? '';
-        if (editingId !== null || groupId) return;
-        groupId = activeGroupId || sortedGroups[0]?.id || '';
+        if (!expanded || !editorDataReady || !sortedGroups.length) return;
+        if (!activeGroupUuid) activeGroupUuid = sortedGroups[0]?.groupUuid ?? '';
+        if (selectedCategoryUuid !== null || selectedGroupUuid) return;
+        selectedGroupUuid = activeGroupUuid || sortedGroups[0]?.groupUuid || '';
         sortOrder = String(nextSortOrder());
     });
 
@@ -373,7 +423,7 @@
             type="button"
             onclick={() => {
                 expanded = !expanded;
-                if (expanded && editingId === null && !groupId) resetForm();
+                if (expanded && selectedCategoryUuid === null && !selectedGroupUuid) resetForm();
             }}
         >
             <span>＋ {t.manage}</span>
@@ -386,7 +436,7 @@
             <div class="category-heading">
                 <div>
                     <span class="eyebrow">{t.title}</span>
-                    <strong>{editingId === null ? t.newCategory : localisedLabel(sortedCategories.find((item) => item.id === editingId))}</strong>
+                    <strong>{selectedCategoryUuid === null ? t.newCategory : localisedLabel(sortedCategories.find((item) => item.categoryUuid === selectedCategoryUuid))}</strong>
                 </div>
                 <button class="small-button" type="button" onclick={resetForm} disabled={saving || deleting}>
                     {t.newCategory}
@@ -397,17 +447,17 @@
                 {#each sortedGroups as group}
                     <button
                         type="button"
-                        class:active={activeGroupId === group.id}
-                        onclick={() => selectGroup(group.id)}
+                        class:active={activeGroupUuid === group.groupUuid}
+                        onclick={() => selectGroup(group.groupUuid)}
                         disabled={saving || deleting}
                     >{localisedLabel(group)}</button>
                 {/each}
             </div>
 
-            <select onchange={chooseCategory} value={editingId ?? ''} disabled={saving || deleting || loadingCategories}>
+            <select onchange={chooseCategory} value={selectedCategoryUuid ?? ''} disabled={saving || deleting || loadingCategories || !editorDataReady}>
                 <option value="">{t.chooseCategory}</option>
                 {#each visibleCategories as category}
-                    <option value={category.id}>
+                    <option value={category.categoryUuid}>
                         {localisedLabel(category)} — {category.id}{category.isActive === false ? ` (${t.inactive})` : ''}
                     </option>
                 {/each}
@@ -454,13 +504,14 @@
                 <label>
                     <span>{t.categoryId}</span>
                     <input bind:value={categoryId} readonly disabled={saving || deleting} />
-                    {#if editingId === null}<small>{t.idHelp}</small>{/if}
+                    {#if selectedCategoryUuid === null}<small>{t.idHelp}</small>{/if}
                 </label>
                 <label>
                     <span>{t.group}</span>
-                    <select bind:value={groupId} onchange={() => activeGroupId = groupId} disabled={saving || deleting}>
+                    <select bind:value={selectedGroupUuid} onchange={() => activeGroupUuid = selectedGroupUuid} disabled={saving || deleting}>
+                        {#if selectedCategoryUuid !== null && !selectedGroupUuid}<option value=""></option>{/if}
                         {#each sortedGroups as group}
-                            <option value={group.id}>{localisedLabel(group)}</option>
+                            <option value={group.groupUuid}>{localisedLabel(group)}</option>
                         {/each}
                     </select>
                 </label>
@@ -522,12 +573,12 @@
             </details>
 
             <div class="category-actions">
-                <button class="primary-button" type="button" onclick={saveCategory} disabled={saving || deleting}>
+                <button class="primary-button" type="button" onclick={saveCategory} disabled={saving || deleting || loadingCategories || !editorDataReady}>
                     {saving ? t.saving : t.save}
                 </button>
 
-                {#if editingId !== null}
-                    <button class="danger-button" type="button" onclick={removeCategory} disabled={saving || deleting}>
+                {#if selectedCategoryUuid !== null}
+                    <button class="danger-button" type="button" onclick={removeCategory} disabled={saving || deleting || loadingCategories || !editorDataReady}>
                         {deleting ? t.deleting : t.delete}
                     </button>
                 {/if}

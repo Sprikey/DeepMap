@@ -1764,10 +1764,9 @@
                     />
                 {:else if editorTool === 'category'}
                     <CategoryManagerPanel
-                        gameId={GAME_ID}
+                        gameUuid={gameContext.gameUuid}
+                        legacyGameId={GAME_ID}
                         language={currentLanguage}
-                        {categories}
-                        {categoryGroups}
                         standalone={true}
                         onChanged={handleEditorDataChanged}
                     />
