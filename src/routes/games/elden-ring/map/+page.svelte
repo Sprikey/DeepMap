@@ -1747,12 +1747,13 @@
                     />
                 {:else if editorTool === 'label'}
                     <MapLabelEditorPanel
-                        gameId={GAME_ID}
+                        gameUuid={gameContext.gameUuid}
+                        gameMapUuid={gameContext.gameMapUuid}
+                        legacyGameId={GAME_ID}
                         language={currentLanguage}
                         active={editorMode}
                         point={editorPoint}
                         selectedLabelId={editorSelectedLabelId}
-                        {mapDefinitions}
                         onChanged={handleEditorDataChanged}
                         onPreview={previewEditorMapLabel}
                         onSelectionChange={handleEditorLabelSelection}
