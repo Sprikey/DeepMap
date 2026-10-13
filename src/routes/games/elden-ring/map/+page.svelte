@@ -17,6 +17,7 @@
     import { loadDeepMapGameDataWithUuidLayers } from '$lib/map/map-data.js';
     import { getVideoEmbedUrl, normaliseHttpUrl } from '$lib/map/media.js';
     import MarkerEditorPanel from '$lib/editor/MarkerEditorPanel.svelte';
+    import { markerIdKey, sameMarkerId } from '$lib/editor/marker-editor.js';
     import CategoryManagerPanel from '$lib/editor/CategoryManagerPanel.svelte';
     import MapLabelEditorPanel from '$lib/editor/MapLabelEditorPanel.svelte';
     import CommunityMarkerPanel from '$lib/community/CommunityMarkerPanel.svelte';
@@ -855,7 +856,7 @@
                 editorMarkerMoved &&
                 !editorShowOriginalLocation &&
                 editorSelectedMarkerId !== null &&
-                Number(location.databaseId) === Number(editorSelectedMarkerId)
+                sameMarkerId(location.databaseId, editorSelectedMarkerId)
             ) {
                 continue;
             }
@@ -1028,6 +1029,7 @@
 
     // Comunicação entre o mapa Leaflet e a ferramenta atualmente aberta.
     let editorPoint = $state(null);
+    /** @type {string | null} */
     let editorSelectedMarkerId = $state(null);
     let editorSelectedLabelId = $state(null);
     let editorMarkerMoved = $state(false);
@@ -1159,7 +1161,9 @@
     }
 
     function handleEditorSelectionChange(markerId) {
-        editorSelectedMarkerId = markerId;
+        // Reject unsafe numeric IDs received from public map selection.
+        try { editorSelectedMarkerId = markerId === null ? null : markerIdKey(markerId); }
+        catch { editorSelectedMarkerId = null; }
         editorMarkerMoved = false;
         editorShowOriginalLocation = false;
         editorPositionMode = null;
@@ -1728,14 +1732,13 @@
                 {#if editorTool === 'marker'}
                     <MarkerEditorPanel
                         bind:this={markerEditorPanelRef}
-                        gameId={GAME_ID}
+                        gameUuid={gameContext.gameUuid}
+                        gameMapUuid={gameContext.gameMapUuid}
+                        legacyGameId={GAME_ID}
                         language={currentLanguage}
                         active={editorMode}
                         point={editorPoint}
                         selectedMarkerId={editorSelectedMarkerId}
-                        {categories}
-                        {categoryGroups}
-                        {mapDefinitions}
                         onChanged={handleEditorDataChanged}
                         onPreview={previewEditorMarker}
                         onSelectionChange={handleEditorSelectionChange}
