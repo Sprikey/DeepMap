@@ -1,3 +1,21 @@
+import { markerIdKey } from '../editor/marker-editor.js';
+
+/** @param {unknown} value */
+export function isCommunityGameUuid(value) {
+    return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** Community keeps canonical BIGINT strings; staff compatibility remains unchanged. @param {any} row */
+export function normaliseCommunitySubmission(row) {
+    return {
+        ...submissionDetails(row),
+        id: markerIdKey(row.id),
+        markerId: row.marker_id == null ? null : markerIdKey(row.marker_id),
+        gameUuid: row.game_uuid ?? null,
+        gameSlug: row.game_slug ?? null,
+        legacyGameId: row.game_id
+    };
+}
 
 export async function ensureContributorProfile({ supabase }) {
     const { data, error } = await supabase.rpc('ensure_deepmap_profile');
@@ -11,6 +29,13 @@ export function normaliseSubmission(row) {
         id: Number(row.id),
         gameId: row.game_id,
         markerId: row.marker_id == null ? null : Number(row.marker_id),
+        ...submissionDetails(row)
+    };
+}
+
+/** Shared display fields, without converting identities. @param {any} row */
+function submissionDetails(row) {
+    return {
         type: row.submission_type,
         correctionKind: row.correction_kind ?? null,
         status: row.status,
@@ -42,14 +67,16 @@ export async function loadMarkerSubmissions({ supabase, gameId, scope = 'mine' }
 
 
 
+/** @param {{supabase: any, gameUuid: string, limit?: number, offset?: number}} options */
 export async function loadMyMarkerSubmissionsPage({
     supabase,
-    gameId,
+    gameUuid,
     limit = 20,
     offset = 0
 }) {
-    const { data, error } = await supabase.rpc('get_my_marker_submissions_page', {
-        p_game_id: gameId,
+    if (!isCommunityGameUuid(gameUuid)) throw new Error('COMMUNITY_GAME_UUID_REQUIRED');
+    const { data, error } = await supabase.rpc('get_my_marker_submissions_page_by_game_uuid', {
+        p_game_uuid: gameUuid,
         p_limit: limit,
         p_offset: offset
     });
@@ -57,7 +84,7 @@ export async function loadMyMarkerSubmissionsPage({
     if (error) throw error;
     const rows = data ?? [];
     return {
-        items: rows.map(normaliseSubmission),
+        items: rows.map(normaliseCommunitySubmission),
         total: rows.length ? Number(rows[0].total_count ?? 0) : 0
     };
 }
@@ -85,15 +112,17 @@ export async function loadMarkerSubmissionsPage({
     };
 }
 
-export async function findPendingMarkerCorrection({ supabase, gameId, userId, markerId }) {
+/** @param {{supabase: any, gameUuid: string, userId: string, markerId: unknown}} options */
+export async function findPendingMarkerCorrection({ supabase, gameUuid, userId, markerId }) {
     if (!userId || markerId == null) return null;
+    if (!isCommunityGameUuid(gameUuid)) throw new Error('COMMUNITY_GAME_UUID_REQUIRED');
 
     const { data, error } = await supabase
         .from('marker_submissions')
         .select('id')
-        .eq('game_id', gameId)
+        .eq('game_uuid', gameUuid)
         .eq('submitted_by', userId)
-        .eq('marker_id', markerId)
+        .eq('marker_id', markerIdKey(markerId))
         .eq('submission_type', 'correction')
         .eq('status', 'pending')
         .order('updated_at', { ascending: false })
@@ -101,12 +130,13 @@ export async function findPendingMarkerCorrection({ supabase, gameId, userId, ma
         .maybeSingle();
 
     if (error) throw error;
-    return data?.id == null ? null : Number(data.id);
+    return data?.id == null ? null : markerIdKey(data.id);
 }
 
+/** @param {{supabase: any, legacyGameId: string, userId: string, type: string, markerId?: unknown, correctionKind?: string | null, payload: any, note?: string}} options */
 export async function createMarkerSubmission({
     supabase,
-    gameId,
+    legacyGameId,
     userId,
     type,
     markerId = null,
@@ -117,8 +147,8 @@ export async function createMarkerSubmission({
     const { data, error } = await supabase
         .from('marker_submissions')
         .insert({
-            game_id: gameId,
-            marker_id: markerId,
+            game_id: legacyGameId,
+            marker_id: markerId == null ? null : markerIdKey(markerId),
             submission_type: type,
             correction_kind: correctionKind,
             status: 'pending',
@@ -130,7 +160,7 @@ export async function createMarkerSubmission({
         .single();
 
     if (error) throw error;
-    return Number(data.id);
+    return markerIdKey(data.id);
 }
 
 export async function updateMarkerSubmission({

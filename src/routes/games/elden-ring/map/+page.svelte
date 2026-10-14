@@ -591,7 +591,7 @@
                         </div>
                     ` : ''}
                     ${canSuggest ? `
-                        <button type="button" class="deepmap-suggest-correction" data-suggest-marker="${Number(location.databaseId)}">
+                        <button type="button" class="deepmap-suggest-correction" data-suggest-marker="${escapeHtml(String(location.databaseId))}">
                             ${currentLanguage === 'pt' ? 'Sugerir correção' : 'Suggest correction'}
                         </button>
                     ` : ''}
@@ -927,7 +927,10 @@
             });
 
             marker.addTo(group);
-            if (location.databaseId != null) locationMarkersById.set(Number(location.databaseId), marker);
+            if (location.databaseId != null) {
+                try { locationMarkersById.set(markerIdKey(location.databaseId), marker); }
+                catch { /* Unsafe identities cannot be focused by Community. */ }
+            }
         }
     }
 
@@ -1303,12 +1306,13 @@
     let communityRequestMode = $state('create');
     let communityRequestMarker = $state(null);
     let communityRequestRevision = $state(0);
-    let communityFocusSubmissionId = $state(null);
+    let communityFocusSubmissionId = $state(/** @type {string | null} */ (null));
     let communityPoint = $state(null);
     let communityPointRevision = $state(0);
     let communityPositionMode = $state(false);
     let communityPositionCandidateReady = $state(false);
     let communityPreviewMarker = null;
+    let communityMarkerFocusGeneration = 0;
 
 
     function closeMobileSidebar() {
@@ -1390,13 +1394,15 @@
         clearCommunityPreview();
     }
 
+    /** @param {string | null} focusSubmissionId */
     function openCommunityMine(focusSubmissionId = null) {
         if (!currentMapUser || isEditorAdmin) return;
         if (isMapUserSuspended) { openSuspensionStatus(); return; }
         closeMobileSidebar();
         communityRequestMode = 'mine';
         communityRequestMarker = null;
-        communityFocusSubmissionId = focusSubmissionId == null ? null : Number(focusSubmissionId);
+        try { communityFocusSubmissionId = focusSubmissionId == null ? null : markerIdKey(focusSubmissionId); }
+        catch { communityFocusSubmissionId = null; }
         communityRequestRevision += 1;
         communityPanelOpen = true;
         communityPositionMode = false;
@@ -1405,6 +1411,8 @@
     }
 
     function openCommunityCorrection(location) {
+        if (!location || location.gameUuid !== gameContext.gameUuid
+            || !locations.includes(location)) return;
         if (!currentMapUser || isEditorAdmin || !location?.databaseId) return;
         if (isMapUserSuspended) { openSuspensionStatus(); return; }
         closeMobileSidebar();
@@ -1441,13 +1449,15 @@
         const contributionRaw = params.get('contribution');
         const reviewXRaw = params.get('reviewX');
         const reviewYRaw = params.get('reviewY');
-        const markerId = markerRaw == null ? NaN : Number(markerRaw);
-        const contributionId = contributionRaw == null ? NaN : Number(contributionRaw);
+        let markerId = null;
+        let contributionId = null;
+        try { if (markerRaw !== null) markerId = markerIdKey(markerRaw); } catch { /* Fail closed. */ }
+        try { if (contributionRaw !== null) contributionId = markerIdKey(contributionRaw); } catch { /* Fail closed. */ }
         const reviewX = reviewXRaw == null ? NaN : Number(reviewXRaw);
         const reviewY = reviewYRaw == null ? NaN : Number(reviewYRaw);
         return {
-            markerId: Number.isFinite(markerId) && markerId > 0 ? markerId : null,
-            contributionId: Number.isFinite(contributionId) && contributionId > 0 ? contributionId : null,
+            markerId: markerId !== null && BigInt(markerId) > 0n ? markerId : null,
+            contributionId: contributionId !== null && BigInt(contributionId) > 0n ? contributionId : null,
             reviewX: reviewXRaw !== null && Number.isFinite(reviewX) ? reviewX : null,
             reviewY: reviewYRaw !== null && Number.isFinite(reviewY) ? reviewY : null,
             reviewLayer: params.get('layer') || null,
@@ -1456,13 +1466,26 @@
     }
 
     function openMarkerDeepLink(markerId) {
+        const generation = ++communityMarkerFocusGeneration;
         if (!map || markerId == null) return false;
-        const location = locations.find((item) => Number(item.databaseId) === Number(markerId));
-        const marker = locationMarkersById.get(Number(markerId));
+        const contextGame = gameContext.gameUuid;
+        const contextMap = gameContext.gameMapUuid;
+        const revision = communityRequestRevision;
+        const focus = communityFocusSubmissionId;
+        const definitions = /** @type {Record<string, any>} */ (mapDefinitions);
+        const location = locations.find((/** @type {any} */ item) => item.gameUuid === gameContext.gameUuid
+            && sameMarkerId(item.databaseId, markerId)
+            && definitions[item.mapLayer]?.gameMapUuid === gameContext.gameMapUuid);
+        let key;
+        try { key = markerIdKey(markerId); } catch { return false; }
+        const marker = locationMarkersById.get(key);
         if (!location || !marker) return false;
         if (location.mapLayer && location.mapLayer !== activeMapLayer) setActiveMapLayer(location.mapLayer);
         map.setView(location.coordinates, Math.max(map.getZoom(), -1), { animate: true });
         setTimeout(() => {
+            if (generation !== communityMarkerFocusGeneration || gameContext.gameUuid !== contextGame
+                || gameContext.gameMapUuid !== contextMap || communityRequestRevision !== revision
+                || communityFocusSubmissionId !== focus || locationMarkersById.get(key) !== marker) return;
             marker.openPopup();
             ensurePopupInsideMap(marker);
         }, 180);
@@ -1471,7 +1494,7 @@
 
     function handleContributionDeepLink() {
         const { contributionId } = getMapDeepLinkParams();
-        if (!contributionId || !currentMapUser || isEditorAdmin || isMapUserSuspended) return;
+        if (!editorAccessChecked || !contributionId || !currentMapUser || isEditorAdmin || isMapUserSuspended) return;
         openCommunityMine(contributionId);
     }
 
@@ -1572,6 +1595,7 @@
         setupMarkerLayers();
         renderLocationMarkers();
         renderMapLabels();
+        handleContributionDeepLink();
 
         const { markerId: deepLinkMarkerId, reviewX: deepLinkReviewX, reviewY: deepLinkReviewY } = getMapDeepLinkParams();
         if (deepLinkReviewX !== null && deepLinkReviewY !== null) setTimeout(() => openReviewCoordinateDeepLink(), 120);
@@ -1783,7 +1807,10 @@
     {#if communityPanelOpen && currentMapUser && !isEditorAdmin && !isMapUserSuspended}
         <CommunityMarkerPanel
             bind:this={communityMarkerPanelRef}
-            gameId={GAME_ID}
+            gameUuid={gameContext.gameUuid}
+            legacyGameId={GAME_ID}
+            publicMarkers={locations}
+            onFocusMarker={openMarkerDeepLink}
             language={currentLanguage}
             active={communityPanelOpen}
             userId={currentMapUser.id}
@@ -1859,7 +1886,7 @@
                     {:else}
                         <div class="community-sidebar-actions">
                             <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
-                            <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
+                            <button type="button" onclick={() => openCommunityMine()}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
                         </div>
                     {/if}
                 {/if}
@@ -2007,7 +2034,7 @@
                     {:else}
                         <div class="community-sidebar-actions">
                             <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
-                            <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
+                            <button type="button" onclick={() => openCommunityMine()}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
                         </div>
                     {/if}
                 {/if}
