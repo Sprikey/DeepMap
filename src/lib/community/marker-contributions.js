@@ -24,12 +24,11 @@ export async function ensureContributorProfile({ supabase }) {
     return String(data).trim();
 }
 
+/** @param {any} row */
 export function normaliseSubmission(row) {
     return {
-        id: Number(row.id),
-        gameId: row.game_id,
-        markerId: row.marker_id == null ? null : Number(row.marker_id),
-        ...submissionDetails(row)
+        ...normaliseCommunitySubmission(row),
+        gameName: row.game_name ?? null
     };
 }
 
@@ -89,15 +88,18 @@ export async function loadMyMarkerSubmissionsPage({
     };
 }
 
+/** @param {{supabase: any, gameUuid?: string | null, status?: string, limit?: number, offset?: number}} options */
 export async function loadMarkerSubmissionsPage({
     supabase,
-    gameId,
+    gameUuid = null,
     status = 'pending',
     limit = 10,
     offset = 0
 }) {
-    const { data, error } = await supabase.rpc('get_marker_submissions_page', {
-        p_game_id: gameId,
+    if (gameUuid !== null && !isCommunityGameUuid(gameUuid)) throw new Error('MODERATION_GAME_UUID_REQUIRED');
+    if (!['pending', 'approved', 'rejected'].includes(status)) throw new Error('INVALID_STATUS');
+    const { data, error } = await supabase.rpc('get_marker_submissions_page_by_game_uuid', {
+        p_game_uuid: gameUuid,
         p_status: status,
         p_limit: limit,
         p_offset: offset
@@ -110,6 +112,71 @@ export async function loadMarkerSubmissionsPage({
         items: rows.map(normaliseSubmission),
         total: rows.length ? Number(rows[0].total_count ?? 0) : 0
     };
+}
+
+/** @param {any} row @param {'current' | 'submitted'} scope @param {'layer' | 'category' | 'group'} kind */
+function reviewParent(row, scope, kind) {
+    const prefix = `${scope}_${kind}`;
+    if (row[`${prefix}_uuid`] == null) return null;
+    return {
+        uuid: row[`${prefix}_uuid`],
+        id: row[`${prefix}_id`],
+        gameMapUuid: kind === 'layer' ? row[`${scope}_game_map_uuid`] : null,
+        label: { en: row[`${prefix}_name_en`], pt: row[`${prefix}_name_pt`] },
+        isActive: row[`${prefix}_is_active`]
+    };
+}
+
+/** B7e2's complete raw row is retained; unresolved submitted parents stay null. @param {any} row */
+export function normaliseMarkerReviewContext(row) {
+    const markerId = row.marker_id == null ? null : markerIdKey(row.marker_id);
+    const targetId = row.target_id == null ? null : markerIdKey(row.target_id);
+    if (!isCommunityGameUuid(row.game_uuid) || (markerId !== null
+        && (targetId !== markerId || row.target_game_uuid !== row.game_uuid))
+        || (targetId !== null && markerId === null)
+        || (row.submission_type === 'correction' && targetId === null)) {
+        throw new Error('REVIEW_CONTEXT_TARGET_NOT_FOUND');
+    }
+    return {
+        raw: row,
+        submissionId: markerIdKey(row.submission_id),
+        gameUuid: row.game_uuid,
+        gameSlug: row.game_slug,
+        gameName: row.game_name,
+        legacyGameId: row.game_id,
+        markerId,
+        payload: row.payload,
+        status: row.status,
+        target: targetId === null ? null : {
+            databaseId: targetId, gameUuid: row.target_game_uuid,
+            title: { en: row.target_title_en, pt: row.target_title_pt },
+            regionId: row.target_region_id,
+            description: { en: row.target_description_en, pt: row.target_description_pt },
+            videoUrl: row.target_video_url,
+            coordinates: [row.target_coordinate_y, row.target_coordinate_x],
+            isPublished: row.target_is_published,
+            contentItems: row.target_content_items ?? [],
+            imageCount: Number(row.target_image_count ?? 0),
+            mapLayer: row.current_layer_id,
+            categoryId: row.current_category_id
+        },
+        current: { layer: reviewParent(row, 'current', 'layer'), category: reviewParent(row, 'current', 'category'), group: reviewParent(row, 'current', 'group') },
+        submitted: { layer: reviewParent(row, 'submitted', 'layer'), category: reviewParent(row, 'submitted', 'category'), group: reviewParent(row, 'submitted', 'group') }
+    };
+}
+
+/** @param {{supabase: any, gameUuid: string, submissionId: unknown}} options */
+export async function loadMarkerReviewContext({ supabase, gameUuid, submissionId }) {
+    if (!isCommunityGameUuid(gameUuid)) throw new Error('MODERATION_GAME_UUID_REQUIRED');
+    const id = markerIdKey(submissionId);
+    const { data, error } = await supabase.rpc('get_marker_review_context_by_game_uuid', {
+        p_game_uuid: gameUuid, p_submission_id: id
+    });
+    if (error) throw error;
+    if (!Array.isArray(data) || data.length !== 1) throw new Error('REVIEW_CONTEXT_NOT_FOUND');
+    const context = normaliseMarkerReviewContext(data[0]);
+    if (context.gameUuid !== gameUuid || context.submissionId !== id) throw new Error('REVIEW_CONTEXT_NOT_FOUND');
+    return context;
 }
 
 /** @param {{supabase: any, gameUuid: string, userId: string, markerId: unknown}} options */
@@ -202,12 +269,12 @@ export async function reviewMarkerSubmission({
     payloadOverride = null
 }) {
     const { data, error } = await supabase.rpc('review_marker_submission_v2', {
-        p_submission_id: submissionId,
+        p_submission_id: markerIdKey(submissionId),
         p_decision: decision,
         p_review_note: reviewNote?.trim() || null,
         p_payload_override: payloadOverride
     });
 
     if (error) throw error;
-    return data == null ? null : Number(data);
+    return data == null ? null : markerIdKey(data);
 }

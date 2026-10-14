@@ -28,6 +28,46 @@ function isName(value) {
 }
 
 /**
+ * RLS-visible staff filters. Missing visual metadata only disables map links.
+ * @param {{supabase: import('@supabase/supabase-js').SupabaseClient}} options
+ */
+export async function loadModerationGameCatalog({ supabase }) {
+    const games = await readQuery(() => supabase.from('games')
+        .select('id, slug, name, status').order('name'));
+    if (!Array.isArray(games) || games.some((game) => !isUuid(game.id)
+        || typeof game.slug !== 'string' || !SLUG_PATTERN.test(game.slug) || !isName(game.name)
+        || !['draft', 'coming_soon', 'published'].includes(game.status))) {
+        throw new GameContextError('CONFIGURATION_UNAVAILABLE');
+    }
+    const ids = games.map((game) => game.id);
+    const catalog = games.map((game) => ({
+        gameUuid: game.id, gameSlug: game.slug, gameName: game.name,
+        status: game.status, publicGameMapUuid: /** @type {string | null} */ (null)
+    }));
+    if (!ids.length) return catalog;
+    try {
+        const [maps, modules] = await Promise.all([
+            readQuery(() => supabase.from('game_maps').select('id, game_id, status, is_default')
+                .in('game_id', ids).eq('status', 'published').eq('is_default', true)),
+            readQuery(() => supabase.from('game_modules').select('game_id, module_key, enabled')
+                .in('game_id', ids).eq('module_key', 'map').eq('enabled', true))
+        ]);
+        if (!Array.isArray(maps) || !Array.isArray(modules)) return catalog;
+        for (const game of catalog) {
+            const defaults = maps.filter((map) => map.game_id === game.gameUuid);
+            if (game.status === 'published' && defaults.length === 1 && isUuid(defaults[0].id)
+                && defaults[0].status === 'published' && defaults[0].is_default === true
+                && modules.some((module) => module.game_id === game.gameUuid && module.module_key === 'map' && module.enabled === true)) {
+                game.publicGameMapUuid = defaults[0].id;
+            }
+        }
+    } catch {
+        // RLS visibility can be narrower than SECURITY DEFINER submission reads.
+    }
+    return catalog;
+}
+
+/**
  * @template T
  * @param {() => PromiseLike<{ data: T, error: unknown }>} query
  * @returns {Promise<T>}
