@@ -2,10 +2,10 @@ import { categories as eldenRingCategories, categoryGroups as eldenRingCategoryG
 import { locations as eldenRingLocations } from '$lib/games/elden-ring/locations.js';
 import { mapDefinitions as eldenRingMapDefinitions } from '$lib/games/elden-ring/maps.js';
 
-const registry = [
+// Renderer capabilities only: DB games/modules/maps remain the catalog authority.
+const rendererRegistry = [
     {
-        id: 'elden-ring',
-        name: 'Elden Ring',
+        gameSlug: 'elden-ring',
         mapHref: '/games/elden-ring/map',
         editorHref: '/games/elden-ring/map?editor=1',
         fallback: {
@@ -18,6 +18,23 @@ const registry = [
     }
 ];
 
+/** Exact public-slug lookup; a DB game without a renderer is a normal state.
+ * @param {string} gameSlug
+ */
+export function getGameRendererBySlug(gameSlug) {
+    return rendererRegistry.find((renderer) => renderer.gameSlug === gameSlug) ?? null;
+}
+
+// Compatibility descriptors for B7f2's renderer-path check. These are NOT a
+// game inventory. Retain their existing shape/semantics until the deferred audit.
+const legacyNames = new Map([['elden-ring', 'Elden Ring']]);
+const registry = rendererRegistry.map((renderer) => ({
+    id: renderer.gameSlug,
+    name: legacyNames.get(renderer.gameSlug) ?? renderer.gameSlug,
+    mapHref: renderer.mapHref,
+    editorHref: renderer.editorHref,
+    fallback: renderer.fallback
+}));
 export const deepMapGames = registry;
 
 export function getDeepMapGame(gameId) {

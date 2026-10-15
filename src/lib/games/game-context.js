@@ -27,6 +27,95 @@ function isName(value) {
     return typeof value === 'string' && value.trim().length > 0;
 }
 
+/** @typedef {{ moduleUuid: string, gameUuid: string, moduleKey: string, enabled: boolean, position: number }} AdminGameModule */
+/** @typedef {{ gameMapUuid: string, gameUuid: string, mapSlug: string, mapName: string, mapStatus: string, isDefault: boolean, position: number }} AdminGameMap */
+/** @typedef {{ gameUuid: string, gameSlug: string, gameName: string, gameStatus: string, modules: AdminGameModule[], mapModuleState: 'absent' | 'disabled' | 'enabled', maps: AdminGameMap[] }} AdminCatalogGame */
+
+const ADMIN_CATALOG_BATCH_SIZE = 200;
+
+/** Read complete catalog relations without relying on PostgREST's default row cap.
+ * @param {(offset: number) => PromiseLike<{ data: any, error: unknown }>} query
+ * @returns {Promise<any[]>}
+ */
+async function readAdminCatalogRows(query) {
+    const rows = [];
+    for (let offset = 0; ; offset += ADMIN_CATALOG_BATCH_SIZE) {
+        const batch = await readQuery(() => query(offset));
+        if (!Array.isArray(batch)) throw new GameContextError('CONFIGURATION_UNAVAILABLE');
+        rows.push(...batch);
+        if (batch.length < ADMIN_CATALOG_BATCH_SIZE) return rows;
+    }
+}
+
+/** Complete RLS-visible Admin inventory. Renderer capabilities are a separate
+ * client concern. Unlike moderation, child-read failures fail the whole catalog
+ * rather than turning unknown module/map state into apparent absence.
+ * @param {{ supabase: import('@supabase/supabase-js').SupabaseClient }} options
+ * @returns {Promise<AdminCatalogGame[]>}
+ */
+export async function loadAdminGameCatalog({ supabase }) {
+    const games = await readAdminCatalogRows((offset) => supabase.from('games')
+        .select('id, slug, name, status').order('name').order('id')
+        .range(offset, offset + ADMIN_CATALOG_BATCH_SIZE - 1));
+    const gameUuids = new Set();
+    const gameSlugs = new Set();
+    for (const game of games) {
+        if (!game || !isUuid(game.id) || typeof game.slug !== 'string' || !SLUG_PATTERN.test(game.slug)
+            || !isName(game.name) || !['draft', 'coming_soon', 'published'].includes(game.status)
+            || gameUuids.has(game.id) || gameSlugs.has(game.slug)) {
+            throw new GameContextError('CONFIGURATION_UNAVAILABLE');
+        }
+        gameUuids.add(game.id);
+        gameSlugs.add(game.slug);
+    }
+    /** @type {AdminCatalogGame[]} */
+    const catalog = games.map((game) => ({ gameUuid: game.id, gameSlug: game.slug,
+        gameName: game.name, gameStatus: game.status, modules: [], mapModuleState: 'absent', maps: [] }));
+    const catalogByUuid = new Map(catalog.map((game) => [game.gameUuid, game]));
+    const moduleUuids = new Set();
+    const mapUuids = new Set();
+    // Bound UUID filter sizes as well as relation pages. All associations are UUID-only.
+    for (let start = 0; start < catalog.length; start += ADMIN_CATALOG_BATCH_SIZE) {
+        const ids = catalog.slice(start, start + ADMIN_CATALOG_BATCH_SIZE).map((game) => game.gameUuid);
+        const [modules, maps] = await Promise.all([
+            readAdminCatalogRows((offset) => supabase.from('game_modules')
+                .select('id, game_id, module_key, enabled, position').in('game_id', ids)
+                .order('position').order('id').range(offset, offset + ADMIN_CATALOG_BATCH_SIZE - 1)),
+            readAdminCatalogRows((offset) => supabase.from('game_maps')
+                .select('id, game_id, slug, name, status, position, is_default').in('game_id', ids)
+                .order('position').order('id').range(offset, offset + ADMIN_CATALOG_BATCH_SIZE - 1))
+        ]);
+        for (const module of modules) {
+            const game = module ? catalogByUuid.get(module.game_id) : undefined;
+            if (!game || !ids.includes(module.game_id) || !isUuid(module.id) || moduleUuids.has(module.id)
+                || typeof module.module_key !== 'string' || !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(module.module_key)
+                || ['overview', 'settings'].includes(module.module_key) || typeof module.enabled !== 'boolean'
+                || !Number.isSafeInteger(module.position) || module.position < 0 || module.position > 2147483647
+                || game.modules.some((existing) => existing.moduleKey === module.module_key)) {
+                throw new GameContextError('CONFIGURATION_UNAVAILABLE');
+            }
+            moduleUuids.add(module.id);
+            game.modules.push({ moduleUuid: module.id, gameUuid: module.game_id,
+                moduleKey: module.module_key, enabled: module.enabled, position: module.position });
+            if (module.module_key === 'map') game.mapModuleState = module.enabled ? 'enabled' : 'disabled';
+        }
+        for (const map of maps) {
+            const game = map ? catalogByUuid.get(map.game_id) : undefined;
+            if (!game || !ids.includes(map.game_id) || !isUuid(map.id) || mapUuids.has(map.id)
+                || typeof map.slug !== 'string' || !SLUG_PATTERN.test(map.slug) || !isName(map.name)
+                || !['draft', 'published'].includes(map.status) || typeof map.is_default !== 'boolean'
+                || !Number.isSafeInteger(map.position) || map.position < 0 || map.position > 2147483647
+                || game.maps.some((existing) => existing.mapSlug === map.slug || (existing.isDefault && map.is_default))) {
+                throw new GameContextError('CONFIGURATION_UNAVAILABLE');
+            }
+            mapUuids.add(map.id);
+            game.maps.push({ gameMapUuid: map.id, gameUuid: map.game_id, mapSlug: map.slug,
+                mapName: map.name, mapStatus: map.status, isDefault: map.is_default, position: map.position });
+        }
+    }
+    return catalog;
+}
+
 /**
  * RLS-visible staff filters. Missing visual metadata only disables map links.
  * @param {{supabase: import('@supabase/supabase-js').SupabaseClient}} options
