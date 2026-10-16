@@ -1,19 +1,11 @@
 
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, untrack } from 'svelte';
     import { getSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
 
-    import { translations } from '$lib/games/elden-ring/translations.js';
+    import { requireRendererLegacyGameId } from '$lib/games/registry.js';
 
-    import {
-        categories as fallbackCategories,
-        categoryGroups as fallbackCategoryGroups,
-        defaultCategoryVisibility as fallbackCategoryVisibility
-    } from '$lib/games/elden-ring/categories.js';
-
-    import { locations as fallbackLocations } from '$lib/games/elden-ring/locations.js';
-    import { mapDefinitions as fallbackMapDefinitions } from '$lib/games/elden-ring/maps.js';
     import { loadDeepMapGameDataWithUuidLayers } from '$lib/map/map-data.js';
     import { getVideoEmbedUrl, normaliseHttpUrl } from '$lib/map/media.js';
     import MarkerEditorPanel from '$lib/editor/MarkerEditorPanel.svelte';
@@ -22,11 +14,17 @@
     import MapLabelEditorPanel from '$lib/editor/MapLabelEditorPanel.svelte';
     import CommunityMarkerPanel from '$lib/community/CommunityMarkerPanel.svelte';
 
-    let { data } = $props();
-    let gameContext = $derived(data.gameContext);
-
-    // Temporary compatibility identity for the existing legacy consumers.
-    const GAME_ID = 'elden-ring';
+    /** @type {{ gameContext: Awaited<ReturnType<typeof import('$lib/games/game-context.js').resolvePublicGameContext>>, renderer: import('$lib/games/registry.js').GameRenderer }} */
+    let { gameContext, renderer } = $props();
+    // The thin route keys this component by DB game/map/slug. Config is fixed per mount.
+    const config = untrack(() => renderer);
+    const legacyGameId = requireRendererLegacyGameId(config);
+    const { translations, defaultLayerKey } = config;
+    const fallbackCategories = config.fallback.categories;
+    const fallbackCategoryGroups = config.fallback.categoryGroups;
+    const fallbackCategoryVisibility = config.defaultCategoryVisibility;
+    const fallbackLocations = config.fallback.locations;
+    const fallbackMapDefinitions = config.fallback.mapDefinitions;
     const PREVIEW_MARKER_COLOR = '#2f8fff';
     const PREVIEW_MARKER_OPACITY = 0.82;
 
@@ -35,13 +33,15 @@
     let categories = $state({ ...fallbackCategories });
     let categoryGroups = $state([...fallbackCategoryGroups]);
     let locations = $state([...fallbackLocations]);
-    let mapLabels = $state([]);
+    let mapLabels = $state([...config.fallback.mapLabels]);
     let mapDefinitions = $state({ ...fallbackMapDefinitions });
 
     let mapContainer;
+    /** @type {any} Leaflet instance, also released when the keyed route unmounts. */
     let map;
     let Leaflet;
     let mapImageOverlay = null;
+    let mapDisposed = false;
     let locationMarkersById = new Map();
 
     // O Editor 2.0 é privado. Esta flag serve apenas para decidir se a UI
@@ -133,6 +133,10 @@
             document.removeEventListener('pointerdown', handleEditorOutsidePointer);
             window.removeEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
             window.removeEventListener('deepmap:account-status-changed', handleAccountStatusChanged);
+            // A dynamic route can remount for another DB game/map without a full reload.
+            mapDisposed = true;
+            if (map) map.remove();
+            map = null;
         };
     });
 
@@ -189,7 +193,7 @@
     );
 
     function syncCategoryVisibility() {
-        const nextVisibility = {};
+        const nextVisibility = /** @type {Record<string, boolean>} */ ({});
 
         for (const categoryId of Object.keys(categories)) {
             nextVisibility[categoryId] = categoryVisibility[categoryId] !== false;
@@ -231,24 +235,24 @@
 
     async function loadGameMapData() {
         const supabase = getSupabaseBrowserClient();
-        // Layers, taxonomy, markers and labels use UUID ownership; attribution still uses GAME_ID.
+        // All public reads use DB UUIDs; legacyGameId is only a writer compatibility adapter.
         const data = await loadDeepMapGameDataWithUuidLayers({
             supabase,
             gameUuid: gameContext.gameUuid,
             gameMapUuid: gameContext.gameMapUuid,
-            legacyGameId: GAME_ID,
+            legacyGameId,
             fallback: {
                 mapDefinitions: { ...fallbackMapDefinitions },
                 categoryGroups: [...fallbackCategoryGroups],
                 categories: { ...fallbackCategories },
                 locations: [...fallbackLocations],
-                mapLabels: []
+                mapLabels: [...config.fallback.mapLabels]
             }
         });
 
-        // Keep the current surface renderer default, but require a real scoped layer.
-        const surface = data.mapDefinitions.surface;
-        if (!surface?.image || !(surface.width > 0) || !(surface.height > 0)
+        // Renderer default is a layer key, never a DB game_map UUID.
+        const initialLayer = data.mapDefinitions[defaultLayerKey];
+        if (!initialLayer?.image || !(initialLayer.width > 0) || !(initialLayer.height > 0)
             || !data.mapDefinitions[activeMapLayer]?.layerUuid) {
             throw new Error('Current map layers are unavailable for this renderer.');
         }
@@ -303,13 +307,13 @@
        MAPAS / CAMADAS
        ========================================== */
 
-    let activeMapLayer = $state('surface');
+    let activeMapLayer = $state(defaultLayerKey);
     // Derived from the renderer key and DB rows; there is no second selection state.
     let activeLayerUuid = $derived((/** @type {{ layerUuid?: string } | undefined} */ (
         Object.values(mapDefinitions).find((layer) => layer.id === activeMapLayer)
     ))?.layerUuid ?? null);
     let markerLayerGroups = {};
-    let mapLabelLayerGroups = {};
+    let mapLabelLayerGroups = /** @type {Record<string, any>} */ ({});
 
     function getMapBounds(mapDefinition) {
         return [
@@ -1530,19 +1534,21 @@
         // Falha fechada: sem sessão/RPC/admin, o Editor nem sequer aparece.
         void loadEditorAccess();
 
-        // Layers/taxonomy/markers/labels require UUID-owned DB rows; attribution stays legacy.
+        // Layers/taxonomy/markers/labels/attribution require UUID-owned DB rows.
         await loadGameMapData();
+        if (mapDisposed) return;
 
         if (!activeLayerUuid) throw new Error('Active layer UUID unavailable.');
 
         const L = await import('leaflet');
 
         await import('leaflet/dist/leaflet.css');
+        if (mapDisposed) return;
 
         Leaflet = L;
 
-        const surfaceDefinition = mapDefinitions.surface;
-        const bounds = getMapBounds(surfaceDefinition);
+        const initialDefinition = mapDefinitions[defaultLayerKey];
+        const bounds = getMapBounds(initialDefinition);
 
         map = L.map(
             mapContainer,
@@ -1558,7 +1564,7 @@
         );
 
         mapImageOverlay = L.imageOverlay(
-            surfaceDefinition.image,
+            initialDefinition.image,
             bounds
         ).addTo(map);
 
@@ -1694,7 +1700,7 @@
         {/if}
 
         <div class="game-brand">
-            <span class="game-title">Elden Ring</span>
+            <span class="game-title">{gameContext.name}</span>
         </div>
 
         <div class="subheader-actions">
@@ -1758,7 +1764,7 @@
                         bind:this={markerEditorPanelRef}
                         gameUuid={gameContext.gameUuid}
                         gameMapUuid={gameContext.gameMapUuid}
-                        legacyGameId={GAME_ID}
+                        legacyGameId={legacyGameId}
                         language={currentLanguage}
                         active={editorMode}
                         point={editorPoint}
@@ -1776,7 +1782,7 @@
                     <MapLabelEditorPanel
                         gameUuid={gameContext.gameUuid}
                         gameMapUuid={gameContext.gameMapUuid}
-                        legacyGameId={GAME_ID}
+                        legacyGameId={legacyGameId}
                         language={currentLanguage}
                         active={editorMode}
                         point={editorPoint}
@@ -1793,7 +1799,7 @@
                 {:else if editorTool === 'category'}
                     <CategoryManagerPanel
                         gameUuid={gameContext.gameUuid}
-                        legacyGameId={GAME_ID}
+                        legacyGameId={legacyGameId}
                         language={currentLanguage}
                         standalone={true}
                         onChanged={handleEditorDataChanged}
@@ -1808,7 +1814,7 @@
         <CommunityMarkerPanel
             bind:this={communityMarkerPanelRef}
             gameUuid={gameContext.gameUuid}
-            legacyGameId={GAME_ID}
+            legacyGameId={legacyGameId}
             publicMarkers={locations}
             onFocusMarker={openMarkerDeepLink}
             language={currentLanguage}

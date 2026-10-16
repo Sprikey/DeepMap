@@ -2,7 +2,7 @@
     import { tick, onMount, untrack } from 'svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { normaliseHttpUrl } from '$lib/map/media.js';
-    import { deepMapGames } from '$lib/games/registry.js';
+    import { getGameRendererBySlug } from '$lib/games/registry.js';
     import { loadModerationGameCatalog } from '$lib/games/game-context.js';
     import { markerIdKey } from '$lib/editor/marker-editor.js';
     import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
@@ -543,7 +543,8 @@
             || reviewContext.submissionId !== item.id) return null;
         const game = gameCatalog.find((game) => game.gameUuid === item.gameUuid);
         const base = `/games/${encodeURIComponent(reviewContext.gameSlug)}/map`;
-        if (!game?.publicGameMapUuid || !deepMapGames.some((renderer) => renderer.mapHref === base)) return null;
+        const renderer = getGameRendererBySlug(reviewContext.gameSlug);
+        if (!game?.publicGameMapUuid || renderer?.mapHref !== base) return null;
         const finalLayer = mapDefinitions[reviewLayerKey];
         const finalCategory = categories[reviewCategoryKey];
         if (!finalLayer || finalLayer.gameMapUuid !== game.publicGameMapUuid || !finalCategory) return null;

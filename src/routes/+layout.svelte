@@ -5,7 +5,7 @@
 
     let { children } = $props();
 
-    let isMapRoute = $derived(page.url.pathname.startsWith('/games/elden-ring/map'));
+    let isMapRoute = $derived(/^\/games\/[a-z0-9]+(?:-[a-z0-9]+)*\/map\/?$/.test(page.url.pathname));
 </script>
 
 
