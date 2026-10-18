@@ -538,3 +538,173 @@ codex-handoff.md
 - Para tarefas pequenas e triviais, o handoff pode ser omitido se não trouxer valor.
 - Ficheiros temporários anteriores, como `codex-audit.md`, podem ser apagados depois de o conteúdo ser revisto/copied, desde que não sejam necessários como registo.
 
+---
+
+## 37. Review Bundle obrigatório para revisão
+
+### 37.1 Objetivo
+
+- Para tarefas relevantes de implementação, refatoração, migrations, infraestrutura, segurança, auditoria ou alterações multi-ficheiro, gerar no fim um único pacote de revisão.
+- O objetivo é permitir que o utilizador envie ao ChatGPT um único ficheiro em vez de enviar manualmente todos os ficheiros alterados.
+- O pacote de revisão não substitui testes, `git diff`, revisão humana, smoke tests nem o `codex-handoff.md`.
+
+### 37.2 Local e nome
+
+- O bundle permanente deve ser criado dentro de:
+
+```text
+.review/
+```
+
+- A pasta `.review/` deve estar ignorada pelo Git.
+- O nome deve identificar a fase/tarefa, por exemplo:
+
+```text
+.review/deepmap-B7h2e-review.zip
+```
+
+- O ZIP é um artefacto local e temporário de revisão.
+- Nunca fazer commit ou push de ficheiros dentro de `.review/`.
+
+### 37.3 Conteúdo obrigatório do ZIP
+
+Cada bundle relevante deve conter:
+
+```text
+review/
+  codex-handoff.md
+  changes.patch
+  manifest.txt
+  git-status.txt
+  git-log.txt
+```
+
+e também a versão FINAL COMPLETA de cada ficheiro de produto/teste/migration criado ou modificado pela fase, preservando o respetivo caminho relativo no repositório.
+
+Exemplo:
+
+```text
+src/
+  lib/
+    map/
+      map-data.js
+
+supabase/
+  migrations/
+    202610....sql
+```
+
+- Ficheiros apagados não têm cópia final, mas devem aparecer explicitamente no `manifest.txt` e no `changes.patch`.
+- O bundle deve incluir alterações tracked e também ficheiros novos/untracked pertencentes à fase.
+- Não confiar apenas em `git diff --name-only`, porque ficheiros untracked podem não aparecer nesse comando.
+
+### 37.4 `changes.patch`
+
+- Gerar um patch exato das alterações tracked contra `HEAD`.
+- Incluir diffs de novos ficheiros quando o Git os conseguir representar.
+- Não fazer `git add`, stage, commit ou alterações artificiais apenas para gerar o patch.
+- O patch serve para mostrar exatamente o que mudou; os ficheiros completos servem para revisão no contexto real.
+
+### 37.5 `manifest.txt`
+
+O manifest deve indicar, para cada caminho incluído:
+
+- caminho relativo ao repositório;
+- estado: `modified`, `added` ou `deleted`;
+- SHA-256 do ficheiro final quando o ficheiro existir.
+
+Também deve indicar:
+
+- nome/fase da tarefa;
+- commit/base `HEAD` usado para a comparação;
+- ficheiros apagados;
+- ficheiros incluídos no bundle;
+- ficheiros temporários de revisão que não pertencem ao produto.
+
+### 37.6 `git-status.txt` e `git-log.txt`
+
+Guardar no bundle o output exato de:
+
+```text
+git status --short
+```
+
+e:
+
+```text
+git log -6 --oneline
+```
+
+Isto permite confirmar a base da revisão e detetar alterações fora do âmbito.
+
+### 37.7 Segurança do bundle
+
+Nunca incluir no ZIP:
+
+```text
+.env
+.env.*
+secrets
+credentials
+tokens
+cookies
+*.pem
+*.key
+.git/
+node_modules/
+.svelte-kit/
+build/
+database dumps
+dados privados reais de utilizadores
+logs temporários sem relação com a fase
+```
+
+- Nunca incluir secrets, passwords, connection strings privadas, tokens de sessão, cookies ou dados pessoais reais.
+- O script/bundle deve falhar de forma segura se detetar um caminho proibido em vez de o incluir silenciosamente.
+- Não seguir symlinks/junctions para fora do repositório ao recolher ficheiros.
+- O bundle não deve conter o próprio ZIP nem a pasta de staging usada para o criar.
+
+### 37.8 Validação antes de concluir
+
+Antes de anunciar que o bundle está pronto:
+
+- verificar que o ZIP abre corretamente;
+- comparar o conteúdo do ZIP com o `manifest.txt`;
+- confirmar que todos os ficheiros finais esperados estão presentes;
+- confirmar que nenhum ficheiro proibido foi incluído;
+- validar SHA-256 dos ficheiros copiados quando aplicável;
+- apagar apenas a staging temporária criada pelo processo;
+- nunca apagar ficheiros do projeto para limpar staging.
+
+Qualquer `Remove-Item`, `del`, `rm` ou equivalente usado na limpeza deve validar primeiro que o alvo é exclusivamente a staging temporária esperada e nunca a raiz do repositório.
+
+### 37.9 Workflow no fim de uma tarefa
+
+Para uma tarefa relevante, a sequência normal passa a ser:
+
+1. executar os testes/checks/build necessários;
+2. atualizar/substituir `codex-handoff.md`;
+3. confirmar `git status --short`;
+4. gerar o Review Bundle através do tooling oficial do repositório;
+5. validar o conteúdo do ZIP;
+6. indicar ao utilizador o caminho exato do ZIP;
+7. não fazer commit, push ou deploy;
+8. o utilizador envia apenas o ZIP ao ChatGPT para revisão, salvo pedido explícito por ficheiros adicionais.
+
+Depois da revisão humana/ChatGPT e dos smoke tests necessários, só fazer commit quando houver instrução explícita.
+
+### 37.10 Tooling oficial
+
+- Quando existir um script/comando oficial no repositório para criar o bundle, usar sempre esse mecanismo em vez de recriar comandos ad hoc em cada tarefa.
+- O tooling oficial deve aceitar um identificador/nome de fase para produzir um nome de ZIP claro.
+- Não modificar o tooling do Review Bundle durante uma tarefa de produto sem pedido explícito.
+- Se o tooling falhar, parar e reportar o erro; não contornar silenciosamente as validações de segurança.
+- Para tarefas pequenas e triviais, o Review Bundle pode ser omitido quando o utilizador ou o âmbito da tarefa indicarem claramente que não traz valor.
+
+### 37.11 Relação com o `codex-handoff.md`
+
+- As regras da secção 36 continuam válidas.
+- `codex-handoff.md` continua a ser o relatório textual principal.
+- O Review Bundle é apenas o contentor de transporte/revisão que inclui o handoff, evidência Git e os ficheiros completos alterados.
+- `codex-handoff.md` continua ignorado e não deve ser commitado.
+

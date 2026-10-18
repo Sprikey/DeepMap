@@ -26,3 +26,6 @@ vite.config.ts.timestamp-*
 
 # Codex temporary handoff
 codex-handoff.md
+
+# Review bundles
+.review/
