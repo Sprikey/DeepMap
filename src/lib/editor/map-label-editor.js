@@ -21,7 +21,7 @@ const MAP_LABEL_SELECT = `
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** @typedef {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, gameMapUuid: string }} LabelContext */
+/** @typedef {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, gameMapUuid: string, isCurrent?: () => boolean }} LabelContext */
 /** @typedef {{ id: string, legacyGameId: string, gameUuid: string, gameMapUuid: string, layerUuid: string, label: { en: string, pt: string }, sortOrder: number, isActive: boolean }} EditorLayer */
 
 /** @param {unknown} value */
@@ -183,10 +183,11 @@ export async function loadEditorMapLabels({ supabase, gameUuid, gameMapUuid }) {
 }
 
 /** @param {LabelContext & { legacyGameId: string, selectedLayerUuid: string, label: any }} options */
-export async function createEditorMapLabel({ supabase, gameUuid, gameMapUuid, legacyGameId, selectedLayerUuid, label }) {
+export async function createEditorMapLabel({ supabase, isCurrent = () => true, gameUuid, gameMapUuid, legacyGameId, selectedLayerUuid, label }) {
     requireUuid(selectedLayerUuid);
     const layers = await loadEditorLayers({ supabase, gameUuid, gameMapUuid });
     const layer = resolveWriteLayer(layers, selectedLayerUuid, legacyGameId, label);
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
     const { data, error } = await supabase
         .from('map_labels')
         .insert(payload(legacyGameId, label, layer))
@@ -200,7 +201,7 @@ export async function createEditorMapLabel({ supabase, gameUuid, gameMapUuid, le
 }
 
 /** @param {LabelContext & { labelId: string | number, selectedLayerUuid: string, label: any }} options */
-export async function updateEditorMapLabel({ supabase, gameUuid, gameMapUuid, labelId, selectedLayerUuid, label }) {
+export async function updateEditorMapLabel({ supabase, isCurrent = () => true, gameUuid, gameMapUuid, labelId, selectedLayerUuid, label }) {
     const expectedId = labelIdKey(labelId);
     requireUuid(selectedLayerUuid);
     const layers = await loadEditorLayers({ supabase, gameUuid, gameMapUuid });
@@ -208,6 +209,7 @@ export async function updateEditorMapLabel({ supabase, gameUuid, gameMapUuid, la
     if (!layerUuids.length) throw new Error('LABEL_LAYERS_UNAVAILABLE');
     // Preserve the target's own legacy alias in the compatibility payload;
     // the permanent target and its map membership are independently UUID-scoped.
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
     const { data: existing, error: readError } = await supabase
         .from('map_labels')
         .select(MAP_LABEL_SELECT)
@@ -219,6 +221,7 @@ export async function updateEditorMapLabel({ supabase, gameUuid, gameMapUuid, la
     validateLabelRows([existing], gameUuid, layers);
     if (labelIdKey(existing.id) !== expectedId) throw new Error('LABEL_EDITOR_IDENTITY_CONFLICT');
     const layer = resolveWriteLayer(layers, selectedLayerUuid, existing.game_id, label);
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
     const { data, error } = await supabase
         .from('map_labels')
         .update(payload(existing.game_id, label, layer))
@@ -237,10 +240,11 @@ export async function updateEditorMapLabel({ supabase, gameUuid, gameMapUuid, la
 }
 
 /** @param {LabelContext & { labelId: string | number }} options */
-export async function deleteEditorMapLabel({ supabase, gameUuid, gameMapUuid, labelId }) {
+export async function deleteEditorMapLabel({ supabase, isCurrent = () => true, gameUuid, gameMapUuid, labelId }) {
     const expectedId = labelIdKey(labelId);
     const layers = await loadEditorLayers({ supabase, gameUuid, gameMapUuid });
     if (!layers.length) throw new Error('LABEL_LAYERS_UNAVAILABLE');
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
     const { data, error } = await supabase
         .from('map_labels')
         .delete()

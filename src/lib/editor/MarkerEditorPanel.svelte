@@ -1,5 +1,6 @@
 <script>
-    import { untrack } from 'svelte';
+    import { onMount, untrack } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import MarkerImagesPanel from '$lib/editor/MarkerImagesPanel.svelte';
     import MarkerContentEditor from '$lib/editor/MarkerContentEditor.svelte';
@@ -33,6 +34,14 @@
         onMoveStateChange = () => {},
         onOriginalVisibilityChange = () => {}
     } = $props();
+
+    let sessionRevision = $state(0);
+    const sessionScope = createSessionScope(() => {
+        ++sessionRevision;
+        markers = []; editorLayers = []; editorCategories = []; editorGroups = []; editorDataReady = false; loading = false; saving = false; deleting = false; contentLoading = false;
+        errorMessage = ''; successMessage = '';
+    });
+    onMount(() => sessionScope.start(getSupabaseBrowserClient()));
 
     const TEXT = {
         en: {
@@ -170,7 +179,7 @@
     /** @type {Awaited<ReturnType<typeof loadEditorMarkers>>['groups']} */
     let editorGroups = $state([]);
     let editorDataReady = $state(false);
-    let contextKey = $derived(JSON.stringify([gameUuid, gameMapUuid, legacyGameId]));
+    let contextKey = $derived(JSON.stringify([gameUuid, gameMapUuid, legacyGameId, sessionRevision]));
     /** @type {string | null} */
     let loadedContextKey = null;
     let contextRevision = $state(0);
@@ -338,6 +347,7 @@
             });
             if (token === contentLoadToken && current.isCurrent() && sameMarkerId(editingId, markerId)) contentItems = items;
         } catch (error) {
+            if (token !== contentLoadToken || !current.isCurrent() || !sameMarkerId(editingId, markerId)) return;
             console.warn('DeepMap marker content load:', error);
             if (token === contentLoadToken && current.isCurrent() && sameMarkerId(editingId, markerId)) contentItems = [];
         } finally {
@@ -351,10 +361,11 @@
 
     function captureContext() {
         const requestedContext = contextKey;
+        const ownsSession = sessionScope.capture();
         const revision = contextRevision;
         return {
             gameUuid, gameMapUuid, legacyGameId,
-            isCurrent: () => revision === contextRevision && requestedContext === contextKey
+            isCurrent: () => ownsSession() && active && revision === contextRevision && requestedContext === contextKey
         };
     }
 
@@ -480,6 +491,7 @@
         }
 
         const current = captureContext();
+        if (!current.isCurrent()) return;
         const targetId = editingId;
         if (targetId !== null && !markers.some((marker) => sameMarkerId(marker.id, targetId))) {
             errorMessage = t.saveError;
@@ -509,7 +521,8 @@
             await replaceEditorMarkerContent({
                 supabase,
                 markerId: saved.id,
-                items
+                items,
+                isCurrent: current.isCurrent
             });
 
             if (!current.isCurrent()) return;
@@ -610,7 +623,7 @@
     }
 
     $effect(() => {
-        if (!active || loadedContextKey === contextKey) return;
+        if (!sessionRevision || !sessionScope.accountId || !active || loadedContextKey === contextKey) return;
         loadedContextKey = contextKey;
         untrack(() => {
             ++contextRevision;

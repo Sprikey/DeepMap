@@ -1,4 +1,6 @@
 <script>
+    import { onMount, untrack } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import {
         createMarkerImage,
@@ -16,6 +18,22 @@
         onChanged = async () => {},
         onImagesChange = () => {}
     } = $props();
+
+    let sessionRevision = $state(0);
+    let contextRevision = 0;
+    let readRevision = 0;
+    const sessionScope = createSessionScope(() => {
+        ++sessionRevision;
+        images = []; loading = false; working = false; errorMessage = '';
+    });
+    onMount(() => sessionScope.start(getSupabaseBrowserClient()));
+
+    function captureOperation() {
+        const ownsSession = sessionScope.capture();
+        const revision = contextRevision;
+        const target = markerId;
+        return () => ownsSession() && revision === contextRevision && target === markerId;
+    }
 
     const TEXT = {
         en: {
@@ -80,27 +98,34 @@
     let previewUrl = $derived(resolveMarkerImageUrl({ source, imageRef: imageRef.trim() }));
 
     async function refresh() {
+        const isCurrent = captureOperation();
+        const revision = ++readRevision;
+        const currentRead = () => isCurrent() && revision === readRevision;
         if (!markerId) {
             images = [];
             onImagesChange([]);
             loadedMarkerId = null;
             return;
         }
+        if (!isCurrent()) return;
 
         loading = true;
         errorMessage = '';
         try {
-            images = await loadMarkerImages({
+            const next = await loadMarkerImages({
                 supabase: getSupabaseBrowserClient(),
                 markerId
             });
+            if (!currentRead()) return;
+            images = next;
             loadedMarkerId = markerId;
             onImagesChange(images);
         } catch (error) {
+            if (!currentRead()) return;
             console.error('DeepMap marker images load:', error);
             errorMessage = t.loadError;
         } finally {
-            loading = false;
+            if (currentRead()) loading = false;
         }
     }
 
@@ -116,6 +141,8 @@
             return;
         }
 
+        const isCurrent = captureOperation();
+        if (!isCurrent()) return;
         working = true;
         errorMessage = '';
         try {
@@ -135,89 +162,121 @@
                 }
             });
 
+            if (!isCurrent()) return;
             resetNewImage();
             await refresh();
+            if (!isCurrent()) return;
             await onChanged({ action: 'image-added', markerId });
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap marker image add:', error);
             errorMessage = t.saveError;
         } finally {
-            working = false;
+            if (isCurrent()) working = false;
         }
     }
 
     async function setCover(imageId) {
         if (!markerId || working || disabled) return;
+        const isCurrent = captureOperation();
+        if (!isCurrent()) return;
         working = true;
         errorMessage = '';
         try {
             await setMarkerImageCover({
                 supabase: getSupabaseBrowserClient(),
                 markerId,
+                isCurrent,
                 imageId
             });
+            if (!isCurrent()) return;
             await refresh();
+            if (!isCurrent()) return;
             await onChanged({ action: 'image-cover', markerId, imageId });
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap marker image cover:', error);
             errorMessage = t.coverError;
         } finally {
-            working = false;
+            if (isCurrent()) working = false;
         }
     }
 
     async function reorder(imageId, direction) {
         if (!markerId || working || disabled) return;
+        const isCurrent = captureOperation();
+        if (!isCurrent()) return;
         working = true;
         errorMessage = '';
         try {
             await moveMarkerImage({
                 supabase: getSupabaseBrowserClient(),
                 images,
+                isCurrent,
                 imageId,
                 direction
             });
+            if (!isCurrent()) return;
             await refresh();
+            if (!isCurrent()) return;
             await onChanged({ action: 'image-reordered', markerId, imageId });
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap marker image reorder:', error);
             errorMessage = t.reorderError;
         } finally {
-            working = false;
+            if (isCurrent()) working = false;
         }
     }
 
     async function removeImage(imageId) {
         if (!markerId || working || disabled) return;
+        const isCurrent = captureOperation();
+        if (!isCurrent()) return;
         working = true;
         errorMessage = '';
         try {
             const removed = images.find((image) => image.id === imageId);
             const supabase = getSupabaseBrowserClient();
             await deleteMarkerImage({ supabase, imageId });
+            if (!isCurrent()) return;
             await refresh();
+            if (!isCurrent()) return;
 
             if (removed?.isCover && images.length) {
                 await setMarkerImageCover({
                     supabase,
                     markerId,
+                    isCurrent,
                     imageId: images[0].id
                 });
+                if (!isCurrent()) return;
                 await refresh();
+                if (!isCurrent()) return;
             }
 
             await onChanged({ action: 'image-deleted', markerId, imageId });
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap marker image delete:', error);
             errorMessage = t.deleteError;
         } finally {
-            working = false;
+            if (isCurrent()) working = false;
         }
     }
 
     $effect(() => {
-        if (markerId === loadedMarkerId) return;
-        void refresh();
+        const target = markerId;
+        const session = sessionRevision;
+        untrack(() => {
+            ++contextRevision;
+            images = []; loading = false; working = false; errorMessage = '';
+            loadedMarkerId = null;
+            resetNewImage();
+            onImagesChange([]);
+            if (session && target && sessionScope.accountId) void refresh();
+        });
+        return () => { ++contextRevision; ++readRevision; };
     });
 </script>
 

@@ -78,7 +78,8 @@ export async function deleteMarkerImage({ supabase, imageId }) {
     if (error) throw error;
 }
 
-export async function setMarkerImageCover({ supabase, markerId, imageId }) {
+export async function setMarkerImageCover({ supabase, isCurrent = () => true, markerId, imageId }) {
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
     const { error: clearError } = await supabase
         .from('marker_images')
         .update({ is_cover: false })
@@ -86,6 +87,8 @@ export async function setMarkerImageCover({ supabase, markerId, imageId }) {
         .eq('is_cover', true);
 
     if (clearError) throw clearError;
+
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
     const { error } = await supabase
         .from('marker_images')
@@ -96,7 +99,7 @@ export async function setMarkerImageCover({ supabase, markerId, imageId }) {
     if (error) throw error;
 }
 
-export async function moveMarkerImage({ supabase, images, imageId, direction }) {
+export async function moveMarkerImage({ supabase, isCurrent = () => true, images, imageId, direction }) {
     const ordered = [...images].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     const index = ordered.findIndex((image) => image.id === imageId);
     if (index < 0) return;
@@ -109,12 +112,16 @@ export async function moveMarkerImage({ supabase, images, imageId, direction }) 
     const currentOrder = Number(current.sortOrder ?? index * 10 + 10);
     const targetOrder = Number(target.sortOrder ?? targetIndex * 10 + 10);
 
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
+
     const { error: firstError } = await supabase
         .from('marker_images')
         .update({ sort_order: targetOrder })
         .eq('id', current.id);
 
     if (firstError) throw firstError;
+
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
     const { error: secondError } = await supabase
         .from('marker_images')

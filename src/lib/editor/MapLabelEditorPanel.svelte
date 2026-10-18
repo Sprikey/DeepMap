@@ -1,5 +1,6 @@
 <script>
-    import { untrack } from 'svelte';
+    import { onMount, untrack } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import {
@@ -27,6 +28,15 @@
         onMoveStateChange = () => {},
         onOriginalVisibilityChange = () => {}
     } = $props();
+
+    let sessionRevision = $state(0);
+    let activationRevision = 0;
+    const sessionScope = createSessionScope(() => {
+        ++sessionRevision;
+        labels = []; editorLayers = []; editorDataReady = false; loading = false; saving = false; deleting = false;
+        errorMessage = ''; successMessage = '';
+    });
+    onMount(() => sessionScope.start(getSupabaseBrowserClient()));
 
     const TEXT = {
         en: {
@@ -161,7 +171,7 @@
         [...editorLayers].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     );
     let mapLayer = $derived(sortedLayers.find((layer) => layer.layerUuid === selectedLayerUuid)?.id ?? '');
-    let contextKey = $derived(`${gameUuid}:${gameMapUuid}`);
+    let contextKey = $derived(`${gameUuid}:${gameMapUuid}:${sessionRevision}`);
     let drafts = $derived(labels.filter((item) => !item.isPublished));
     let published = $derived(labels.filter((item) => item.isPublished));
     let selected = $derived(editingId === null ? null : labels.find((item) => String(item.id) === String(editingId)) ?? null);
@@ -227,6 +237,7 @@
     }
 
     async function refresh({ preserveSelection = true } = {}) {
+        const ownsSession = sessionScope.capture();
         const requestedContext = contextKey;
         const revision = ++loadRevision;
         editorDataReady = false;
@@ -239,7 +250,7 @@
                 gameUuid,
                 gameMapUuid
             });
-            if (revision !== loadRevision || requestedContext !== contextKey) return false;
+            if (!ownsSession() || !active || revision !== loadRevision || requestedContext !== contextKey) return false;
             labels = next.labels;
             editorLayers = next.layers;
             if (previousId !== null) {
@@ -253,8 +264,9 @@
             if (!editorDataReady) errorMessage = t.loadError;
             return editorDataReady;
         } catch (error) {
+            if (!ownsSession() || !active || revision !== loadRevision || requestedContext !== contextKey) return false;
             console.error('DeepMap zone title editor load:', error);
-            if (revision === loadRevision && requestedContext === contextKey) {
+            if (ownsSession() && active && revision === loadRevision && requestedContext === contextKey) {
                 labels = [];
                 editorLayers = [];
                 resetForm({ keepCoordinates: false });
@@ -262,7 +274,7 @@
             }
             return false;
         } finally {
-            if (revision === loadRevision) loading = false;
+            if (ownsSession() && active && revision === loadRevision) loading = false;
         }
     }
 
@@ -322,7 +334,7 @@
     }
 
     async function save(nextPublished) {
-        if (saving || deleting || loading || !editorDataReady) return;
+        if (!sessionScope.capture()() || saving || deleting || loading || !editorDataReady) return;
         clearMessages();
         const input = buildInput(nextPublished);
         const validation = validate(input);
@@ -333,23 +345,28 @@
         slug = input.slug;
         saving = true;
         const mutationContext = contextKey;
+        const ownsSession = sessionScope.capture();
+        const activation = activationRevision;
+        const isCurrent = () => ownsSession() && active && mutationContext === contextKey && activation === activationRevision;
+        if (!isCurrent()) return;
         try {
             const supabase = getSupabaseBrowserClient();
             const saved = editingId === null
-                ? await createEditorMapLabel({ supabase, gameUuid, gameMapUuid, legacyGameId, selectedLayerUuid, label: input })
-                : await updateEditorMapLabel({ supabase, gameUuid, gameMapUuid, labelId: editingId, selectedLayerUuid, label: input });
-            if (mutationContext !== contextKey) return;
+                ? await createEditorMapLabel({ supabase, gameUuid, gameMapUuid, legacyGameId, selectedLayerUuid, label: input, isCurrent })
+                : await updateEditorMapLabel({ supabase, gameUuid, gameMapUuid, labelId: editingId, selectedLayerUuid, label: input, isCurrent });
+            if (!isCurrent()) return;
             const refreshed = await refresh({ preserveSelection: false });
-            if (mutationContext !== contextKey) return;
+            if (!isCurrent()) return;
             resetForm({ keepCoordinates: false });
             if (refreshed) successMessage = t.saved;
             else errorMessage = t.loadError;
             await onChanged({ action: 'save-label', label: saved });
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap zone title editor save:', error);
-            if (mutationContext === contextKey) errorMessage = t.saveError;
+            if (isCurrent()) errorMessage = t.saveError;
         } finally {
-            saving = false;
+            if (isCurrent()) saving = false;
         }
     }
 
@@ -358,6 +375,10 @@
         if (!window.confirm(t.confirmDelete)) return;
         deleting = true;
         const mutationContext = contextKey;
+        const ownsSession = sessionScope.capture();
+        const activation = activationRevision;
+        const isCurrent = () => ownsSession() && active && mutationContext === contextKey && activation === activationRevision;
+        if (!isCurrent()) return;
         clearMessages();
         try {
             const deletedId = editingId;
@@ -365,27 +386,30 @@
                 supabase: getSupabaseBrowserClient(),
                 gameUuid,
                 gameMapUuid,
-                labelId: deletedId
+                labelId: deletedId,
+                isCurrent
             });
-            if (mutationContext !== contextKey) return;
+            if (!isCurrent()) return;
             resetForm({ keepCoordinates: false });
             const refreshed = await refresh({ preserveSelection: false });
-            if (mutationContext !== contextKey) return;
+            if (!isCurrent()) return;
             if (refreshed) successMessage = t.deleted;
             await onChanged({ action: 'delete-label', labelId: deletedId });
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap zone title editor delete:', error);
-            if (mutationContext === contextKey) errorMessage = t.deleteError;
+            if (isCurrent()) errorMessage = t.deleteError;
         } finally {
-            deleting = false;
+            if (isCurrent()) deleting = false;
         }
     }
 
     $effect(() => {
-        if (!active || loadedContextKey === contextKey) return;
+        if (!sessionRevision || !sessionScope.accountId || !active || loadedContextKey === contextKey) return;
         const switchingContext = loadedContextKey !== null;
         loadedContextKey = contextKey;
         untrack(() => {
+            saving = false; deleting = false;
             labels = [];
             editorLayers = [];
             lastSelectedLabelId = null;
@@ -393,6 +417,7 @@
             resetForm({ keepCoordinates: false });
             void refresh({ preserveSelection: false });
         });
+        return () => { ++activationRevision; ++loadRevision; loadedContextKey = null; };
     });
 
     $effect(() => {

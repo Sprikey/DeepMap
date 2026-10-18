@@ -88,8 +88,8 @@ async function resolveLegacyGroupId({ supabase, gameUuid, groupUuid }) {
     return data.id;
 }
 
-/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, legacyGameId: string, category: any }} options */
-export async function createEditorCategory({ supabase, gameUuid, legacyGameId, category }) {
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, legacyGameId: string, category: any, isCurrent?: () => boolean }} options */
+export async function createEditorCategory({ supabase, isCurrent = () => true, gameUuid, legacyGameId, category }) {
     requireUuid(gameUuid);
     if (!isLegacyKey(legacyGameId) || !isLegacyKey(category.id)) throw new Error('CATEGORY_LEGACY_PAYLOAD_REQUIRED');
     const groupId = await resolveLegacyGroupId({ supabase, gameUuid, groupUuid: category.groupUuid });
@@ -98,6 +98,8 @@ export async function createEditorCategory({ supabase, gameUuid, legacyGameId, c
         id: category.id,
         ...normaliseCategoryPayload(category, groupId)
     };
+
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
     const { data, error } = await supabase
         .from('marker_categories')
@@ -110,12 +112,14 @@ export async function createEditorCategory({ supabase, gameUuid, legacyGameId, c
     return data;
 }
 
-/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, categoryUuid: string, category: any }} options */
-export async function updateEditorCategory({ supabase, gameUuid, categoryUuid, category }) {
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, categoryUuid: string, category: any, isCurrent?: () => boolean }} options */
+export async function updateEditorCategory({ supabase, isCurrent = () => true, gameUuid, categoryUuid, category }) {
     requireUuid(gameUuid);
     requireUuid(categoryUuid);
     const groupId = await resolveLegacyGroupId({ supabase, gameUuid, groupUuid: category.groupUuid });
     const payload = normaliseCategoryPayload(category, groupId);
+
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
     const { data, error } = await supabase
         .from('marker_categories')
@@ -211,10 +215,11 @@ export async function loadEditorCategoryGroups({ supabase, gameUuid }) {
     }));
 }
 
-/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, categoryUuid: string }} options */
-export async function deleteEditorCategory({ supabase, gameUuid, categoryUuid }) {
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, categoryUuid: string, isCurrent?: () => boolean }} options */
+export async function deleteEditorCategory({ supabase, isCurrent = () => true, gameUuid, categoryUuid }) {
     requireUuid(gameUuid);
     requireUuid(categoryUuid);
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
     const { count, error: countError } = await supabase
         .from('marcadores')
         .select('id', { count: 'exact', head: true })
@@ -227,6 +232,8 @@ export async function deleteEditorCategory({ supabase, gameUuid, categoryUuid })
     if (count > 0) {
         throw Object.assign(new Error('CATEGORY_IN_USE'), { code: 'CATEGORY_IN_USE', markerCount: count });
     }
+
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
     const { data, error } = await supabase
         .from('marker_categories')

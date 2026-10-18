@@ -1,6 +1,7 @@
 
 <script>
     import { onMount, untrack } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import { getSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
 
@@ -58,11 +59,69 @@
     let communityMarkerPanelRef;
 
 
+    let accessRevision = 0;
+    let mapDataRevision = 0;
+    let mapSessionRevision = 0;
+    const popupEvents = new AbortController();
+    const mapTimers = new Set();
+    const mapFrames = new Set();
+    /** @param {() => void} callback @param {number} delay */
+    function deferMap(callback, delay) {
+        const timer = setTimeout(() => {
+            mapTimers.delete(timer);
+            if (!mapDisposed) callback();
+        }, delay);
+        mapTimers.add(timer);
+    }
+    /** @param {() => void} callback */
+    function frameMap(callback) {
+        const frame = requestAnimationFrame(() => {
+            mapFrames.delete(frame);
+            if (!mapDisposed) callback();
+        });
+        mapFrames.add(frame);
+    }
+    const sessionScope = createSessionScope(() => {
+        ++mapSessionRevision;
+        ++accessRevision;
+        ++mapDataRevision;
+        if (editorMode) toggleEditor();
+        closeCommunityPanel();
+        currentMapUser = null;
+        currentMapRole = 'guest';
+        isEditorAdmin = false;
+        editorAccessChecked = false;
+        locations = []; mapLabels = [];
+        if (map) { renderLocationMarkers(); renderMapLabels(); }
+        const revision = mapSessionRevision;
+        deferMap(() => {
+            if (revision !== mapSessionRevision) return;
+            if (sessionScope.accountId) void loadEditorAccess();
+            else editorAccessChecked = true;
+            if (map) void refreshMapAfterSession();
+        }, 0);
+    });
+    async function refreshMapAfterSession() {
+        try {
+            if (await loadGameMapData()) {
+                renderLocationMarkers(); renderMapLabels();
+            }
+        } catch (error) {
+            if (!mapDisposed) console.warn('DeepMap session map refresh:', error);
+        }
+    }
+
     async function loadEditorAccess() {
+        const ownsSession = sessionScope.capture();
+        const revision = ++accessRevision;
+        const isCurrent = () => !mapDisposed && ownsSession() && revision === accessRevision;
+        if (!isCurrent()) return;
         try {
             const supabase = getSupabaseBrowserClient();
             const { data: userData, error: userError } = await supabase.auth.getUser();
 
+            if (!isCurrent()) return;
+            if (userData.user?.id !== sessionScope.accountId) return;
             currentMapUser = userError ? null : userData.user;
 
             if (userError || !userData.user) {
@@ -73,6 +132,7 @@
 
             const { data: role, error: roleError } = await supabase.rpc('get_deepmap_role');
 
+            if (!isCurrent()) return;
             if (!roleError) {
                 currentMapRole = typeof role === 'string' ? role : 'user';
                 isEditorAdmin = currentMapRole === 'admin';
@@ -82,6 +142,7 @@
 
             // Compatibilidade enquanto a migration de moderadores ainda não foi aplicada.
             const { data: adminStatus, error: adminError } = await supabase.rpc('is_deepmap_admin');
+            if (!isCurrent()) return;
             if (adminError) {
                 console.warn('DeepMap editor access check:', adminError.message);
                 currentMapRole = 'user';
@@ -92,9 +153,11 @@
             currentMapRole = adminStatus === true ? 'admin' : 'user';
             isEditorAdmin = adminStatus === true;
         } catch (error) {
+            if (!isCurrent()) return;
             console.warn('DeepMap editor access check:', error);
             isEditorAdmin = false;
         } finally {
+            if (!isCurrent()) return;
             editorAccessChecked = true;
             if (typeof window !== 'undefined' && isEditorAdmin) {
                 const params = new URLSearchParams(window.location.search);
@@ -122,7 +185,14 @@
             if (communityPanelOpen) closeCommunityPanel();
             closeMobileSidebar();
         };
-        const handleAccountStatusChanged = () => { void loadEditorAccess(); };
+        const handleAccountStatusChanged = () => {
+            ++accessRevision;
+            if (editorMode) toggleEditor();
+            closeCommunityPanel();
+            isEditorAdmin = false; currentMapRole = 'guest'; editorAccessChecked = false;
+            void loadEditorAccess();
+        };
+        const stopSession = sessionScope.start(getSupabaseBrowserClient());
         syncMobileLayout();
         media.addEventListener?.('change', syncMobileLayout);
         document.addEventListener('pointerdown', handleEditorOutsidePointer);
@@ -137,6 +207,13 @@
             mapDisposed = true;
             if (map) map.remove();
             map = null;
+            stopSession();
+            popupEvents.abort();
+            ++accessRevision; ++mapDataRevision;
+            for (const timer of mapTimers) clearTimeout(timer);
+            mapTimers.clear();
+            for (const frame of mapFrames) cancelAnimationFrame(frame);
+            mapFrames.clear();
         };
     });
 
@@ -234,21 +311,31 @@
     }
 
     async function loadGameMapData() {
+        const revision = ++mapDataRevision;
+        const session = mapSessionRevision;
         const supabase = getSupabaseBrowserClient();
         // All public reads use DB UUIDs; legacyGameId is only a writer compatibility adapter.
-        const data = await loadDeepMapGameDataWithUuidLayers({
-            supabase,
-            gameUuid: gameContext.gameUuid,
-            gameMapUuid: gameContext.gameMapUuid,
-            legacyGameId,
-            fallback: {
-                mapDefinitions: { ...fallbackMapDefinitions },
-                categoryGroups: [...fallbackCategoryGroups],
-                categories: { ...fallbackCategories },
-                locations: [...fallbackLocations],
-                mapLabels: [...config.fallback.mapLabels]
-            }
-        });
+        const isCurrent = () => !mapDisposed && revision === mapDataRevision && session === mapSessionRevision;
+        let data;
+        try {
+            data = await loadDeepMapGameDataWithUuidLayers({
+                supabase,
+                gameUuid: gameContext.gameUuid,
+                gameMapUuid: gameContext.gameMapUuid,
+                legacyGameId,
+                fallback: {
+                    mapDefinitions: { ...fallbackMapDefinitions },
+                    categoryGroups: [...fallbackCategoryGroups],
+                    categories: { ...fallbackCategories },
+                    locations: [...fallbackLocations],
+                    mapLabels: [...config.fallback.mapLabels]
+                }
+            });
+        } catch (error) {
+            if (!isCurrent()) return false;
+            throw error;
+        }
+        if (!isCurrent()) return false;
 
         // Renderer default is a layer key, never a DB game_map UUID.
         const initialLayer = data.mapDefinitions[defaultLayerKey];
@@ -265,6 +352,7 @@
         syncCategoryVisibility();
 
         console.info('DeepMap map data sources:', data.sources);
+        return true;
     }
 
     function setCategoryVisibility(categoryId, visible) {
@@ -648,7 +736,8 @@
     function setupPopupMedia(marker) {
         const popupElement = marker?.getPopup?.()?.getElement?.();
         const mediaRoot = popupElement?.querySelector('.deepmap-popup-media');
-        if (!mediaRoot) return;
+        if (!mediaRoot || mediaRoot.dataset.mediaReady === 'true') return;
+        mediaRoot.dataset.mediaReady = 'true';
 
         const slides = [...mediaRoot.querySelectorAll('.deepmap-popup-media-slide')];
         if (slides.length <= 1) return;
@@ -669,7 +758,7 @@
             // Não usar popup.update() aqui: quando o conteúdo do popup é uma
             // string, o Leaflet volta a escrever o innerHTML e destrói os
             // handlers das setas. Basta reajustar a posição após a troca.
-            requestAnimationFrame(() => ensurePopupInsideMap(marker));
+            frameMap(() => ensurePopupInsideMap(marker));
         }
 
         if (previous) previous.onclick = (event) => {
@@ -702,7 +791,7 @@
         // o DOM para manter a galeria clicável.
         mediaRoot.querySelectorAll('img').forEach((image) => {
             if (!image.complete) {
-                image.addEventListener('load', () => ensurePopupInsideMap(marker), { once: true });
+                image.addEventListener('load', () => ensurePopupInsideMap(marker), { once: true, signal: popupEvents.signal });
             }
         });
 
@@ -720,14 +809,14 @@
             event.stopPropagation();
             marker.closePopup();
             openCommunityCorrection(location);
-        });
+        }, { signal: popupEvents.signal });
     }
 
 
     function ensurePopupInsideMap(marker) {
         if (!map || !mapContainer || !marker) return;
 
-        requestAnimationFrame(() => {
+        frameMap(() => {
             const popupElement = marker?.getPopup?.()?.getElement?.();
             if (!popupElement || !map?.hasLayer?.(marker)) return;
 
@@ -1229,7 +1318,9 @@
     }
 
     async function handleEditorDataChanged(event) {
-        await loadGameMapData();
+        const ownsSession = sessionScope.capture();
+        if (!ownsSession() || !isEditorAdmin) return;
+        if (!await loadGameMapData() || !ownsSession() || !isEditorAdmin) return;
         renderLocationMarkers();
         renderMapLabels();
 
@@ -1486,7 +1577,7 @@
         if (!location || !marker) return false;
         if (location.mapLayer && location.mapLayer !== activeMapLayer) setActiveMapLayer(location.mapLayer);
         map.setView(location.coordinates, Math.max(map.getZoom(), -1), { animate: true });
-        setTimeout(() => {
+        deferMap(() => {
             if (generation !== communityMarkerFocusGeneration || gameContext.gameUuid !== contextGame
                 || gameContext.gameMapUuid !== contextMap || communityRequestRevision !== revision
                 || communityFocusSubmissionId !== focus || locationMarkersById.get(key) !== marker) return;
@@ -1522,7 +1613,13 @@
        INICIALIZAÇÃO DO MAPA
        ========================================== */
 
-    onMount(async () => {
+    onMount(() => {
+        void initialiseMap().catch((error) => {
+            if (!mapDisposed) console.error('DeepMap map bootstrap:', error);
+        });
+    });
+
+    async function initialiseMap() {
         // The UUID-native server context gates bootstrap; legacy payloads stay separate.
         if (!gameContext?.gameUuid || !gameContext?.gameMapUuid) {
             throw new Error('Public game context unavailable.');
@@ -1534,16 +1631,16 @@
         // Falha fechada: sem sessão/RPC/admin, o Editor nem sequer aparece.
         void loadEditorAccess();
 
-        // Layers/taxonomy/markers/labels/attribution require UUID-owned DB rows.
-        await loadGameMapData();
-        if (mapDisposed) return;
-
-        if (!activeLayerUuid) throw new Error('Active layer UUID unavailable.');
-
         const L = await import('leaflet');
 
         await import('leaflet/dist/leaflet.css');
         if (mapDisposed) return;
+
+        // Layers/taxonomy/markers/labels/attribution require UUID-owned DB rows.
+        while (!mapDisposed && !await loadGameMapData()) { /* Retry only after an invalidated bootstrap. */ }
+        if (mapDisposed) return;
+
+        if (!activeLayerUuid) throw new Error('Active layer UUID unavailable.');
 
         Leaflet = L;
 
@@ -1604,8 +1701,8 @@
         handleContributionDeepLink();
 
         const { markerId: deepLinkMarkerId, reviewX: deepLinkReviewX, reviewY: deepLinkReviewY } = getMapDeepLinkParams();
-        if (deepLinkReviewX !== null && deepLinkReviewY !== null) setTimeout(() => openReviewCoordinateDeepLink(), 120);
-        else if (deepLinkMarkerId) setTimeout(() => openMarkerDeepLink(deepLinkMarkerId), 120);
+        if (deepLinkReviewX !== null && deepLinkReviewY !== null) deferMap(() => openReviewCoordinateDeepLink(), 120);
+        else if (deepLinkMarkerId) deferMap(() => openMarkerDeepLink(deepLinkMarkerId), 120);
 
 
         /* CLIQUE NO MAPA — EDITOR */
@@ -1657,17 +1754,18 @@
         });
 
         mapImageOverlay.on('load', () => {
-            map.fitBounds(bounds);
+            if (!mapDisposed && map) map.fitBounds(bounds);
         });
 
         map.fitBounds(bounds);
 
-        setTimeout(() => {
+        deferMap(() => {
             if (map) {
                 map.invalidateSize();
             }
         }, 250);
-    });
+    }
+
 </script>
 
 

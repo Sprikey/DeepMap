@@ -1,5 +1,6 @@
 <script>
-    import { untrack } from 'svelte';
+    import { onMount, untrack } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import {
         createEditorCategory,
@@ -17,6 +18,15 @@
         standalone = false,
         onChanged = async () => {}
     } = $props();
+
+    let sessionRevision = $state(0);
+    let activationRevision = 0;
+    const sessionScope = createSessionScope(() => {
+        ++sessionRevision;
+        adminCategories = []; adminGroups = []; editorDataReady = false; loadingCategories = false; saving = false; deleting = false;
+        errorMessage = ''; successMessage = '';
+    });
+    onMount(() => sessionScope.start(getSupabaseBrowserClient()));
 
     const TEXT = {
         en: {
@@ -212,7 +222,9 @@
         clearMessages();
     }
 
+    let categoryContext = $derived(JSON.stringify([gameUuid, sessionRevision]));
     async function refreshCategories() {
+        const ownsSession = sessionScope.capture();
         const requestedGameUuid = gameUuid;
         const revision = ++categoryLoadRevision;
         editorDataReady = false;
@@ -223,7 +235,7 @@
                 loadEditorCategories({ supabase, gameUuid: requestedGameUuid }),
                 loadEditorCategoryGroups({ supabase, gameUuid: requestedGameUuid })
             ]);
-            if (revision !== categoryLoadRevision || requestedGameUuid !== gameUuid) return false;
+            if (!ownsSession() || !expanded || revision !== categoryLoadRevision || requestedGameUuid !== gameUuid) return false;
             for (const category of nextCategories) {
                 if (category.groupUuid === null) continue;
                 const group = nextGroups.find((item) => item.groupUuid === category.groupUuid);
@@ -240,8 +252,9 @@
             editorDataReady = true;
             return true;
         } catch (error) {
+            if (!ownsSession() || !expanded || revision !== categoryLoadRevision || requestedGameUuid !== gameUuid) return false;
             console.error('DeepMap category editor load:', error);
-            if (revision === categoryLoadRevision && requestedGameUuid === gameUuid) {
+            if (ownsSession() && expanded && revision === categoryLoadRevision && requestedGameUuid === gameUuid) {
                 adminCategories = [];
                 adminGroups = [];
                 activeGroupUuid = '';
@@ -250,7 +263,7 @@
             }
             return false;
         } finally {
-            if (revision === categoryLoadRevision) loadingCategories = false;
+            if (ownsSession() && expanded && revision === categoryLoadRevision) loadingCategories = false;
         }
     }
 
@@ -304,7 +317,7 @@
     }
 
     async function saveCategory() {
-        if (saving || deleting || !editorDataReady || loadingCategories) return;
+        if (!sessionScope.capture()() || saving || deleting || !editorDataReady || loadingCategories) return;
         clearMessages();
         maybeCreateId();
 
@@ -316,6 +329,10 @@
 
         saving = true;
         const mutationGameUuid = gameUuid;
+        const ownsSession = sessionScope.capture();
+        const activation = activationRevision;
+        const isCurrent = () => ownsSession() && expanded && mutationGameUuid === gameUuid && activation === activationRevision;
+        if (!isCurrent()) return;
         try {
             const category = {
                 id: categoryId,
@@ -337,25 +354,28 @@
                     supabase: getSupabaseBrowserClient(),
                     gameUuid: mutationGameUuid,
                     legacyGameId,
-                    category
+                    category,
+                    isCurrent
                 })
                 : await updateEditorCategory({
                     supabase: getSupabaseBrowserClient(),
                     gameUuid: mutationGameUuid,
                     categoryUuid: selectedCategoryUuid,
-                    category
+                    category,
+                    isCurrent
                 });
-            if (mutationGameUuid !== gameUuid) return;
+            if (!isCurrent()) return;
             selectedCategoryUuid = saved.category_uuid;
             const refreshed = await refreshCategories();
-            if (mutationGameUuid !== gameUuid) return;
+            if (!isCurrent()) return;
             await onChanged({ action: 'category-save', categoryId: category.id });
-            if (refreshed) successMessage = t.saved;
+            if (isCurrent() && refreshed) successMessage = t.saved;
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap category editor save:', error);
             errorMessage = error?.code === '23505' ? t.duplicate : t.saveError;
         } finally {
-            saving = false;
+            if (isCurrent()) saving = false;
         }
     }
 
@@ -365,6 +385,10 @@
 
         deleting = true;
         const mutationGameUuid = gameUuid;
+        const ownsSession = sessionScope.capture();
+        const activation = activationRevision;
+        const isCurrent = () => ownsSession() && expanded && mutationGameUuid === gameUuid && activation === activationRevision;
+        if (!isCurrent()) return;
         clearMessages();
 
         try {
@@ -372,21 +396,23 @@
             await deleteEditorCategory({
                 supabase: getSupabaseBrowserClient(),
                 gameUuid: mutationGameUuid,
-                categoryUuid: selectedCategoryUuid
+                categoryUuid: selectedCategoryUuid,
+                isCurrent
             });
-            if (mutationGameUuid !== gameUuid) return;
+            if (!isCurrent()) return;
             resetForm();
             const refreshed = await refreshCategories();
-            if (mutationGameUuid !== gameUuid) return;
+            if (!isCurrent()) return;
             await onChanged({ action: 'category-delete', categoryId: deletedId });
-            if (refreshed) successMessage = t.deleted;
+            if (isCurrent() && refreshed) successMessage = t.deleted;
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap category editor delete:', error);
             errorMessage = error?.code === 'CATEGORY_IN_USE' || error?.code === '23503'
                 ? t.categoryInUse
                 : t.deleteError;
         } finally {
-            deleting = false;
+            if (isCurrent()) deleting = false;
         }
     }
 
@@ -395,15 +421,17 @@
     });
 
     $effect(() => {
-        if (!expanded || loadedGameUuid === gameUuid) return;
-        loadedGameUuid = gameUuid;
+        if (!sessionRevision || !sessionScope.accountId || !expanded || loadedGameUuid === categoryContext) return;
+        loadedGameUuid = categoryContext;
         untrack(() => {
+            saving = false; deleting = false;
             adminCategories = [];
             adminGroups = [];
             activeGroupUuid = '';
             resetForm();
             void refreshCategories();
         });
+        return () => { ++activationRevision; ++categoryLoadRevision; loadedGameUuid = null; };
     });
 
     $effect(() => {

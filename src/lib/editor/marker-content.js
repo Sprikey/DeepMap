@@ -71,8 +71,11 @@ export async function loadEditorMarkerContent({ supabase, markerId }) {
     });
 }
 
-export async function replaceEditorMarkerContent({ supabase, markerId, items = [] }) {
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, markerId: string | number, items?: any[], isCurrent?: () => boolean }} options */
+export async function replaceEditorMarkerContent({ supabase, isCurrent = () => true, markerId, items = [] }) {
     const normalised = normaliseMarkerContentItems(items);
+
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
     const { data: existingSections, error: existingError } = await supabase
         .from('marker_sections')
@@ -86,6 +89,7 @@ export async function replaceEditorMarkerContent({ supabase, markerId, items = [
         .map((section) => section.id);
 
     if (quickSectionIds.length) {
+        if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
         const { error: deleteError } = await supabase
             .from('marker_sections')
             .delete()
@@ -99,6 +103,8 @@ export async function replaceEditorMarkerContent({ supabase, markerId, items = [
     for (let index = 0; index < normalised.length; index += 1) {
         const item = normalised[index];
         const definition = MARKER_CONTENT_TYPES.find((type) => type.id === item.type);
+
+        if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
         const { data: section, error: sectionError } = await supabase
             .from('marker_sections')
@@ -115,6 +121,8 @@ export async function replaceEditorMarkerContent({ supabase, markerId, items = [
             .single();
 
         if (sectionError) throw sectionError;
+
+        if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
         const { error: rowError } = await supabase
             .from('marker_section_rows')
