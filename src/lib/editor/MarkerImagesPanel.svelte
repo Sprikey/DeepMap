@@ -93,7 +93,6 @@
     let errorMessage = $state('');
     let source = $state('external');
     let imageRef = $state('');
-    let loadedMarkerId = null;
 
     let previewUrl = $derived(resolveMarkerImageUrl({ source, imageRef: imageRef.trim() }));
 
@@ -104,7 +103,6 @@
         if (!markerId) {
             images = [];
             onImagesChange([]);
-            loadedMarkerId = null;
             return;
         }
         if (!isCurrent()) return;
@@ -118,7 +116,6 @@
             });
             if (!currentRead()) return;
             images = next;
-            loadedMarkerId = markerId;
             onImagesChange(images);
         } catch (error) {
             if (!currentRead()) return;
@@ -271,7 +268,6 @@
         untrack(() => {
             ++contextRevision;
             images = []; loading = false; working = false; errorMessage = '';
-            loadedMarkerId = null;
             resetNewImage();
             onImagesChange([]);
             if (session && target && sessionScope.accountId) void refresh();

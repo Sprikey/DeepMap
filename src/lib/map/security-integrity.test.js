@@ -26,8 +26,7 @@ function database(responses) {
         return builder;
     }};
 }
-/** @param {any} db */
-function attachments(db) {
+function attachments() {
     return runInNewContext(mapSource + '\n({images:attachMarkerImages,content:attachMarkerContent})', {
         bigintIdKey:markerIdKey, console:{warn(){}}
     });
@@ -39,7 +38,7 @@ test('public attachments retain adjacent BIGINT marker and section identities', 
         marker_sections:[{id:first,marker_id:first,section_type:'note'}, {id:second,marker_id:second,section_type:'item'}],
         marker_section_rows:[{id:1,section_id:first,text_en:'A'}, {id:2,section_id:second,text_en:'B'}]
     });
-    const api=attachments(db), locations=[{databaseId:first},{databaseId:second}];
+    const api=attachments(), locations=[{databaseId:first},{databaseId:second}];
     const images=await api.images({supabase:db,locations});
     assert.equal(images[0].images[0].url,'https://example.test/a');
     assert.equal(images[1].images[0].url,'https://example.test/b');
@@ -49,19 +48,19 @@ test('public attachments retain adjacent BIGINT marker and section identities', 
 });
 test('numeric safe marker IDs match string foreign keys without coercion loss',async()=>{
     const db=database({marker_images:[{id:1,marker_id:'7',source:'static',image_ref:'/a.png'}]});
-    const result=await attachments(db).images({supabase:db,locations:[{databaseId:7}]});
+    const result=await attachments().images({supabase:db,locations:[{databaseId:7}]});
     assert.equal(result[0].images[0].url,'/a.png');
     assert.deepEqual(Array.from(db.calls[0].ids),['7']);
 });
 for(const kind of ['images','content']) test('public '+kind+' rejects an unrelated marker response',async()=>{
     const db=database({marker_images:[{id:1,marker_id:'8'}],marker_sections:[{id:1,marker_id:'8'}]});
     const locations=[{databaseId:'7'}];
-    assert.equal(await attachments(db)[kind]({supabase:db,locations}),locations);
+    assert.equal(await attachments()[kind]({supabase:db,locations}),locations);
 });
 test('public content rejects a row from an unrequested section',async()=>{
     const db=database({marker_sections:[{id:'7',marker_id:'1'}],marker_section_rows:[{section_id:'8',text_en:'wrong'}]});
     const locations=[{databaseId:'1'}];
-    assert.equal(await attachments(db).content({supabase:db,locations}),locations);
+    assert.equal(await attachments().content({supabase:db,locations}),locations);
 });
 test('editor quick content retains adjacent BIGINT section identities',async()=>{
     const db=database({

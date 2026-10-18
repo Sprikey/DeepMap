@@ -1,20 +1,6 @@
-/* ==========================================
-   DEEPMAP — MAP DATA SOURCE
-   ==========================================
-
-   Loader genérico para qualquer jogo/mapa.
-
-   O mapa fornece gameUuid para layers/taxonomy/markers/labels/attribution,
-   e gameMapUuid para layers. A entrada antiga continua disponível
-   para a moderação, que ainda não transporta contexto UUID.
-   Também fornece:
-   - cliente Supabase
-   - dados legacy de fallback durante a migração
-
-   O objetivo é o Editor/Mapa não depender de ficheiros específicos
-   de um jogo. Quando a migração para a BD estiver concluída, o fallback
-   pode ser desligado/removido sem alterar o formato consumido pelo mapa.
-*/
+/* DeepMap map data: UUID-scoped database loader shared by game renderers.
+ * Static renderer data is not merged into database-owned collections.
+ */
 
 import { markerIdKey as bigintIdKey } from '../editor/marker-editor.js';
 
@@ -147,45 +133,6 @@ function normaliseMapLabel(row) {
         uppercase: row.uppercase !== false,
         isPublished: row.is_published === true
     };
-}
-
-function mergeKeyedObjects(fallbackValue, databaseValue) {
-    return { ...(fallbackValue ?? {}), ...(databaseValue ?? {}) };
-}
-
-function mergeArraysById(fallbackValue, databaseValue) {
-    const merged = new Map();
-    for (const item of fallbackValue ?? []) merged.set(item.id, item);
-    for (const item of databaseValue ?? []) merged.set(item.id, item);
-    return [...merged.values()].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-}
-
-async function queryWithMigrationFallback({ query, fallbackValue, transform, merge, label }) {
-    try {
-        const { data, error } = await query;
-        if (error) throw error;
-
-        if (!data?.length) {
-            return { value: fallbackValue, source: 'fallback-empty' };
-        }
-
-        const databaseValue = transform(data);
-        return {
-            value: merge(fallbackValue, databaseValue),
-            source: 'supabase+fallback'
-        };
-    } catch (error) {
-        console.warn(`DeepMap map data (${label}):`, error?.message ?? error);
-        return { value: fallbackValue, source: 'fallback-error' };
-    }
-}
-
-/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameId: string, locations: any[] }} options */
-function loadLegacyPublicMarkerAttribution({ supabase, gameId, locations }) {
-    return attachPublicMarkerAttribution({
-        query: () => supabase.rpc('get_public_marker_attribution', { p_game_id: gameId }),
-        locations
-    });
 }
 
 /** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, locations: any[] }} options */
@@ -530,7 +477,7 @@ async function loadUuidMapLabels({ supabase, gameUuid, layersPromise }) {
 // Public path: UUID layers/taxonomy/markers/labels/attribution.
 // legacyGameId remains an unused compatibility argument for existing callers.
 /** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, gameUuid: string, gameMapUuid: string, legacyGameId: string, fallback: any }} options */
-export async function loadDeepMapGameDataWithUuidLayers({ supabase, gameUuid, gameMapUuid, legacyGameId, fallback }) {
+export async function loadDeepMapGameDataWithUuidLayers({ supabase, gameUuid, gameMapUuid }) {
     const layersPromise = loadUuidLayers({ supabase, gameUuid, gameMapUuid });
     const categoriesPromise = loadUuidCategories({ supabase, gameUuid });
     return loadGameData({
@@ -541,100 +488,6 @@ export async function loadDeepMapGameDataWithUuidLayers({ supabase, gameUuid, ga
         categoriesPromise,
         markersPromise: loadUuidMarkers({ supabase, gameUuid, layersPromise, categoriesPromise }),
         labelsPromise: loadUuidMapLabels({ supabase, gameUuid, layersPromise })
-    });
-}
-
-// Compatibility entry for the unchanged moderation consumer.
-export async function loadDeepMapGameData({ supabase, gameId, fallback }) {
-    const layersPromise = queryWithMigrationFallback({
-        query: supabase
-            .from('map_layers')
-            .select('id, name_en, name_pt, image_source, image_ref, width, height, sort_order')
-            .eq('game_id', gameId)
-            .eq('is_active', true)
-            .order('sort_order', { ascending: true }),
-        fallbackValue: fallback.mapDefinitions,
-        transform: (rows) => keyedObject(rows, normaliseLayer),
-        merge: mergeKeyedObjects,
-        label: 'layers'
-    });
-
-    const groupsPromise = queryWithMigrationFallback({
-        query: supabase
-            .from('marker_category_groups')
-            .select('id, name_en, name_pt, sort_order')
-            .eq('game_id', gameId)
-            .eq('is_active', true)
-            .order('sort_order', { ascending: true }),
-        fallbackValue: fallback.categoryGroups,
-        transform: (rows) => rows.map(normaliseGroup),
-        merge: mergeArraysById,
-        label: 'category groups'
-    });
-
-    const categoriesPromise = queryWithMigrationFallback({
-        query: supabase
-            .from('marker_categories')
-            .select('id, group_id, name_en, name_pt, icon_source, icon_ref, color, marker_width, marker_height, symbol_size, sort_order')
-            .eq('game_id', gameId)
-            .eq('is_active', true)
-            .order('sort_order', { ascending: true }),
-        fallbackValue: fallback.categories,
-        transform: (rows) => keyedObject(rows, normaliseCategory),
-        merge: mergeKeyedObjects,
-        label: 'categories'
-    });
-
-    const markersPromise = queryWithMigrationFallback({
-        query: supabase
-            .from('marcadores')
-            .select(`
-                id,
-                map_layer,
-                slug,
-                category_id,
-                region_id,
-                title_en,
-                title_pt,
-                coordinate_x,
-                coordinate_y,
-                description_en,
-                description_pt,
-                video_url,
-                color_override,
-                icon_source_override,
-                icon_ref_override,
-                marker_width_override,
-                marker_height_override,
-                symbol_size_override,
-                is_published
-            `)
-            .eq('game_id', gameId)
-            .eq('is_published', true)
-            .order('id', { ascending: true }),
-        fallbackValue: fallback.locations,
-        transform: (rows) => rows.map(normaliseMarker),
-        merge: mergeArraysById,
-        label: 'markers'
-    });
-
-    const labelsPromise = queryWithMigrationFallback({
-        query: supabase
-            .from('map_labels')
-            .select('id, map_layer, slug, text_en, text_pt, coordinate_x, coordinate_y, font_size, font_weight, color, opacity, uppercase, is_published')
-            .eq('game_id', gameId)
-            .eq('is_published', true)
-            .order('id', { ascending: true }),
-        fallbackValue: fallback.mapLabels ?? [],
-        transform: (rows) => rows.map(normaliseMapLabel),
-        merge: mergeArraysById,
-        label: 'map labels'
-    });
-
-    return loadGameData({
-        supabase,
-        attachAttribution: (locations) => loadLegacyPublicMarkerAttribution({ supabase, gameId, locations }),
-        layersPromise, groupsPromise, categoriesPromise, markersPromise, labelsPromise
     });
 }
 

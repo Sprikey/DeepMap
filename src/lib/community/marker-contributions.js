@@ -53,19 +53,6 @@ function submissionDetails(row) {
     };
 }
 
-export async function loadMarkerSubmissions({ supabase, gameId, scope = 'mine' }) {
-    const { data, error } = await supabase.rpc('get_marker_submissions', {
-        p_game_id: gameId,
-        p_scope: scope
-    });
-
-    if (error) throw error;
-    return (data ?? []).map(normaliseSubmission);
-}
-
-
-
-
 /** @param {{supabase: any, gameUuid: string, limit?: number, offset?: number}} options */
 export async function loadMyMarkerSubmissionsPage({
     supabase,
