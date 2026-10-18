@@ -11,203 +11,231 @@
     });
 
     const content = {
-        en: {
-            title: 'Terms of Use',
-            description: 'The rules for using DeepMap, your account and the platform.',
-            language: 'Language',
-            eyebrow: 'FAIR PLAY',
-            subtitle: 'Explore freely. Respect the journey.',
-            updated: 'Last updated: 30 September 2026',
-            intro: 'These Terms explain the rules for accessing and using DeepMap. By creating an account or using the platform, you agree to these Terms and to our Privacy Policy.',
-            contactLabel: 'Contact',
-            asideTitle: 'DeepMap account',
-            aside: 'Keep your login details secure and use the platform responsibly. Your account is personal to you and you are responsible for activity carried out through it.',
-            privacyLabel: 'Privacy Policy',
-            sections: [
+        "en": {
+            "title": "Terms of Use",
+            "description": "Rules for using DeepMap maps, accounts, profiles and community contributions.",
+            "language": "Language",
+            "eyebrow": "FAIR PLAY",
+            "subtitle": "Explore freely. Respect the journey.",
+            "updated": "Last updated: 18 October 2026",
+            "intro": "These Terms govern access to DeepMap and its available features. Read them before creating an account or submitting content. The Privacy Policy separately explains data processing; it is not a request for blanket consent.",
+            "contactLabel": "Contact",
+            "asideTitle": "DeepMap account",
+            "aside": "Protect your credentials and report suspected unauthorised access. Use your account responsibly and submit only content you have the right to share.",
+            "privacyLabel": "Privacy Policy",
+            "sections": [
                 {
-                    title: 'About DeepMap',
-                    paragraphs: [
-                        'DeepMap (deepmap.cc) is an independent platform operated by Rafael Silva in Portugal. It provides interactive gaming maps, profile features and other tools intended to help players explore games and communities.',
-                        'DeepMap is not affiliated with, endorsed by or sponsored by the publishers, developers or trademark owners of the games represented on the platform unless expressly stated.'
+                    "title": "The DeepMap service",
+                    "paragraphs": [
+                        "DeepMap (deepmap.cc), operated by Rafael Silva in Portugal, is an independent platform for video-game maps, exploration and content, with accounts, profiles and community contributions. Available features may differ between games. Administration and moderation tools are reserved for authorised people.",
+                        "DeepMap is not affiliated with, sponsored by or endorsed by the publishers, developers or trademark owners of the games shown unless expressly stated."
                     ]
                 },
                 {
-                    title: 'Using the platform',
-                    paragraphs: [
-                        'You may use DeepMap for personal, lawful purposes. You must not misuse the platform, attempt to disrupt its operation, bypass security controls, scrape or automate access in a way that harms the service, or use it to infringe the rights of others.',
-                        'You must comply with applicable law and with any additional rules shown for specific features.'
+                    "title": "Accounts, capacity and security",
+                    "paragraphs": [
+                        "Some features require an email/password or Google account sign-in. Provide necessary information accurately, protect your email and credentials and report suspected unauthorised access to contact@deepmap.cc. Do not share credentials, impersonate others or bypass access restrictions.",
+                        "You must have legal capacity to accept these Terms. If you are a minor, obtain your legal representative’s permission or involvement as required by applicable law. The Privacy Policy explains children’s data-consent rules; these do not establish a universal age for entering contracts. The platform does not automatically verify age."
                     ]
                 },
                 {
-                    title: 'Accounts',
-                    paragraphs: [
-                        'Some features require an account. You must provide accurate information where required and keep access to your account secure. Do not share credentials or deliberately allow another person to impersonate you.',
-                        'We may restrict, suspend or remove access where reasonably necessary to protect the platform, other users, legal rights or security, including in cases of abuse, fraud, repeated rule violations or technical misuse.'
+                    "title": "Usernames and profiles",
+                    "paragraphs": [
+                        "A username may initially be generated and is subject to the format, availability and change rules shown in your account. Do not use unlawful, abusive, misleading or infringing names, avatars or biographies.",
+                        "Profile visibility controls its details, but the username and active avatar can remain public for a private profile. Approved contributions and authorship attribution do not become private through that choice. The authentication email is not a public profile field."
                     ]
                 },
                 {
-                    title: 'Profiles and public information',
-                    paragraphs: [
-                        'If you choose a public profile, the profile information you make public may be visible to other visitors and accessible through a shareable link. You are responsible for the information you choose to publish.',
-                        'Do not use names, images, biographies or other profile content that is unlawful, abusive, deceptive, infringes third-party rights or impersonates another person or organisation.'
+                    "title": "Acceptable use",
+                    "paragraphs": [
+                        "Use the service lawfully and respectfully. Do not publish illegal content, threats, harassment, discrimination, other people’s personal data without a lawful basis, spam, malware or material infringing copyright or image rights.",
+                        "Do not manipulate submissions or identities to deceive moderation, exploit vulnerabilities or evade suspensions. Do not automate access or extract data in a way that harms security, availability or third-party rights. This rule does not override uses permitted by law."
                     ]
                 },
                 {
-                    title: 'Maps, locations and accuracy',
-                    paragraphs: [
-                        'DeepMap aims to provide useful map information, but map positions, descriptions, collectibles, routes and other game information may be incomplete, outdated or inaccurate.',
-                        'You remain responsible for how you use information from the platform. DeepMap does not guarantee that every marker, coordinate, route or description will match a particular game version, patch, platform or playthrough.'
+                    "title": "Submissions and responsibility for content",
+                    "paragraphs": [
+                        "Available features let you propose new markers and corrections, including text, in-game coordinates and image/video references. You can flag an image through the correction workflow. The available options determine what you can submit, edit or cancel; contributing does not give you direct access to edit the published map.",
+                        "You are responsible for having the necessary rights, permissions and lawful basis for what you submit, including avatars and external resources you reference. Do not submit third-party material without permission or another legally permitted use, or unnecessary personal information. A public URL does not mean its content can be freely reused."
                     ]
                 },
                 {
-                    title: 'Intellectual property',
-                    paragraphs: [
-                        'The DeepMap name, branding, interface, original graphics, platform code and original content are protected by applicable intellectual-property law.',
-                        'Game names, logos, screenshots, artwork, characters and other third-party material remain the property of their respective owners. Their appearance on DeepMap does not transfer ownership to DeepMap.',
-                        'You may not copy, republish, sell, reverse engineer or commercially exploit substantial parts of DeepMap without permission, except where applicable law expressly permits it.'
+                    "title": "Contribution rights and licence",
+                    "paragraphs": [
+                        "You retain the rights you actually hold in your content. By submitting it, you grant DeepMap a non-exclusive, royalty-free, worldwide licence to host, reproduce, display and communicate it on the platform, integrate it into maps, format, translate and technically adapt, correct and moderate it as needed to provide the service. This includes providers acting on our behalf only for those purposes, not a general permission for exploitation unrelated to DeepMap.",
+                        "The licence lasts while the content is lawfully retained in the service. Account deletion does not automatically withdraw content already integrated into maps. The licence does not replace third-party rights, grant rights you do not hold or limit erasure rights or other legal protections. Authorship may be shown as described in the Privacy Policy."
                     ]
                 },
                 {
-                    title: 'Availability and changes',
-                    paragraphs: [
-                        'DeepMap is under active development. Features may change, be added, removed, limited or temporarily unavailable. We may perform maintenance or make technical changes where necessary.',
-                        'We do not promise uninterrupted or error-free availability. Where practical, significant changes affecting users will be communicated through the platform or other appropriate channels.'
+                    "title": "Moderation and reporting problems",
+                    "paragraphs": [
+                        "Authorised staff may review, approve, reject or correct submissions and remove or restrict content for legality, security, third-party rights, quality or compliance with these Terms. Versions and decisions may be retained. Moderator submissions may be approved automatically; we do not promise prior human review of all content.",
+                        "Publication or continued availability of a submission is not guaranteed. To report illegal content, rights infringement or another problem, email contact@deepmap.cc with the URL or marker, reasons and enough information for assessment. You can also request reconsideration through the same contact."
                     ]
                 },
                 {
-                    title: 'External services and links',
-                    paragraphs: [
-                        'DeepMap relies on third-party services for parts of its operation and may link to external websites or services. Those third parties operate under their own terms and privacy practices.',
-                        'DeepMap is not responsible for the content, availability or practices of external services that it does not control.'
+                    "title": "Suspensions and restrictions",
+                    "paragraphs": [
+                        "We may restrict interactions, suspend accounts or withdraw permissions where necessary and proportionate to address violations, abuse, security risks or legal duties. An interaction suspension does not necessarily prevent access to public pages.",
+                        "Where applicable, we communicate the reason and duration through account features or another appropriate channel, unless legal or security restrictions prevent it. You can contact us to ask about or contest a measure. These rules do not remove applicable legal safeguards."
                     ]
                 },
                 {
-                    title: 'Liability',
-                    paragraphs: [
-                        'Nothing in these Terms excludes or limits liability where doing so would be unlawful. Subject to mandatory law, DeepMap is provided on an as-available basis and is not responsible for indirect losses caused by reliance on optional map information, temporary outages or third-party services beyond our reasonable control.',
-                        'These Terms do not affect any rights you may have under mandatory consumer or data-protection law.'
+                    "title": "Account deletion and retention",
+                    "paragraphs": [
+                        "You can request deletion at contact@deepmap.cc. There is currently no automatic deletion button; proportionate identity verification may be needed. Signing out or making a profile private does not delete the account.",
+                        "The account/profile are distinct from markers, incorporated contributions, versions and moderation/audit history. These may be lawfully retained without a public link to an existing profile; some historical identifiers may remain internally. We separately assess personal data, avatars, other related records and erasure requests. We do not promise automatic complete anonymisation or deletion of all external copies."
                     ]
                 },
                 {
-                    title: 'Future community features',
-                    paragraphs: [
-                        'DeepMap may later introduce comments, community contributions, moderation tools, donations, premium features or other interactive services. Additional rules may apply to those features before they are made available.',
-                        'Until such features are launched, these Terms do not grant users a right to publish markers, edit official maps or access administrative tools.'
+                    "title": "Maps and intellectual property",
+                    "paragraphs": [
+                        "Maps and content may be incomplete, inaccurate or outdated and vary by game version, update, platform or playthrough. We do not guarantee completeness or fitness for a particular purpose, without affecting legally required guarantees.",
+                        "DeepMap’s branding, interface, code, graphics and original content are protected as provided by law and applicable licences. Game names, trademarks, images, characters and other game materials belong to their respective owners. Contributions remain subject to their authors’ rights. Displaying such material does not transfer ownership to DeepMap.",
+                        "Do not reuse protected parts of the service without permission or a lawful basis. Statutory exceptions and rights granted by licences for third-party components or materials remain available."
                     ]
                 },
                 {
-                    title: 'Changes to these Terms',
-                    paragraphs: [
-                        'We may update these Terms as DeepMap evolves. The latest version and its update date will be published on this page. Where required, material changes will be communicated before they take effect.'
+                    "title": "External services",
+                    "paragraphs": [
+                        "Authentication, hosting and other components rely on providers. External links, images and videos may cause your browser to contact third parties under their own rules, as explained in the Privacy Policy.",
+                        "We do not control external sites’ content or availability and displaying them is not an endorsement. This does not remove DeepMap’s responsibility for its own conduct or its legal obligations concerning providers it uses."
                     ]
                 },
                 {
-                    title: 'Applicable law and contact',
-                    paragraphs: [
-                        'These Terms are governed by Portuguese law, without limiting any mandatory protections that may apply to you under the law of your country of residence.',
-                        'Questions about these Terms can be sent to contact@deepmap.cc.'
+                    "title": "Availability, changes and liability",
+                    "paragraphs": [
+                        "The service is under development and may undergo maintenance, interruptions or feature changes for technical, security, legal or product-development reasons. Uninterrupted or error-free availability is not guaranteed. Material changes or discontinuations will be communicated with reasonable notice where possible and legally required, respecting applicable rights.",
+                        "DeepMap’s liability is determined by applicable law; these Terms do not impose a blanket exclusion. We do not exclude liability for intentional misconduct, gross negligence, personal injury or other cases where exclusion is prohibited. We do not limit mandatory consumer or data-protection rights or legally available remedies."
+                    ]
+                },
+                {
+                    "title": "Version and changes to these Terms",
+                    "paragraphs": [
+                        "The current version and date are published here. Material changes will be communicated appropriately, with the notice and acceptance required by law and without improper retroactive effect. If you do not wish to continue using affected features, you can stop using them and request account deletion while retaining your legal rights."
+                    ]
+                },
+                {
+                    "title": "Applicable law, courts and contact",
+                    "paragraphs": [
+                        "Portuguese law applies without depriving consumers of mandatory protections under the law applicable to them, including their habitual-residence country where European rules provide for it. Jurisdiction follows applicable law; we do not impose an exclusive forum that removes a consumer’s right to use the competent courts where they reside.",
+                        "For questions about these Terms, your account or content, contact contact@deepmap.cc. The Privacy Policy explains personal-data processing and is separate from acceptance of these Terms."
                     ]
                 }
-            ],
+            ]
         },
-        pt: {
-            title: 'Termos de Utilização',
-            description: 'As regras de utilização do DeepMap, da tua conta e da plataforma.',
-            language: 'Idioma',
-            eyebrow: 'JOGO LIMPO',
-            subtitle: 'Explora livremente. Respeita a jornada.',
-            updated: 'Última atualização: 30 de setembro de 2026',
-            intro: 'Estes Termos explicam as regras de acesso e utilização do DeepMap. Ao criares uma conta ou utilizares a plataforma, aceitas estes Termos e a nossa Política de Privacidade.',
-            contactLabel: 'Contacto',
-            asideTitle: 'Conta DeepMap',
-            aside: 'Mantém os teus dados de acesso seguros e utiliza a plataforma de forma responsável. A tua conta é pessoal e és responsável pela atividade realizada através dela.',
-            privacyLabel: 'Política de Privacidade',
-            sections: [
+        "pt": {
+            "title": "Termos de Utilização",
+            "description": "Regras para utilizar mapas, contas, perfis e contribuições da comunidade DeepMap.",
+            "language": "Idioma",
+            "eyebrow": "JOGO LIMPO",
+            "subtitle": "Explora livremente. Respeita a jornada.",
+            "updated": "Última atualização: 18 de outubro de 2026",
+            "intro": "Estes Termos regulam o acesso ao DeepMap e às funcionalidades disponíveis. Consulta-os antes de criar conta ou enviar conteúdo. A Política de Privacidade explica separadamente o tratamento de dados; não é um pedido de consentimento genérico.",
+            "contactLabel": "Contacto",
+            "asideTitle": "Conta DeepMap",
+            "aside": "Protege as credenciais e comunica acessos suspeitos. Utiliza a conta de forma responsável e envia apenas conteúdo que tenhas o direito de partilhar.",
+            "privacyLabel": "Política de Privacidade",
+            "sections": [
                 {
-                    title: 'Sobre o DeepMap',
-                    paragraphs: [
-                        'O DeepMap (deepmap.cc) é uma plataforma independente operada por Rafael Silva em Portugal. Disponibiliza mapas interativos de videojogos, funcionalidades de perfil e outras ferramentas destinadas a ajudar jogadores a explorar jogos e comunidades.',
-                        'O DeepMap não é afiliado, aprovado ou patrocinado pelos editores, produtores ou titulares das marcas dos jogos representados na plataforma, salvo indicação expressa em contrário.'
+                    "title": "O serviço DeepMap",
+                    "paragraphs": [
+                        "O DeepMap (deepmap.cc), operado por Rafael Silva em Portugal, é uma plataforma independente de mapas, exploração e conteúdo de videojogos, com contas, perfis e contribuições da comunidade. Os jogos podem disponibilizar funcionalidades diferentes. As ferramentas administrativas e de moderação são reservadas a pessoas autorizadas.",
+                        "O DeepMap não é afiliado, patrocinado ou aprovado pelos editores, produtores ou titulares das marcas dos jogos apresentados, salvo indicação expressa."
                     ]
                 },
                 {
-                    title: 'Utilização da plataforma',
-                    paragraphs: [
-                        'Podes utilizar o DeepMap para fins pessoais e lícitos. Não deves utilizar abusivamente a plataforma, tentar perturbar o seu funcionamento, contornar mecanismos de segurança, automatizar ou extrair dados de forma prejudicial ao serviço, nem utilizá-la para violar direitos de terceiros.',
-                        'Deves cumprir a legislação aplicável e quaisquer regras adicionais apresentadas para funcionalidades específicas.'
+                    "title": "Conta, capacidade e segurança",
+                    "paragraphs": [
+                        "Algumas funcionalidades exigem conta por email/palavra-passe ou Google. Fornece os dados necessários de forma correta, protege o email e as credenciais e comunica acessos suspeitos a contact@deepmap.cc. Não partilhes credenciais, não te faças passar por outra pessoa e não contornes limitações de acesso.",
+                        "Deves ter capacidade legal para aceitar estes Termos. Se fores menor, obtém a autorização ou intervenção do representante legal na medida exigida pela lei aplicável. As regras sobre consentimento para dados de crianças constam da Política de Privacidade e não equivalem a uma idade universal para celebrar contratos. Não existe verificação automática de idade na plataforma."
                     ]
                 },
                 {
-                    title: 'Contas',
-                    paragraphs: [
-                        'Algumas funcionalidades exigem uma conta. Deves fornecer informação correta quando necessária e manter o acesso à conta seguro. Não partilhes credenciais nem permitas deliberadamente que outra pessoa se faça passar por ti.',
-                        'Podemos limitar, suspender ou remover o acesso quando seja razoavelmente necessário para proteger a plataforma, outros utilizadores, direitos legais ou a segurança, incluindo situações de abuso, fraude, violações repetidas das regras ou utilização técnica indevida.'
+                    "title": "Username e perfil",
+                    "paragraphs": [
+                        "O username pode ser inicialmente gerado e está sujeito às regras de formato, disponibilidade e alteração apresentadas na conta. Não uses nomes, avatares ou biografias ilegais, abusivos, enganosos ou que violem direitos de terceiros.",
+                        "A visibilidade do perfil controla os seus detalhes, mas o username e o avatar ativo podem continuar públicos num perfil privado. Contribuições aprovadas e a atribuição de autoria não ficam privadas por essa escolha. O email de autenticação não é um campo público do perfil."
                     ]
                 },
                 {
-                    title: 'Perfis e informação pública',
-                    paragraphs: [
-                        'Se escolheres um perfil público, a informação que tornes pública poderá ser visível a outros visitantes e acessível através de um link partilhável. És responsável pela informação que escolhas publicar.',
-                        'Não utilizes nomes, imagens, biografias ou outro conteúdo de perfil que seja ilegal, abusivo, enganador, viole direitos de terceiros ou se faça passar por outra pessoa ou organização.'
+                    "title": "Regras de utilização",
+                    "paragraphs": [
+                        "Utiliza o serviço de forma lícita e respeitadora. Não publiques conteúdo ilegal, ameaças, assédio, discriminação, dados pessoais de terceiros sem fundamento, spam, malware ou material que viole direitos de autor ou de imagem.",
+                        "Não manipules submissões ou identidades para enganar a moderação, não explores falhas nem contornes suspensões. Não automatizes acessos ou extraias dados de modo a prejudicar a segurança, disponibilidade ou direitos de terceiros. Esta regra não afasta utilizações permitidas por lei."
                     ]
                 },
                 {
-                    title: 'Mapas, localizações e exatidão',
-                    paragraphs: [
-                        'O DeepMap procura disponibilizar informação útil, mas posições no mapa, descrições, colecionáveis, rotas e outros dados de jogo podem estar incompletos, desatualizados ou incorretos.',
-                        'Continuas responsável pela forma como utilizas a informação da plataforma. O DeepMap não garante que todos os marcadores, coordenadas, rotas ou descrições correspondam a uma determinada versão, atualização, plataforma ou partida do jogo.'
+                    "title": "Submissões e responsabilidade pelo conteúdo",
+                    "paragraphs": [
+                        "As funcionalidades disponíveis permitem propor novos marcadores e correções, incluindo texto, coordenadas no jogo e referências de imagens ou vídeos. Podes sinalizar uma imagem pelo fluxo de correção. As opções apresentadas determinam o que podes submeter, editar ou cancelar; uma contribuição não dá acesso direto a editar o mapa publicado.",
+                        "És responsável por ter os direitos, permissões e fundamento necessários para o conteúdo que envias, incluindo avatares e recursos externos que indicas. Não envies material de terceiros sem autorização ou outra utilização legalmente permitida, nem informação pessoal desnecessária. A existência de um URL público não significa que o conteúdo possa ser reutilizado livremente."
                     ]
                 },
                 {
-                    title: 'Propriedade intelectual',
-                    paragraphs: [
-                        'O nome DeepMap, a identidade visual, a interface, os gráficos originais, o código da plataforma e o conteúdo original estão protegidos pela legislação aplicável em matéria de propriedade intelectual.',
-                        'Nomes de jogos, logótipos, capturas de ecrã, arte, personagens e outros materiais de terceiros continuam a pertencer aos respetivos titulares. A sua presença no DeepMap não transfere a propriedade para o DeepMap.',
-                        'Não podes copiar, republicar, vender, fazer engenharia inversa ou explorar comercialmente partes substanciais do DeepMap sem autorização, salvo quando a lei aplicável o permita expressamente.'
+                    "title": "Direitos sobre as contribuições e licença",
+                    "paragraphs": [
+                        "Manténs os direitos que efetivamente tenhas sobre o teu conteúdo. Ao submetê-lo, concedes ao DeepMap uma licença não exclusiva, gratuita e mundial para o alojar, reproduzir, mostrar e comunicar na plataforma, integrar nos mapas, formatar, traduzir e adaptar tecnicamente, corrigir e moderar na medida necessária à prestação do serviço. A licença abrange os prestadores que atuem por nossa conta apenas para essas finalidades, não uma autorização geral para exploração alheia ao DeepMap.",
+                        "A licença vigora enquanto o conteúdo for legitimamente mantido no serviço. A eliminação da conta não retira automaticamente conteúdo já integrado nos mapas. Esta licença não substitui direitos de terceiros, não concede mais direitos do que possuis e não limita direitos de apagamento ou outras proteções legais. A plataforma pode apresentar a autoria nos termos da Política de Privacidade."
                     ]
                 },
                 {
-                    title: 'Disponibilidade e alterações',
-                    paragraphs: [
-                        'O DeepMap encontra-se em desenvolvimento ativo. As funcionalidades podem ser alteradas, adicionadas, removidas, limitadas ou ficar temporariamente indisponíveis. Poderemos realizar manutenção ou alterações técnicas quando necessário.',
-                        'Não garantimos disponibilidade contínua ou ausência total de erros. Sempre que possível, alterações significativas que afetem os utilizadores serão comunicadas através da plataforma ou de outros meios adequados.'
+                    "title": "Moderação e comunicação de problemas",
+                    "paragraphs": [
+                        "A equipa autorizada pode rever, aprovar, rejeitar ou corrigir submissões e remover ou restringir conteúdo por razões de legalidade, segurança, direitos de terceiros, qualidade ou cumprimento destes Termos. Podem ser conservadas versões e decisões. Submissões de moderadores podem ser aprovadas automaticamente; não prometemos revisão humana prévia de todos os conteúdos.",
+                        "Não garantimos publicação ou manutenção de uma submissão. Para comunicar conteúdo ilegal, violação de direitos ou outro problema, usa contact@deepmap.cc, indicando o URL ou marcador, o motivo e informação suficiente para o avaliarmos. Podes também pedir reavaliação de uma decisão pelo mesmo contacto."
                     ]
                 },
                 {
-                    title: 'Serviços e links externos',
-                    paragraphs: [
-                        'O DeepMap depende de serviços de terceiros para parte do seu funcionamento e pode disponibilizar links para websites ou serviços externos. Esses terceiros funcionam segundo os seus próprios termos e práticas de privacidade.',
-                        'O DeepMap não é responsável pelo conteúdo, disponibilidade ou práticas de serviços externos que não controla.'
+                    "title": "Suspensão e restrições",
+                    "paragraphs": [
+                        "Podemos restringir interações, suspender contas ou retirar permissões quando necessário e proporcionado para lidar com infrações, abuso, risco de segurança ou obrigações legais. Uma suspensão de interações não impede necessariamente a consulta das áreas públicas.",
+                        "Quando aplicável, comunicamos o motivo e a duração da medida através das funcionalidades de conta ou de outro meio adequado, salvo impedimento legal ou de segurança. Podes contactar-nos para esclarecer ou contestar a medida. Estas regras não afastam garantias legais aplicáveis."
                     ]
                 },
                 {
-                    title: 'Responsabilidade',
-                    paragraphs: [
-                        'Nada nestes Termos exclui ou limita responsabilidade quando tal seja proibido por lei. Sem prejuízo da legislação imperativa, o DeepMap é disponibilizado conforme disponível e não responde por perdas indiretas resultantes da utilização de informação opcional dos mapas, interrupções temporárias ou serviços de terceiros fora do nosso controlo razoável.',
-                        'Estes Termos não afetam direitos que tenhas ao abrigo de legislação imperativa de defesa do consumidor ou de proteção de dados.'
+                    "title": "Eliminação de conta e conservação",
+                    "paragraphs": [
+                        "Podes pedir eliminação através de contact@deepmap.cc. Atualmente não existe um botão automático para esse efeito; poderemos verificar a identidade de forma proporcionada. Terminar sessão ou tornar o perfil privado não equivale a eliminar a conta.",
+                        "A conta e o perfil são distintos de marcadores, contribuições incorporadas, versões e histórico de moderação/auditoria. Estes podem ser conservados quando legítimo, sem ligação pública a um perfil existente; certos identificadores históricos podem permanecer em registos internos. Avaliamos separadamente os dados pessoais, avatares e outros registos associados e os pedidos de apagamento. Não prometemos anonimização integral automática nem a eliminação de todas as cópias externas."
                     ]
                 },
                 {
-                    title: 'Funcionalidades futuras da comunidade',
-                    paragraphs: [
-                        'O DeepMap poderá vir a incluir comentários, contribuições da comunidade, ferramentas de moderação, donativos, funcionalidades premium ou outros serviços interativos. Antes do lançamento dessas funcionalidades poderão ser aplicadas regras adicionais.',
-                        'Até essas funcionalidades serem lançadas, estes Termos não atribuem aos utilizadores o direito de publicar marcadores, editar mapas oficiais ou aceder a ferramentas administrativas.'
+                    "title": "Mapas e propriedade intelectual",
+                    "paragraphs": [
+                        "Os mapas e conteúdos podem estar incompletos, incorretos ou desatualizados e variar com a versão, atualização, plataforma ou partida do jogo. Não garantimos completude ou adequação a uma finalidade específica, sem prejuízo das garantias impostas por lei.",
+                        "A marca, interface, código, gráficos e conteúdo original do DeepMap estão protegidos na medida prevista pela lei e pelas licenças aplicáveis. Os nomes, marcas, imagens, personagens e outros materiais dos jogos pertencem aos respetivos titulares. As contribuições permanecem sujeitas aos direitos dos seus autores. Não adquirimos a propriedade desses materiais pela sua apresentação na plataforma.",
+                        "Não reutilizes partes protegidas do serviço sem autorização ou fundamento legal. Mantêm-se as exceções legais e os direitos concedidos por licenças de componentes ou materiais de terceiros."
                     ]
                 },
                 {
-                    title: 'Alterações aos Termos',
-                    paragraphs: [
-                        'Podemos atualizar estes Termos à medida que o DeepMap evolui. A versão mais recente e a respetiva data de atualização serão publicadas nesta página. Quando exigido, alterações relevantes serão comunicadas antes de produzirem efeitos.'
+                    "title": "Serviços externos",
+                    "paragraphs": [
+                        "A autenticação, alojamento e outros componentes dependem de prestadores. Links, imagens e vídeos externos podem levar o navegador a contactar terceiros, sujeitos às respetivas regras, como explicado na Política de Privacidade.",
+                        "Não controlamos o conteúdo ou disponibilidade de sites externos e a sua apresentação não significa aprovação. Isto não afasta a responsabilidade do DeepMap pela sua própria atuação nem as obrigações legais relativas aos prestadores que utiliza."
                     ]
                 },
                 {
-                    title: 'Lei aplicável e contacto',
-                    paragraphs: [
-                        'Estes Termos são regidos pela lei portuguesa, sem limitar proteções obrigatórias que possam ser aplicáveis ao abrigo da lei do teu país de residência.',
-                        'Questões sobre estes Termos podem ser enviadas para contact@deepmap.cc.'
+                    "title": "Disponibilidade, alterações e responsabilidade",
+                    "paragraphs": [
+                        "O serviço está em desenvolvimento e pode sofrer manutenção, interrupções ou alterações de funcionalidades por razões técnicas, de segurança, legais ou de evolução do produto. Não garantimos disponibilidade contínua ou ausência de erros. Alterações materiais ou descontinuações serão comunicadas com antecedência razoável quando possível e legalmente exigido, respeitando os direitos aplicáveis.",
+                        "A responsabilidade do DeepMap é determinada pela lei aplicável; estes Termos não estabelecem uma exclusão geral de responsabilidade. Não excluímos responsabilidade por dolo ou culpa grave, danos pessoais ou outras situações em que a lei o proíba. Não limitamos direitos imperativos de consumidores ou titulares de dados nem os meios de reação legalmente disponíveis."
+                    ]
+                },
+                {
+                    "title": "Versão e alterações aos Termos",
+                    "paragraphs": [
+                        "A versão e data atuais são publicadas nesta página. Alterações materiais serão comunicadas de forma adequada, com a antecedência e aceitação exigidas por lei, sem aplicação retroativa indevida. Se não quiseres continuar a usar as funcionalidades afetadas, podes deixar de as usar e pedir eliminação da conta, mantendo os teus direitos legais."
+                    ]
+                },
+                {
+                    "title": "Lei aplicável, tribunais e contacto",
+                    "paragraphs": [
+                        "Aplica-se a lei portuguesa, sem privar consumidores das proteções imperativas da lei que lhes seja aplicável, incluindo a do país de residência habitual quando previsto nas regras europeias. A competência dos tribunais segue as regras legais aplicáveis; não impomos um foro exclusivo que retire a um consumidor o direito de recorrer aos tribunais competentes da sua residência.",
+                        "Para questões sobre estes Termos, conta ou conteúdo, contacta contact@deepmap.cc. A Política de Privacidade explica o tratamento de dados pessoais e é distinta da aceitação destes Termos."
                     ]
                 }
-            ],
+            ]
         }
     };
 

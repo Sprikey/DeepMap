@@ -11,181 +11,241 @@
     });
 
     const content = {
-        en: {
-            title: 'Privacy Policy',
-            description: 'How DeepMap handles your information, your public profile and your privacy choices.',
-            language: 'Language',
-            eyebrow: 'TRUST & TRANSPARENCY',
-            subtitle: 'Your journey matters. So does your privacy.',
-            updated: 'Last updated: 29 September 2026',
-            intro: 'This policy explains how personal data is handled when you visit DeepMap, create an account or use its community profile features.',
-            contactLabel: 'CONTACT',
-            accountLabel: 'DEEPMAP ACCOUNT',
-            asideTitle: 'A note about your profile',
-            aside: 'Your email address is not part of your public profile. Your profile visibility setting controls public access; making a profile private is not the same as deleting your account or data.',
-            request: 'Request access or deletion',
-            sections: [
+        "en": {
+            "title": "Privacy Policy",
+            "description": "How DeepMap handles account, profile, contribution, moderation and platform-usage data.",
+            "language": "Language",
+            "eyebrow": "TRUST & TRANSPARENCY",
+            "subtitle": "Your journey matters. So does your privacy.",
+            "updated": "Last updated: 18 October 2026",
+            "intro": "This policy describes DeepMap’s current processing for site access, authentication, profiles, map contributions, moderation, notifications and usage statistics. It explains what is public and what you can request about your data.",
+            "contactLabel": "CONTACT",
+            "accountLabel": "DEEPMAP ACCOUNT",
+            "asideTitle": "A note about your profile",
+            "aside": "A private profile restricts its details but may still show a username and avatar. Your account email is not public. Approved contributions and their attribution do not become private through this choice.",
+            "request": "Request access or deletion",
+            "sections": [
                 {
-                    title: 'Who is responsible?',
-                    paragraphs: [
-                        'DeepMap (deepmap.cc) is operated by Rafael Silva in Portugal, who is responsible for personal data processed through the platform. For privacy questions or requests, email contact@deepmap.cc.'
+                    "title": "Controller and contact",
+                    "paragraphs": [
+                        "DeepMap (deepmap.cc) is operated by Rafael Silva in Portugal, under the DeepMap name, as controller of personal data processed through the platform. For privacy questions or to exercise your rights, contact contact@deepmap.cc."
                     ]
                 },
                 {
-                    title: 'What information do we process?',
-                    paragraphs: [
-                        'Account and sign-in information: email address, unique account identifier, authentication method and the information necessary to create, secure and manage your account. When you sign in with Google, basic account information made available through the Google sign-in process may include your name, email address and profile picture.',
-                        'Profile information: your chosen display name, username, biography, avatar, profile visibility setting and membership information. If you upload a custom avatar, its image file is stored so that it can be displayed.',
-                        'Technical information: information necessary to deliver and protect the service, which may include IP address, device/browser information, access records and security or error logs processed by our hosting and authentication providers.',
-                        'If you contact us, we process the message and contact information needed to respond. A language preference is stored locally in your browser.'
+                    "title": "Account and authentication",
+                    "paragraphs": [
+                        "We process your email, stable account identifier (UUID), authentication method, creation/access dates and the session/security data needed for registration, email confirmation, sign-in and password recovery or changes. Email/password authentication is managed by Supabase Auth; we do not display your password on your profile or make it available to other users.",
+                        "If you choose Google OAuth, we receive the basic data authorised in that process, such as name, email, picture and provider identifiers. We do not request access to your Google inbox or files. Google also processes the data needed for its own authentication service."
                     ]
                 },
                 {
-                    title: 'Public profiles and shared links',
-                    paragraphs: [
-                        'When your profile is public, visitors may see the profile information you choose to display, such as your display name, username, biography, avatar and membership information. A shareable profile link may contain your permanent account identifier.',
-                        'You can change profile visibility in your profile settings. A private profile is intended to restrict public viewing, but it does not erase previously shared information, third-party copies or search-engine caches. Your email address and account settings are not shown as public profile information.'
+                    "title": "Profile and public identity",
+                    "paragraphs": [
+                        "Profiles include a username, display name, biography, avatar, visibility and membership information. An initial username may be generated. We also retain information needed to manage username changes and temporary reservations. An avatar can be a platform preset, a Google picture or a custom image stored in Supabase Storage.",
+                        "New profiles are public by default; you can change visibility in settings. Public profiles display the name, username, biography, avatar and membership information. Making a profile private restricts its details but does not hide all identity: the username, active avatar and private-profile status remain accessible. A permanent profile link and a custom-avatar address may contain the UUID. Custom avatars are served through public URLs; profile privacy does not make the file itself private.",
+                        "The platform does not publicly display your authentication email. Do not put your email, sensitive information or other people’s data in public fields. Content you publish yourself may disclose personal information."
                     ]
                 },
                 {
-                    title: 'Why do we use this data?',
-                    paragraphs: [
-                        'We use account and profile information to provide your account, sign-in, profile and requested platform features (performance of our service agreement).',
-                        'We use necessary technical and security information to maintain availability, prevent misuse and protect the platform and its users (legitimate interests in operating a secure service).',
-                        'We may process information to comply with applicable legal duties (legal obligation). Where a future optional feature requires consent, we will request it before that processing starts.'
+                    "title": "Contributions, moderation and notifications",
+                    "paragraphs": [
+                        "We store proposals for new markers and corrections, the associated game and marker, game coordinates, text, image/video references, notes, status and dates. Submitted coordinates refer to the video-game map, not your physical location. Images can be flagged through the correction workflow.",
+                        "We store authorship by UUID, submission versions, moderation decisions, notes and the identity of participants, editing/approval records, permission grants/removals and suspensions, including reasons and any expiry. We store account notifications and their read status.",
+                        "Pending submissions and internal history are accessible to their author or authorised staff according to permissions. Approved content may become public and show its creator’s username even if their profile is private. An incorporated correction and minimal public identity do not become private when profile visibility changes."
                     ]
                 },
                 {
-                    title: 'Google sign-in',
-                    paragraphs: [
-                        'If you choose Google sign-in, Google helps authenticate you. DeepMap uses information supplied through that sign-in to create or access your DeepMap account and, where relevant, populate basic profile information. We do not use Google sign-in data for advertising.',
-                        'The Google permissions requested must correspond to the sign-in functionality. If we introduce access to additional Google services or data, this policy and the relevant permission notice will be updated before that use.'
+                    "title": "Purposes and legal bases",
+                    "paragraphs": [
+                        "Performance of the requested service: creating/authenticating accounts, managing profiles and preferences, receiving/processing contributions and presenting related notifications. Authentication data is necessary for account features; without it you can still browse the available public areas.",
+                        "Legitimate interests: protecting accounts and the platform, preventing abuse, reviewing content, maintaining coherent maps and necessary authorship, decision and security records, answering enquiries and understanding service use. We balance these interests against your rights, particularly for children. Truly anonymous statistics are not personal data; any personal data needed to produce them requires a legal basis and compliance with applicable tracking rules.",
+                        "Legal obligations: responding to requests and retaining or disclosing data where an applicable law or lawful order requires it. Consent is used only where legally needed for a specific processing activity, not as a blanket basis for accounts. Accepting the Terms or reading this policy does not amount to consent to every processing activity."
                     ]
                 },
                 {
-                    title: 'Service providers and recipients',
-                    paragraphs: [
-                        'We use Supabase for authentication, account/profile data and avatar storage; Vercel to host and deliver the website; Google when you choose Google sign-in; Resend for service emails such as password-reset messages; and Cloudflare for domain/DNS and email routing.',
-                        'These providers may process only the information relevant to their role, under their applicable contractual and privacy terms. Public profile information is also available to other visitors when your profile is set to public.'
+                    "title": "Providers and other recipients",
+                    "paragraphs": [
+                        "Supabase provides authentication, the database and storage for custom avatars. Vercel hosts/delivers the site and provides Web Analytics. Google is involved when you choose its sign-in or when its resources, such as pictures or videos, are loaded. Confirmation and recovery emails are triggered through Supabase Auth and delivered by the email service configured for that purpose.",
+                        "Providers and their subprocessors receive data needed for their role under the applicable terms. Authorised staff may access data needed for support, administration and moderation. We may disclose data to authorities when legally required. Public-content recipients include platform visitors. Cloudflare R2 is not used for storage or uploads at this stage."
                     ]
                 },
                 {
-                    title: 'Storage and international transfers',
-                    paragraphs: [
-                        'Account and profile data is retained while your account is needed to provide the service, unless a shorter period applies or a longer period is required for legal, security or dispute-resolution reasons. If you request deletion, we assess and remove eligible data, subject to any lawful retention requirements. Technical records, email records and backups follow applicable operational and provider retention periods.',
-                        'Depending on provider configurations and service operations, data may be processed outside the European Economic Area. Where required, such transfers must rely on an applicable legal transfer mechanism. Contact us for information about the safeguards relevant to your data.'
+                    "title": "Web Analytics and external resources",
+                    "paragraphs": [
+                        "DeepMap integrates Vercel Web Analytics for usage statistics, such as pages visited, referral sources, approximate country and browser/device characteristics. According to Vercel’s documentation, its default setup provides aggregated statistics, does not use third-party cookies and does not keep a permanent visitor identifier; its technical visit identification is short-lived.",
+                        "We do not configure custom events containing email or UUID. However, page addresses are processed for measurement and may include, for example, a public username. The absence of third-party cookies does not mean no data is processed or guarantee absolute anonymity for every technical request.",
+                        "Google avatars, external images and YouTube/Vimeo videos may be requested directly by your browser when displaying content, including when opening a map popup. Those third parties may receive your IP, browser and request information and apply their own cookies or technologies under their rules. Embedded videos currently have no dedicated consent control in DeepMap. Opening external content does not itself constitute consent to unnecessary tracking."
                     ]
                 },
                 {
-                    title: 'Your rights and account deletion',
-                    paragraphs: [
-                        'Under applicable data-protection law, you may request access, correction or erasure of your personal data, restriction of processing, portability where applicable, and objection to processing based on legitimate interests. Where processing is based on consent, you may withdraw it without affecting earlier lawful processing.',
-                        'DeepMap does not yet have an automatic account-deletion button. To request deletion of your account and associated eligible personal data, email contact@deepmap.cc from the address linked to your account. We may need to verify your identity before acting on a request. Making your profile private does not delete the account.',
-                        'You also have the right to complain to the Portuguese data-protection authority (CNPD) or another competent supervisory authority.'
+                    "title": "Cookies and browser storage",
+                    "paragraphs": [
+                        "We use cookies needed for authentication, session continuity and secure completion of sign-in/recovery flows. They can persist between visits and be renewed; the current library’s default cookie lifetime is up to 400 days, subject to browser rules. This is not the token validity period or a promise of account access for that duration. Signing out removes the applicable session data.",
+                        "Your language preference is stored in browser localStorage without an application-defined automatic expiry, until you change it or clear local data. We do not configure sessionStorage for preferences. You can manage cookies and storage in your browser; blocking necessary storage may prevent authentication. The third-party technologies described above also follow their providers’ terms."
                     ]
                 },
                 {
-                    title: 'Security and browser storage',
-                    paragraphs: [
-                        'We use technical and organisational measures appropriate to the service and rely on service providers for parts of its security. No internet service can guarantee absolute security.',
-                        'Browser storage is used for functions such as your selected language and authenticated session. We will review this policy before introducing optional analytics, advertising or other tracking that requires additional information or consent.'
+                    "title": "Retention",
+                    "paragraphs": [
+                        "Account/profile data: while the account exists and the data is needed for the service, subject to erasure requests and retention obligations. Deletion is currently handled on request, not by an automatic button or a scheduled inactivity period.",
+                        "Published contributions: while useful to map content and lawfully retained; they may outlast the account. Submissions, versions, audit and moderation: while needed for content integrity, abuse prevention, review of decisions and legal claims, with personal data limited to what is necessary. These records have no single automatic expiry period.",
+                        "Notifications: while needed for account information and service management; limiting the displayed items does not delete older ones. Technical data and backups: according to providers’ operational cycles and the time needed to investigate incidents or meet legal duties. Enquiries: while resolving the request and, where necessary, to evidence the response or defend rights. We do not promise technical deletion deadlines the system cannot guarantee; you can ask about retention relevant to your case."
                     ]
                 },
                 {
-                    title: 'Changes to this policy',
-                    paragraphs: [
-                        'We may update this policy when the service or its data practices change. The updated date will appear on this page. Material changes will be communicated where required. Features not yet available, such as community posts, donations or premium services, will be addressed before they are introduced.'
+                    "title": "Account and contribution deletion",
+                    "paragraphs": [
+                        "To request deletion, write to contact@deepmap.cc, preferably from the account email. If you no longer have access, explain the situation so we can verify identity proportionately. Do not send your password. Making a profile private or signing out does not delete the account.",
+                        "Deleting the authentication account and profile does not automatically delete published markers, submissions, versions or audit records. Public attribution may stop resolving to a profile, but the historical UUID and other elements may remain in internal records where retention is justified. Retaining a historical identifier does not amount to complete anonymisation.",
+                        "We separately assess personal data within content, avatars, notifications and related records, removing or unlinking eligible data and explaining any legal exceptions. Preserving contributions is not a blanket reason to refuse erasure. External copies already made by third parties may be outside our control."
+                    ]
+                },
+                {
+                    "title": "Rights and complaints",
+                    "paragraphs": [
+                        "You can request access, rectification, erasure, restriction, objection to processing based on legitimate interests and portability where applicable. Where processing depends on consent, you can withdraw it without affecting earlier lawful processing. Rights have legal conditions and exceptions; we will explain the decision in your case.",
+                        "Send requests to contact@deepmap.cc. We normally respond within one month and will tell you within that period if a justified legal extension is needed. Additional identification is requested only where necessary and proportionate. You can complain to Portugal’s Comissão Nacional de Proteção de Dados (CNPD), at www.cnpd.pt, or the competent authority in your country."
+                    ]
+                },
+                {
+                    "title": "International transfers and security",
+                    "paragraphs": [
+                        "International providers may process data outside the European Economic Area, including for support and subprocessing, even where primary hosting is in a European region. We do not claim all data stays in the EU. Transfers subject to the GDPR must have an applicable safeguard, such as an adequacy decision or European Commission standard contractual clauses, with additional measures where necessary. Contact us for information about relevant safeguards.",
+                        "We use appropriate technical and organisational measures, including access controls and separation between public information and authorised operations. Security also depends on providers and careful handling of credentials; absolute security cannot be guaranteed."
+                    ]
+                },
+                {
+                    "title": "Children",
+                    "paragraphs": [
+                        "DeepMap is not specifically directed at children and does not collect dates of birth or automatically verify age. If you are a minor, involve your legal representative where the law requires permission to use the service.",
+                        "Where processing relies on consent for information-society services offered directly to children, the applicable legal consent age applies: in Portugal, 13 under Article 16 of Law 58/2019; below that threshold, the legal representative must be involved. This specific rule does not replace contractual-capacity rules or requirements in the country of residence. Contact us if you believe a child’s data is being processed improperly."
+                    ]
+                },
+                {
+                    "title": "Changes to this policy",
+                    "paragraphs": [
+                        "The date on this page identifies the current version. We will communicate material changes in a way appropriate to their importance, through the platform or direct contact where required, before starting new processing that requires additional information or consent. New upload/storage services will receive a separate review before being made available."
                     ]
                 }
-            ],
+            ]
         },
-        pt: {
-            title: 'Política de Privacidade',
-            description: 'Como o DeepMap trata os teus dados, o teu perfil público e as tuas opções de privacidade.',
-            language: 'Idioma',
-            eyebrow: 'CONFIANÇA E TRANSPARÊNCIA',
-            subtitle: 'A tua jornada importa. A tua privacidade também.',
-            updated: 'Última atualização: 29 de setembro de 2026',
-            intro: 'Esta política explica como são tratados os dados pessoais quando visitas o DeepMap, crias uma conta ou utilizas as funcionalidades de perfil da comunidade.',
-            contactLabel: 'CONTACTO',
-            accountLabel: 'CONTA DEEPMAP',
-            asideTitle: 'Sobre o teu perfil',
-            aside: 'O teu email não faz parte do perfil público. A opção de visibilidade controla o acesso público; tornar o perfil privado não equivale a apagar a conta ou os dados.',
-            request: 'Pedir acesso ou eliminação',
-            sections: [
+        "pt": {
+            "title": "Política de Privacidade",
+            "description": "Como o DeepMap trata dados de conta, perfis, contribuições, moderação e utilização da plataforma.",
+            "language": "Idioma",
+            "eyebrow": "CONFIANÇA E TRANSPARÊNCIA",
+            "subtitle": "A tua jornada importa. A tua privacidade também.",
+            "updated": "Última atualização: 18 de outubro de 2026",
+            "intro": "Esta política descreve os tratamentos atuais do DeepMap: acesso ao site, autenticação, perfis, contribuições para mapas, moderação, notificações e estatísticas de utilização. Explica o que é público e o que podes pedir relativamente aos teus dados.",
+            "contactLabel": "CONTACTO",
+            "accountLabel": "CONTA DEEPMAP",
+            "asideTitle": "Sobre o teu perfil",
+            "aside": "Um perfil privado restringe os detalhes, mas pode continuar a mostrar username e avatar. O email da conta não é público. Contribuições aprovadas e a respetiva autoria não ficam privadas por essa escolha.",
+            "request": "Pedir acesso ou eliminação",
+            "sections": [
                 {
-                    title: 'Quem é o responsável?',
-                    paragraphs: [
-                        'O DeepMap (deepmap.cc) é explorado por Rafael Silva, em Portugal, responsável pelo tratamento dos dados pessoais através da plataforma. Para questões ou pedidos relativos à privacidade, escreve para contact@deepmap.cc.'
+                    "title": "Responsável e contacto",
+                    "paragraphs": [
+                        "O DeepMap (deepmap.cc) é operado por Rafael Silva, em Portugal, sob o nome DeepMap, responsável pelo tratamento dos dados pessoais da plataforma. Para questões de privacidade ou exercício de direitos, contacta contact@deepmap.cc."
                     ]
                 },
                 {
-                    title: 'Que informações tratamos?',
-                    paragraphs: [
-                        'Conta e autenticação: endereço de email, identificador único da conta, método de autenticação e informação necessária para criar, proteger e gerir a conta. Se iniciares sessão com a Google, os dados básicos disponibilizados durante esse processo poderão incluir nome, email e fotografia de perfil.',
-                        'Perfil: nome de apresentação, nome de utilizador, biografia, avatar, opção de visibilidade e informação de antiguidade. Se carregares um avatar personalizado, guardamos a imagem para a apresentar.',
-                        'Dados técnicos: informação necessária ao funcionamento e segurança, que pode incluir endereço IP, dados do dispositivo/navegador, registos de acesso e registos de segurança ou de erros tratados pelos nossos fornecedores de alojamento e autenticação.',
-                        'Se nos contactares, tratamos a mensagem e os dados de contacto necessários para responder. A preferência de idioma é guardada localmente no navegador.'
+                    "title": "Conta e autenticação",
+                    "paragraphs": [
+                        "Tratamos o email, o identificador estável da conta (UUID), o método de autenticação, datas de criação e acesso e os dados de sessão e segurança necessários ao registo, confirmação de email, início de sessão e recuperação ou alteração da palavra-passe. A autenticação por email/palavra-passe é gerida pelo Supabase Auth; não mostramos a palavra-passe no perfil nem a disponibilizamos a outros utilizadores.",
+                        "Se escolheres Google OAuth, recebemos os dados básicos autorizados nesse processo, como nome, email, fotografia e identificadores do fornecedor. Não pedimos acesso à tua caixa de correio ou aos teus ficheiros Google. A Google trata também os dados necessários ao seu próprio serviço de autenticação."
                     ]
                 },
                 {
-                    title: 'Perfis públicos e links partilhados',
-                    paragraphs: [
-                        'Se o perfil estiver público, os visitantes poderão ver os dados que escolheste apresentar, como nome, nome de utilizador, biografia, avatar e informação de antiguidade. O link de partilha pode conter o identificador permanente da tua conta.',
-                        'Podes mudar a visibilidade nas definições do perfil. Um perfil privado destina-se a restringir a visualização pública, mas não elimina informação já partilhada, cópias de terceiros ou caches de motores de pesquisa. O email e as definições da conta não são apresentados como dados públicos do perfil.'
+                    "title": "Perfil e identidade pública",
+                    "paragraphs": [
+                        "O perfil inclui username, nome de apresentação, biografia, avatar, visibilidade e informação de antiguidade. Pode ser gerado um username inicial. Guardamos também informação necessária à gestão de alterações e reserva temporária de usernames. O avatar pode ser uma opção da plataforma, uma fotografia Google ou uma imagem personalizada guardada no Supabase Storage.",
+                        "Os novos perfis são públicos por defeito; podes mudar a visibilidade nas definições. Um perfil público apresenta nome, username, biografia, avatar e antiguidade. Torná-lo privado restringe os detalhes, mas não oculta toda a identidade: o username, o avatar ativo e a indicação de perfil privado continuam acessíveis. Um link permanente e o endereço de um avatar personalizado podem conter o UUID. Avatares personalizados são servidos por URL público; a privacidade do perfil não transforma o ficheiro num recurso privado.",
+                        "O email de autenticação não é apresentado publicamente pela plataforma. Não coloques o teu email, dados sensíveis ou dados de terceiros em campos públicos. Conteúdo que tu próprio publiques pode revelar informação pessoal."
                     ]
                 },
                 {
-                    title: 'Para que usamos os dados?',
-                    paragraphs: [
-                        'Utilizamos os dados de conta e perfil para disponibilizar a conta, o início de sessão, o perfil e as funcionalidades pedidas (execução do serviço contratado).',
-                        'Utilizamos dados técnicos e de segurança necessários para manter a disponibilidade, prevenir abusos e proteger a plataforma e os utilizadores (interesse legítimo no funcionamento seguro do serviço).',
-                        'Podemos tratar informação para cumprir obrigações legais (obrigação legal). Se uma futura funcionalidade opcional exigir consentimento, iremos pedi-lo antes de iniciar esse tratamento.'
+                    "title": "Contribuições, moderação e notificações",
+                    "paragraphs": [
+                        "Guardamos propostas de novos marcadores e correções, o jogo e marcador associados, coordenadas do jogo, textos, referências de imagens/vídeos, notas, estado e datas. As coordenadas submetidas referem-se ao mapa do videojogo, não à tua localização física. Podem ser sinalizadas imagens através do fluxo de correção.",
+                        "Guardamos a autoria por UUID, versões das submissões, decisões, notas e identidade dos intervenientes na moderação, registos de edição/aprovação, atribuição ou remoção de permissões e suspensões, incluindo motivo e eventual termo. Guardamos notificações da conta e o respetivo estado de leitura.",
+                        "Submissões pendentes e o histórico interno são acessíveis ao autor ou à equipa autorizada conforme as permissões. Conteúdo aprovado pode tornar-se público e mostrar o username do criador, mesmo com perfil privado. Uma correção incorporada no mapa e a identidade pública mínima não se tornam privadas por alterares a visibilidade do perfil."
                     ]
                 },
                 {
-                    title: 'Início de sessão com a Google',
-                    paragraphs: [
-                        'Se escolheres iniciar sessão com a Google, esta ajuda a autenticar-te. O DeepMap utiliza a informação recebida nesse processo para criar ou aceder à tua conta e, quando aplicável, preencher os dados básicos do perfil. Não utilizamos os dados recebidos no login Google para publicidade.',
-                        'As permissões Google pedidas devem corresponder à autenticação. Antes de passarmos a aceder a outros serviços ou dados Google, atualizaremos esta política e o aviso de permissões aplicável.'
+                    "title": "Finalidades e fundamentos jurídicos",
+                    "paragraphs": [
+                        "Execução do serviço pedido: criar e autenticar a conta, gerir perfil e preferências, receber e processar contribuições e apresentar notificações relacionadas. Os dados de autenticação são necessários para funções com conta; sem eles podes continuar a consultar as áreas públicas disponíveis.",
+                        "Interesses legítimos: proteger contas e plataforma, prevenir abuso, rever conteúdo, manter a coerência dos mapas e um histórico necessário de autoria, decisões e segurança, responder a contactos e compreender a utilização do serviço. Ponderamos estes interesses com os teus direitos, especialmente no caso de menores. As estatísticas efetivamente anónimas não são dados pessoais; os dados pessoais eventualmente necessários à sua produção exigem fundamento e as regras de rastreio aplicáveis.",
+                        "Obrigação legal: responder a pedidos e conservar ou comunicar dados quando uma norma aplicável ou uma ordem legítima o exigir. O consentimento é usado apenas quando legalmente necessário para um tratamento específico, não como fundamento genérico para a conta. Aceitar os Termos ou conhecer esta política não equivale a consentir em todo o tratamento."
                     ]
                 },
                 {
-                    title: 'Prestadores de serviços e destinatários',
-                    paragraphs: [
-                        'Utilizamos o Supabase para autenticação, dados de conta/perfil e armazenamento de avatares; a Vercel para alojar e disponibilizar o site; a Google se escolheres esse login; a Resend para emails de serviço, como reposição de palavra-passe; e a Cloudflare para domínio/DNS e encaminhamento de email.',
-                        'Estes prestadores poderão tratar apenas informação relevante para a sua função, nos termos contratuais e de privacidade aplicáveis. Os dados de perfil público ficam também acessíveis a outros visitantes quando o perfil está definido como público.'
+                    "title": "Prestadores e outros destinatários",
+                    "paragraphs": [
+                        "O Supabase presta autenticação, base de dados e armazenamento dos avatares personalizados. A Vercel aloja/disponibiliza o site e presta Web Analytics. A Google intervém quando escolhes o seu login e quando são carregados recursos seus, como fotografias ou vídeos. Os emails de confirmação e recuperação são acionados pelo Supabase Auth e entregues pelo serviço de email configurado para esse efeito.",
+                        "Os prestadores e os seus subcontratantes recebem os dados necessários à função que desempenham, nos termos aplicáveis. A equipa autorizada pode aceder aos dados necessários ao suporte, administração e moderação. Podemos comunicar dados a autoridades quando legalmente exigido. Os destinatários de conteúdo público incluem visitantes da plataforma. Não usamos Cloudflare R2 para armazenamento ou uploads nesta fase."
                     ]
                 },
                 {
-                    title: 'Conservação e transferências internacionais',
-                    paragraphs: [
-                        'Os dados de conta e perfil são conservados enquanto a conta for necessária à prestação do serviço, salvo prazo menor aplicável ou necessidade de conservação por motivos legais, de segurança ou resolução de litígios. Após um pedido de eliminação, avaliamos e apagamos os dados elegíveis, sem prejuízo de retenções legalmente justificadas. Registos técnicos, emails e cópias de segurança seguem os períodos operacionais e de conservação dos prestadores aplicáveis.',
-                        'Consoante a configuração e funcionamento dos prestadores, os dados poderão ser tratados fora do Espaço Económico Europeu. Quando exigido, essas transferências devem assentar num mecanismo legal aplicável. Contacta-nos para informação sobre as garantias relevantes para os teus dados.'
+                    "title": "Web Analytics e recursos externos",
+                    "paragraphs": [
+                        "O DeepMap integra Vercel Web Analytics para estatísticas de utilização, como páginas visitadas, origem das visitas, país aproximado e características de navegador/dispositivo. Segundo a documentação da Vercel, a configuração padrão fornece estatísticas agregadas, não usa cookies de terceiros e não mantém um identificador permanente de visitante; a identificação técnica de visita é de curta duração.",
+                        "Não configuramos eventos personalizados com email ou UUID. Contudo, os endereços de páginas são tratados na medição e podem conter, por exemplo, um username público. A ausência de cookies de terceiros não significa ausência de qualquer tratamento de dados nem permite garantir anonimato absoluto de todos os pedidos técnicos.",
+                        "Avatares Google, imagens externas e vídeos YouTube/Vimeo podem ser pedidos diretamente pelo teu navegador ao apresentar o conteúdo, incluindo ao abrir um popup do mapa. Esses terceiros podem receber IP, dados do navegador e informação do pedido, e aplicar cookies ou tecnologias próprias segundo as suas regras. Atualmente os vídeos incorporados não têm um controlo de consentimento específico no DeepMap. Abrir conteúdo externo não constitui, por si só, consentimento para rastreio não necessário."
                     ]
                 },
                 {
-                    title: 'Os teus direitos e eliminação de conta',
-                    paragraphs: [
-                        'Nos termos da legislação aplicável, podes pedir acesso, retificação ou apagamento dos teus dados pessoais, limitação do tratamento, portabilidade quando aplicável e oposição ao tratamento baseado em interesse legítimo. Quando o fundamento for o consentimento, podes retirá-lo sem afetar o tratamento lícito anterior.',
-                        'O DeepMap ainda não disponibiliza um botão de eliminação automática de conta. Para pedir a eliminação da conta e dos dados pessoais elegíveis associados, envia um email para contact@deepmap.cc a partir do endereço associado à conta. Poderemos precisar de verificar a tua identidade antes de responder ao pedido. Tornar o perfil privado não elimina a conta.',
-                        'Tens igualmente o direito de apresentar reclamação à Comissão Nacional de Proteção de Dados (CNPD) ou a outra autoridade de controlo competente.'
+                    "title": "Cookies e armazenamento no navegador",
+                    "paragraphs": [
+                        "Usamos cookies necessários à autenticação, continuidade da sessão e conclusão segura dos fluxos de login/recuperação. Podem persistir entre visitas e ser renovados; na biblioteca atualmente utilizada, o prazo padrão do cookie é até 400 dias, sujeito às regras do navegador. Esse prazo não é a validade do token nem uma garantia de acesso à conta durante esse período. Ao terminar sessão, o serviço remove os dados de sessão aplicáveis.",
+                        "A preferência de idioma é guardada no localStorage do navegador, sem prazo automático definido pela aplicação, até a alterares ou limpares os dados locais. Não configuramos sessionStorage para preferências. Podes gerir cookies e armazenamento nas definições do navegador; bloquear os necessários pode impedir a autenticação. As tecnologias de terceiros referidas acima seguem também as respetivas condições."
                     ]
                 },
                 {
-                    title: 'Segurança e armazenamento no navegador',
-                    paragraphs: [
-                        'Adotamos medidas técnicas e organizativas adequadas ao serviço e recorremos a prestadores para parte da sua segurança. Nenhum serviço na Internet pode garantir segurança absoluta.',
-                        'O armazenamento no navegador é usado para funções como o idioma selecionado e a sessão autenticada. Antes de introduzir ferramentas opcionais de análise, publicidade ou outros mecanismos de rastreio que exijam informação ou consentimento adicionais, reveremos esta política.'
+                    "title": "Conservação",
+                    "paragraphs": [
+                        "Conta e perfil: enquanto a conta existir e forem necessários ao serviço, com avaliação de pedidos de apagamento e de obrigações de conservação. A eliminação é atualmente tratada por pedido, não por um botão automático ou um prazo de inatividade programado.",
+                        "Contribuições publicadas: enquanto forem úteis ao conteúdo dos mapas e a conservação for legítima; podem subsistir à conta. Submissões, versões, auditoria e moderação: enquanto necessários à integridade do conteúdo, prevenção de abuso, avaliação de decisões e defesa de direitos, com limitação dos dados pessoais ao necessário. Não existe um prazo único de expiração automática destes registos.",
+                        "Notificações: enquanto necessárias à informação da conta e gestão do serviço; o limite de itens apresentados não apaga os anteriores. Dados técnicos e cópias de segurança: pelos ciclos operacionais dos prestadores e pelo tempo necessário a investigar incidentes ou cumprir deveres legais. Contactos: durante a resolução do pedido e, se necessário, para comprovar a resposta ou defender direitos. Não prometemos prazos técnicos de eliminação que o sistema não assegura; podes pedir informação sobre a conservação aplicável ao teu caso."
                     ]
                 },
                 {
-                    title: 'Alterações à política',
-                    paragraphs: [
-                        'Podemos atualizar esta política quando o serviço ou os tratamentos de dados mudarem. A data de atualização será apresentada nesta página. Alterações relevantes serão comunicadas quando exigido. Funcionalidades ainda indisponíveis, como publicações da comunidade, donativos ou serviços premium, serão abordadas antes de serem lançadas.'
+                    "title": "Eliminação da conta e das contribuições",
+                    "paragraphs": [
+                        "Para pedir eliminação, escreve para contact@deepmap.cc, preferencialmente a partir do email da conta. Se já não tiveres acesso, explica a situação para verificarmos a identidade por um meio proporcionado. Não envies a palavra-passe. Tornar o perfil privado ou sair da sessão não elimina a conta.",
+                        "Eliminar a conta de autenticação e o perfil não apaga automaticamente marcadores publicados, submissões, versões ou auditoria. A atribuição pública pode deixar de resolver para um perfil, mas o UUID histórico e outros elementos podem continuar em registos internos quando a conservação for justificada. A conservação de um identificador histórico não equivale a anonimização completa.",
+                        "Analisamos separadamente os dados presentes no próprio conteúdo, avatares, notificações e registos relacionados, retirando ou desassociando dados elegíveis e explicando eventuais exceções legais. Não usamos a preservação de contribuições para recusar indiscriminadamente pedidos de apagamento. Cópias externas já feitas por terceiros podem não estar sob o nosso controlo."
+                    ]
+                },
+                {
+                    "title": "Direitos e reclamações",
+                    "paragraphs": [
+                        "Podes pedir acesso, retificação, apagamento, limitação, oposição ao tratamento baseado em interesse legítimo e portabilidade quando aplicável. Se um tratamento depender de consentimento, podes retirá-lo sem afetar o tratamento lícito anterior. Os direitos têm condições e exceções legais; explicaremos a decisão no teu caso.",
+                        "Envia o pedido para contact@deepmap.cc. Respondemos, em regra, no prazo de um mês, informando dentro desse prazo se houver uma prorrogação legal justificada. Só pediremos identificação adicional quando necessária e proporcional. Podes reclamar à Comissão Nacional de Proteção de Dados (CNPD), em www.cnpd.pt, ou à autoridade de controlo competente no teu país."
+                    ]
+                },
+                {
+                    "title": "Transferências internacionais e segurança",
+                    "paragraphs": [
+                        "O uso de prestadores internacionais pode envolver tratamento fora do Espaço Económico Europeu, incluindo operações de suporte e subcontratação, mesmo quando o alojamento principal está numa região europeia. Não afirmamos que todos os dados ficam na UE. As transferências sujeitas ao RGPD devem ter uma garantia aplicável, como decisão de adequação ou cláusulas contratuais-tipo da Comissão Europeia, com as medidas adicionais necessárias. Podes contactar-nos para obter informação sobre as salvaguardas relevantes.",
+                        "Usamos medidas técnicas e organizativas adequadas, incluindo controlo de acesso e separação entre informação pública e operações autorizadas. A segurança depende também dos prestadores e do cuidado com as credenciais; não existe garantia de segurança absoluta."
+                    ]
+                },
+                {
+                    "title": "Menores",
+                    "paragraphs": [
+                        "O DeepMap não é dirigido especificamente a crianças e não recolhe a data de nascimento nem verifica automaticamente a idade. Se fores menor, deves recorrer ao teu representante legal quando a lei exigir autorização para usar o serviço.",
+                        "Quando o tratamento assentar em consentimento na oferta direta de serviços da sociedade da informação, aplica-se a idade legal de consentimento: em Portugal, 13 anos nos termos do artigo 16.º da Lei n.º 58/2019; abaixo desse limiar, é necessária intervenção do representante legal. Esta regra específica não substitui as regras de capacidade para aceitar contratos nem os requisitos do país de residência. Contacta-nos se considerares que dados de uma criança estão a ser tratados indevidamente."
+                    ]
+                },
+                {
+                    "title": "Alterações a esta política",
+                    "paragraphs": [
+                        "A data desta página identifica a versão atual. Comunicaremos alterações materiais de forma adequada à sua relevância, pela plataforma ou por contacto quando exigido, antes de iniciar um novo tratamento que necessite de informação ou consentimento adicionais. Novos serviços de uploads/storage terão uma revisão própria antes da sua disponibilização."
                     ]
                 }
-            ],
+            ]
         }
     };
 
