@@ -95,6 +95,8 @@ export async function createEditorCategory({ supabase, isCurrent = () => true, g
     const groupId = await resolveLegacyGroupId({ supabase, gameUuid, groupUuid: category.groupUuid });
     const payload = {
         game_id: legacyGameId,
+        // Let the DB bridge reject an alias for another game before insertion.
+        game_uuid: gameUuid,
         id: category.id,
         ...normaliseCategoryPayload(category, groupId)
     };

@@ -16,6 +16,8 @@
    pode ser desligado/removido sem alterar o formato consumido pelo mapa.
 */
 
+import { markerIdKey as bigintIdKey } from '../editor/marker-editor.js';
+
 function keyedObject(rows, transform) {
     return Object.fromEntries(rows.map((row) => {
         const value = transform(row);
@@ -226,8 +228,8 @@ async function attachPublicMarkerAttribution({ query, locations }) {
 async function attachMarkerImages({ supabase, locations }) {
     const databaseIds = locations
         .map((location) => location.databaseId)
-        .filter((id) => Number.isFinite(Number(id)))
-        .map(Number);
+        .filter((id) => id != null)
+        .map(bigintIdKey);
 
     if (!databaseIds.length) return locations;
 
@@ -242,10 +244,13 @@ async function attachMarkerImages({ supabase, locations }) {
         if (error) throw error;
 
         const byMarker = new Map();
+        const requested = new Set(databaseIds);
         for (const row of data ?? []) {
+            const markerId = bigintIdKey(row.marker_id);
+            if (!requested.has(markerId)) throw new Error('MARKER_IMAGE_SCOPE_CONFLICT');
             const image = normaliseMarkerImage(row);
-            if (!byMarker.has(image.markerId)) byMarker.set(image.markerId, []);
-            byMarker.get(image.markerId).push(image);
+            if (!byMarker.has(markerId)) byMarker.set(markerId, []);
+            byMarker.get(markerId).push(image);
         }
 
         return locations.map((location) => {
@@ -260,7 +265,7 @@ async function attachMarkerImages({ supabase, locations }) {
                 };
             }
 
-            const images = byMarker.get(location.databaseId) ?? [];
+            const images = byMarker.get(bigintIdKey(location.databaseId)) ?? [];
             const cover = images.find((image) => image.isCover && image.url) ?? images.find((image) => image.url) ?? null;
 
             return {
@@ -279,8 +284,8 @@ async function attachMarkerImages({ supabase, locations }) {
 async function attachMarkerContent({ supabase, locations }) {
     const databaseIds = locations
         .map((location) => location.databaseId)
-        .filter((id) => Number.isFinite(Number(id)))
-        .map(Number);
+        .filter((id) => id != null)
+        .map(bigintIdKey);
 
     if (!databaseIds.length) return locations;
 
@@ -295,7 +300,16 @@ async function attachMarkerContent({ supabase, locations }) {
         if (sectionsError) throw sectionsError;
         if (!sections?.length) return locations;
 
-        const sectionIds = sections.map((section) => section.id);
+        const requested = new Set(databaseIds);
+        const sectionById = new Map();
+        for (const section of sections) {
+            const id = bigintIdKey(section.id);
+            if (!requested.has(bigintIdKey(section.marker_id)) || sectionById.has(id)) {
+                throw new Error('MARKER_CONTENT_SCOPE_CONFLICT');
+            }
+            sectionById.set(id, section);
+        }
+        const sectionIds = [...sectionById.keys()];
         const { data: rows, error: rowsError } = await supabase
             .from('marker_section_rows')
             .select('id, section_id, text_en, text_pt, sort_order')
@@ -305,14 +319,13 @@ async function attachMarkerContent({ supabase, locations }) {
 
         if (rowsError) throw rowsError;
 
-        const sectionById = new Map(sections.map((section) => [Number(section.id), section]));
         const byMarker = new Map();
 
         for (const row of rows ?? []) {
-            const section = sectionById.get(Number(row.section_id));
-            if (!section) continue;
+            const section = sectionById.get(bigintIdKey(row.section_id));
+            if (!section) throw new Error('MARKER_CONTENT_SECTION_CONFLICT');
 
-            const markerId = Number(section.marker_id);
+            const markerId = bigintIdKey(section.marker_id);
             if (!byMarker.has(markerId)) byMarker.set(markerId, []);
 
             byMarker.get(markerId).push({
@@ -327,7 +340,7 @@ async function attachMarkerContent({ supabase, locations }) {
         return locations.map((location) => ({
             ...location,
             contentItems: location.databaseId
-                ? byMarker.get(Number(location.databaseId)) ?? []
+                ? byMarker.get(bigintIdKey(location.databaseId)) ?? []
                 : location.contentItems ?? []
         }));
     } catch (error) {

@@ -1,3 +1,5 @@
+import { markerIdKey as bigintIdKey } from './marker-editor.js';
+
 export const QUICK_CONTENT_EDITOR_KEY = 'quick-content-v1';
 
 export const MARKER_CONTENT_TYPES = [
@@ -59,10 +61,11 @@ export async function loadEditorMarkerContent({ supabase, markerId }) {
 
     if (rowsError) throw rowsError;
 
-    const sectionById = new Map(quickSections.map((section) => [Number(section.id), section]));
+    const sectionById = new Map(quickSections.map((section) => [bigintIdKey(section.id), section]));
 
     return (rows ?? []).map((row) => {
-        const section = sectionById.get(Number(row.section_id));
+        const section = sectionById.get(bigintIdKey(row.section_id));
+        if (!section) throw new Error('MARKER_CONTENT_SECTION_CONFLICT');
         return {
             type: section?.section_type ?? 'note',
             textEn: row.text_en ?? '',

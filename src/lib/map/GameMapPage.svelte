@@ -986,7 +986,7 @@
 
             // Tooltip traduzido ao passar o rato.
             marker.bindTooltip(
-                getLocationTitle(location),
+                escapeHtml(getLocationTitle(location)),
                 {
                     direction: 'top',
                     offset: [0, -32],
