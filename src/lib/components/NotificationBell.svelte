@@ -168,6 +168,12 @@
         }
     }
 
+    /** @param {Event} event */
+    function handleHeaderPanelOpen(event) {
+        const source = /** @type {CustomEvent} */ (event).detail?.source;
+        if (source === 'account' || source === 'navigation') open = false;
+    }
+
     /** @param {PointerEvent} event */
     function handleDocumentPointerDown(event) {
         if (open && notificationWrap && !notificationWrap.contains(/** @type {Node} */ (event.target))) open = false;
@@ -223,6 +229,7 @@
         document.addEventListener('pointerdown', handleDocumentPointerDown);
         document.addEventListener('keydown', handleDocumentKeyDown);
         window.addEventListener('deepmap:notifications-count-sync', handleNotificationCountSync);
+        window.addEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             if (!alive) return;
             const next = session?.user.id ?? null;
@@ -241,6 +248,7 @@
             document.removeEventListener('pointerdown', handleDocumentPointerDown);
             document.removeEventListener('keydown', handleDocumentKeyDown);
             window.removeEventListener('deepmap:notifications-count-sync', handleNotificationCountSync);
+            window.removeEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
             if (notificationChannel) void supabase.removeChannel(notificationChannel);
             notificationChannel = null;
             notifications = [];

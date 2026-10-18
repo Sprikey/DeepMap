@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { safeInternalPath } from '$lib/auth/internal-path.js';
 
 export const GET = async ({ url, locals }) => {
     const code = url.searchParams.get('code');
@@ -7,12 +8,7 @@ export const GET = async ({ url, locals }) => {
     const next = url.searchParams.get('next') ?? '/';
 
     // Permitir apenas destinos internos do DeepMap para o fluxo normal.
-    const safeNext =
-        next.startsWith('/') &&
-        !next.startsWith('//') &&
-        !next.includes('\\')
-            ? next
-            : '/';
+    const safeNext = safeInternalPath(next, url.origin, '/');
 
     // Recuperação entre navegadores: mantém o fluxo já testado.
     if (type === 'recovery') {

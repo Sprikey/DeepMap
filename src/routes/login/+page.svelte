@@ -1,6 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
+    import { safeInternalPath } from '$lib/auth/internal-path.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { getSiteLanguage, setSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { authTranslations } from '$lib/i18n/auth.js';
@@ -39,27 +40,12 @@
     let returnTo = $state('/profile');
 
     function safeReturnPath(raw) {
-        if (
-            typeof raw !== 'string' ||
-            !raw.startsWith('/') ||
-            raw.startsWith('//') ||
-            raw.includes('\\') ||
-            /[\u0000-\u001f\u007f]/.test(raw)
-        ) return '/profile';
-
-        try {
-            const target = new URL(raw, window.location.origin);
-            if (
-                target.origin !== window.location.origin ||
-                target.pathname === '/login' ||
-                target.pathname === '/reset-password' ||
-                target.pathname.startsWith('/auth/')
-            ) return '/profile';
-
-            return target.pathname + target.search + target.hash;
-        } catch {
-            return '/profile';
-        }
+        const path = safeInternalPath(raw, window.location.origin, '/profile');
+        const target = new URL(path, window.location.origin);
+        // Preserve login's existing auth-route loop prevention.
+        if (target.pathname === '/login' || target.pathname === '/reset-password' ||
+            target.pathname.startsWith('/auth/')) return '/profile';
+        return path;
     }
 
     function authErrorKey(error, fallback) {

@@ -7,12 +7,18 @@
 
     let { language = 'en' } = $props();
 
+    /** @type {import('@supabase/supabase-js').User | null} */
     let user = $state(null);
     let role = $state('user');
     let checkingSession = $state(true);
     let avatarFailed = $state(false);
     let menuOpen = $state(false);
     let menuWrap;
+    let mounted = false;
+    let identityGeneration = 0;
+    let accessGeneration = 0;
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let accessTimer;
 
     let accountLabel = $derived(language === 'pt' ? 'A minha conta' : 'My account');
     let loginLabel = $derived(language === 'pt' ? 'Entrar' : 'Log in');
@@ -26,20 +32,49 @@
     let initials = $derived(avatarPresentation.symbol);
     let avatarUrl = $derived(avatarFailed ? null : avatarPresentation.image);
 
-    async function refreshAccess() {
-        if (!user) {
-            role = 'user';
-            return;
-        }
+    function invalidateAccess() {
+        accessGeneration += 1;
+        clearTimeout(accessTimer);
+        accessTimer = undefined;
+    }
 
-        const supabase = getSupabaseBrowserClient();
-        const [{ data: roleData }, { data: statusData }] = await Promise.all([
-            supabase.rpc('get_deepmap_role'),
-            supabase.rpc('get_deepmap_account_status')
-        ]);
+    function scheduleAccessRefresh() {
+        invalidateAccess();
+        if (!mounted || !user) return;
+        const userId = user.id;
+        const identity = identityGeneration;
+        const request = accessGeneration;
+        const isCurrent = () => mounted && user?.id === userId &&
+            identityGeneration === identity && accessGeneration === request;
 
-        const status = Array.isArray(statusData) ? statusData[0] : statusData;
-        role = status?.is_banned === true ? 'banned' : (typeof roleData === 'string' ? roleData : 'user');
+        // A macrotask keeps all SDK work outside Supabase's auth callback/lock.
+        accessTimer = setTimeout(async () => {
+            if (!isCurrent()) return;
+            accessTimer = undefined;
+            try {
+                const supabase = getSupabaseBrowserClient();
+                const [{ data: roleData }, { data: statusData }] = await Promise.all([
+                    supabase.rpc('get_deepmap_role'),
+                    supabase.rpc('get_deepmap_account_status')
+                ]);
+                if (!isCurrent()) return;
+                const status = Array.isArray(statusData) ? statusData[0] : statusData;
+                role = status?.is_banned === true ? 'banned' : (typeof roleData === 'string' ? roleData : 'user');
+            } catch {
+                if (isCurrent()) role = 'user';
+            }
+        }, 0);
+    }
+
+    /** @param {import('@supabase/supabase-js').User | null} nextUser */
+    function replaceIdentity(nextUser) {
+        if (user?.id !== nextUser?.id) menuOpen = false;
+        identityGeneration += 1;
+        user = nextUser;
+        role = 'user';
+        avatarFailed = false;
+        checkingSession = false;
+        scheduleAccessRefresh();
     }
 
     function announceHeaderPanelOpen(source = 'account') {
@@ -52,18 +87,26 @@
         menuOpen = !menuOpen;
         if (menuOpen) {
             announceHeaderPanelOpen('account');
-            void refreshAccess();
+            scheduleAccessRefresh();
         }
     }
 
     async function logout() {
         menuOpen = false;
+        identityGeneration += 1;
+        invalidateAccess();
         await getSupabaseBrowserClient().auth.signOut();
         window.location.assign('/');
     }
 
     function closeMenu() {
         menuOpen = false;
+    }
+
+    /** @param {Event} event */
+    function handleHeaderPanelOpen(event) {
+        const source = /** @type {CustomEvent} */ (event).detail?.source;
+        if (source === 'navigation' || source === 'notifications') closeMenu();
     }
 
     function handleDocumentPointerDown(event) {
@@ -77,36 +120,41 @@
 
     onMount(() => {
         const supabase = getSupabaseBrowserClient();
-        let active = true;
+        mounted = true;
+        const initialGeneration = identityGeneration;
 
         document.addEventListener('pointerdown', handleDocumentPointerDown);
         document.addEventListener('keydown', handleDocumentKeyDown);
+        window.addEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (_event, session) => {
-                if (!active) return;
-                user = session?.user ?? null;
-                avatarFailed = false;
-                checkingSession = false;
-                await refreshAccess();
+            (_event, session) => {
+                if (!mounted) return;
+                // Every event invalidates even a replacement session for the same UUID.
+                replaceIdentity(session?.user ?? null);
             }
         );
 
         async function loadUser() {
-            const { data, error } = await supabase.auth.getUser();
-            if (!active) return;
-            user = error ? null : (data.user ?? null);
-            checkingSession = false;
-            await refreshAccess();
+            try {
+                const { data, error } = await supabase.auth.getUser();
+                if (!mounted || identityGeneration !== initialGeneration) return;
+                replaceIdentity(error ? null : (data.user ?? null));
+            } catch {
+                if (mounted && identityGeneration === initialGeneration) replaceIdentity(null);
+            }
         }
 
         void loadUser();
 
         return () => {
-            active = false;
+            mounted = false;
+            identityGeneration += 1;
+            invalidateAccess();
             subscription.unsubscribe();
             document.removeEventListener('pointerdown', handleDocumentPointerDown);
             document.removeEventListener('keydown', handleDocumentKeyDown);
+            window.removeEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
         };
     });
 </script>
@@ -156,6 +204,6 @@
 {/if}
 
 <style>
-    .auth-placeholder{display:block;width:36px;height:36px;flex:0 0 36px}.login-link,.avatar-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;box-sizing:border-box;text-decoration:none;cursor:pointer}.login-link{min-height:34px;padding:0 11px;border:1px solid #c8a355;border-radius:6px;color:#c8a355;background:#22222a;font-size:.82rem;font-weight:700;white-space:nowrap}.login-link:hover{background:#35312a}.account-wrap{position:relative;display:inline-flex}.avatar-link{width:36px;height:36px;padding:0;overflow:hidden;border:2px solid #c8a355;border-radius:50%;background:#292933;color:#c8a355;font-size:.95rem;font-weight:700}.avatar-link img{width:100%;height:100%;object-fit:cover}.account-menu{position:absolute;top:44px;right:0;width:190px;padding:7px;border:1px solid #3a352a;border-radius:10px;background:rgba(13,13,16,.99);box-shadow:0 16px 42px rgba(0,0,0,.5);z-index:90000}.account-summary{display:grid;gap:2px;padding:7px 8px 9px;border-bottom:1px solid #2a2a30}.account-summary strong{overflow:hidden;color:#eee;font-size:.78rem;text-overflow:ellipsis;white-space:nowrap}.account-summary small{color:#777;font-size:.62rem}.account-menu a,.logout-action{display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:8px 9px;border:0;border-radius:7px;background:transparent;color:#c9c9cf;text-align:left;text-decoration:none;font:inherit;font-size:.75rem;font-weight:700;cursor:pointer}.account-menu a:hover,.logout-action:hover{background:#1b1b21;color:#efd184}.account-menu a.staff{color:#d8b86f}.account-menu a.suspended{color:#ffb4bd}.logout-action{color:#aaa}.login-link:focus-visible,.avatar-link:focus-visible{outline:2px solid #fff;outline-offset:3px}
+    .auth-placeholder{display:block;width:36px;height:36px;flex:0 0 36px}.login-link,.avatar-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;box-sizing:border-box;text-decoration:none;cursor:pointer}.login-link{min-height:34px;padding:0 11px;border:1px solid #c8a355;border-radius:6px;color:#c8a355;background:#22222a;font-size:.82rem;font-weight:700;white-space:nowrap}.login-link:hover{background:#35312a}.account-wrap{position:relative;display:inline-flex}.avatar-link{width:36px;height:36px;padding:0;overflow:hidden;border:2px solid #c8a355;border-radius:50%;background:#292933;color:#c8a355;font-size:.95rem;font-weight:700}.avatar-link img{display:block;width:100%;height:100%;object-fit:cover;border-radius:50%}.account-menu{position:absolute;top:44px;right:0;width:190px;padding:7px;border:1px solid #3a352a;border-radius:10px;background:rgba(13,13,16,.99);box-shadow:0 16px 42px rgba(0,0,0,.5);z-index:90000}.account-summary{display:grid;gap:2px;padding:7px 8px 9px;border-bottom:1px solid #2a2a30}.account-summary strong{overflow:hidden;color:#eee;font-size:.78rem;text-overflow:ellipsis;white-space:nowrap}.account-summary small{color:#777;font-size:.62rem}.account-menu a,.logout-action{display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:8px 9px;border:0;border-radius:7px;background:transparent;color:#c9c9cf;text-align:left;text-decoration:none;font:inherit;font-size:.75rem;font-weight:700;cursor:pointer}.account-menu a:hover,.logout-action:hover{background:#1b1b21;color:#efd184}.account-menu a.staff{color:#d8b86f}.account-menu a.suspended{color:#ffb4bd}.logout-action{color:#aaa}.login-link:focus-visible,.avatar-link:focus-visible{outline:2px solid #fff;outline-offset:3px}
     @media(max-width:768px){.login-link{padding:0 8px;font-size:.75rem}.avatar-link,.auth-placeholder{width:32px;height:32px;flex-basis:32px}.account-menu{position:fixed;top:calc(var(--deepmap-site-header-height,62px) + 6px);right:8px;width:min(230px,calc(100vw - 16px))}}
 </style>

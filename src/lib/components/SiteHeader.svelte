@@ -1,5 +1,6 @@
 <script>
     import { onMount } from 'svelte';
+    import { afterNavigate } from '$app/navigation';
     import AuthHeader from '$lib/components/AuthHeader.svelte';
     import {
         getSiteLanguage,
@@ -9,6 +10,8 @@
 
     let currentLanguage = $state('en');
     let mobileMenuOpen = $state(false);
+    /** @type {HTMLElement | undefined} */
+    let headerElement = $state();
 
     let t = $derived(
         siteHeaderTranslations[currentLanguage] ?? siteHeaderTranslations.en
@@ -16,6 +19,38 @@
 
     onMount(() => {
         currentLanguage = setSiteLanguage(getSiteLanguage());
+        window.addEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
+        return () => window.removeEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
+    });
+
+    /** @param {Event} event */
+    function handleHeaderPanelOpen(event) {
+        const source = /** @type {CustomEvent} */ (event).detail?.source;
+        if (source === 'account' || source === 'notifications') closeMobileMenu();
+    }
+
+    afterNavigate(() => {
+        closeMobileMenu();
+    });
+
+    $effect(() => {
+        if (!mobileMenuOpen) return;
+        /** @param {PointerEvent} event */
+        function onPointerDown(event) {
+            if (event.target instanceof Node && !headerElement?.contains(event.target)) {
+                closeMobileMenu();
+            }
+        }
+        /** @param {KeyboardEvent} event */
+        function onKeyDown(event) {
+            if (event.key === 'Escape') closeMobileMenu();
+        }
+        document.addEventListener('pointerdown', onPointerDown, true);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('pointerdown', onPointerDown, true);
+            document.removeEventListener('keydown', onKeyDown);
+        };
     });
 
     function changeLanguage(event) {
@@ -24,6 +59,9 @@
 
     function toggleMobileMenu() {
         mobileMenuOpen = !mobileMenuOpen;
+        if (mobileMenuOpen) {
+            window.dispatchEvent(new CustomEvent('deepmap:header-panel-open', { detail: { source: 'navigation' } }));
+        }
     }
 
     function closeMobileMenu() {
@@ -31,7 +69,7 @@
     }
 </script>
 
-<header class="site-header-global">
+<header class="site-header-global" bind:this={headerElement}>
     <div class="site-header-inner">
         <a href="/" class="brand-link" aria-label="DeepMap — Home" onclick={closeMobileMenu}>
             <img src="/brand/logo.png" alt="DeepMap" class="brand-logo" />
