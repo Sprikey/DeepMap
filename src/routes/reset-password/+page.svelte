@@ -17,62 +17,125 @@
     let successKey = $state('');
 
 
+    let mounted = false;
+    /** @type {string | null} */
+    let accountId = null;
+    /** @type {string | null} */
+    let sessionToken = null;
+    let identityGeneration = 0;
+    let mutationGeneration = 0;
+    /** @typedef {{ actor: string, identity: number, mutation: number, phase: string, signedOut?: boolean }} PasswordOperation */
+    /** @type {PasswordOperation | null} */
+    let activeOperation = null;
+
+    /** @param {PasswordOperation} operation */
+    function ownsOperation(operation) {
+        return mounted && activeOperation === operation && operation.identity === identityGeneration &&
+            operation.mutation === mutationGeneration && (accountId === operation.actor ||
+                (operation.phase === 'signout' && operation.signedOut === true && accountId === null));
+    }
+
+    /** @param {string} event @param {{ user: { id: string }, access_token?: string } | null} session */
+    function replaceSession(event, session) {
+        const operation = activeOperation;
+        const sameAccount = !!session && session.user.id === accountId;
+        const ownPasswordUpdate = operation && ownsOperation(operation) && operation.phase === 'password' &&
+            event === 'USER_UPDATED' && !!sessionToken && session?.access_token === sessionToken &&
+            session.user.id === operation.actor;
+        const ownSignout = operation && ownsOperation(operation) && operation.phase === 'signout' &&
+            event === 'SIGNED_OUT' && !session;
+        identityGeneration += 1;
+        accountId = session?.user.id ?? null;
+        sessionToken = session?.access_token ?? null;
+        if (operation && (ownPasswordUpdate || ownSignout)) {
+            // Acknowledge only this operation's unchanged-session SDK event.
+            operation.identity = identityGeneration;
+            if (ownPasswordUpdate) operation.phase = 'password-acknowledged';
+            if (ownSignout) operation.signedOut = true;
+            return;
+        }
+        mutationGeneration += 1;
+        activeOperation = null;
+        canReset = accountId !== null && !!sessionToken;
+        checkingSession = accountId !== null && !sessionToken;
+        working = false;
+        if (!sameAccount) {
+            finished = false;
+            password = '';
+            confirmPassword = '';
+            errorKey = '';
+            successKey = '';
+        } else if (operation) {
+            // Cancelled update ownership must not erase this account's retry input.
+            finished = false;
+            errorKey = '';
+            successKey = '';
+        }
+    }
+
     onMount(() => {
+        mounted = true;
         currentLanguage = setSiteLanguage(getSiteLanguage());
         const unsubscribeLanguage = subscribeSiteLanguage((language) => { currentLanguage = language; });
-        let active = true;
-
-        async function checkSession() {
-            const supabase = getSupabaseBrowserClient();
-            const { data, error } = await supabase.auth.getUser();
-            if (!active) return;
-
-            canReset = !error && !!data.user;
-            checkingSession = false;
-        }
-
-        checkSession();
-        return () => { active = false; unsubscribeLanguage(); };
+        const supabase = getSupabaseBrowserClient();
+        const initialGeneration = identityGeneration;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (mounted) replaceSession(event, session);
+        });
+        void (async () => {
+            try {
+                const { data, error } = await supabase.auth.getUser();
+                if (mounted && identityGeneration === initialGeneration) {
+                    // Only the auth subscription can supply the owning session token.
+                    if (error || !data.user) replaceSession('BOOTSTRAP', null);
+                }
+            } catch {
+                if (mounted && identityGeneration === initialGeneration) replaceSession('BOOTSTRAP', null);
+            }
+        })();
+        return () => {
+            mounted = false;
+            identityGeneration += 1;
+            mutationGeneration += 1;
+            activeOperation = null;
+            unsubscribeLanguage();
+            subscription.unsubscribe();
+        };
     });
 
     async function updatePassword(event) {
         event.preventDefault();
-        if (working) return;
+        if (working || !mounted || !canReset || !accountId || !sessionToken) return;
         errorKey = '';
         successKey = '';
+        if (password.length < 8) { errorKey = 'password_too_short'; return; }
+        if (password !== confirmPassword) { errorKey = 'password_mismatch'; return; }
 
-        if (password.length < 8) {
-            errorKey = 'password_too_short';
-            return;
-        }
-        if (password !== confirmPassword) {
-            errorKey = 'password_mismatch';
-            return;
-        }
-
+        const operation = { actor: accountId, identity: identityGeneration,
+            mutation: ++mutationGeneration, phase: 'password' };
+        activeOperation = operation;
         working = true;
         const supabase = getSupabaseBrowserClient();
-        const { error } = await supabase.auth.updateUser({ password });
-
-        if (error) {
-            errorKey = error.status === 429 ? 'rate_limit' : 'reset_update_error';
-            working = false;
-            return;
+        try {
+            const { error } = await supabase.auth.updateUser({ password });
+            if (!ownsOperation(operation)) return;
+            if (error) { errorKey = error.status === 429 ? 'rate_limit' : 'reset_update_error'; return; }
+            password = '';
+            confirmPassword = '';
+            finished = true;
+            operation.phase = 'signout';
+            const { error: logoutError } = await supabase.auth.signOut();
+            if (!ownsOperation(operation)) return;
+            if (logoutError) { successKey = 'reset_signout_error'; return; }
+            window.location.replace('/login?password_reset=1');
+        } catch {
+            if (ownsOperation(operation)) errorKey = 'reset_update_error';
+        } finally {
+            if (ownsOperation(operation)) {
+                working = false;
+                activeOperation = null;
+            }
         }
-
-        password = '';
-        confirmPassword = '';
-        finished = true;
-
-        const { error: logoutError } = await supabase.auth.signOut();
-        working = false;
-
-        if (logoutError) {
-            successKey = 'reset_signout_error';
-            return;
-        }
-
-        window.location.replace('/login?password_reset=1');
     }
 </script>
 

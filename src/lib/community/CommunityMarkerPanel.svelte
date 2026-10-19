@@ -1,5 +1,6 @@
 <script>
-    import { tick } from 'svelte';
+    import { tick, untrack } from 'svelte';
+    import { markerIdKey, sameMarkerId } from '$lib/editor/marker-editor.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { normaliseHttpUrl } from '$lib/map/media.js';
     import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
@@ -11,12 +12,16 @@
         ensureContributorProfile,
         findPendingMarkerCorrection,
         loadMyMarkerSubmissionsPage,
-        normaliseSubmission,
+        normaliseCommunitySubmission,
+        isCommunityGameUuid,
         updateMarkerSubmission
     } from '$lib/community/marker-contributions.js';
 
     let {
-        gameId,
+        gameUuid,
+        legacyGameId,
+        publicMarkers = [],
+        onFocusMarker = (/** @type {string} */ id) => {},
         language = 'en',
         active = false,
         userId = null,
@@ -83,13 +88,13 @@
     let t = $derived(TEXT[language] ?? TEXT.en);
     let isModerator = $derived(userRole === 'moderator');
     let canEditPortuguese = $derived(userRole === 'moderator' || userRole === 'admin');
-    let submissions = $state([]);
+    let submissions = $state(/** @type {any[]} */ ([]));
     let submissionsTotal = $state(0);
     let submissionsPage = $state(1);
     let submissionsPageSize = $state(10);
     let loading = $state(false);
     let refreshFeedback = $state('');
-    let refreshTimer;
+    let refreshTimer = /** @type {ReturnType<typeof setTimeout> | undefined} */ (undefined);
     let saving = $state(false);
     let errorMessage = $state('');
     let successMessage = $state('');
@@ -97,7 +102,7 @@
     let editingSubmissionId = $state(null);
     let submissionType = $state('create');
     let correctionKind = $state('text');
-    let targetMarker = $state(null);
+    let targetMarker = $state(/** @type {any} */ (null));
     let mapLayer = $state('surface');
     let categoryGroupId = $state('');
     let categoryId = $state('');
@@ -116,11 +121,35 @@
     let note = $state('');
     let contentItems = $state([]);
     let fieldErrors = $state({});
-    let duplicatePendingId = $state(null);
+    let duplicatePendingId = $state(/** @type {string | null} */ (null));
     let checkingDuplicate = $state(false);
     let lastRequestRevision = null;
     let lastPointRevision = null;
-    let focusedSubmissionId = $state(null);
+    let focusedSubmissionId = $state(/** @type {string | null} */ (null));
+    let editingSubmission = $state(/** @type {any} */ (null));
+    let readGeneration = 0;
+    let formGeneration = 0;
+
+    function contextGuard() {
+        const game = gameUuid;
+        const user = userId;
+        const revision = requestRevision;
+        const focus = focusSubmissionId;
+        return () => game === gameUuid && user === userId && revision === requestRevision
+            && focus === focusSubmissionId && active;
+    }
+
+    /** @param {any} item */
+    function ownsSubmission(item) {
+        return isCommunityGameUuid(gameUuid) && item?.gameUuid === gameUuid
+            && Boolean(userId) && item?.submittedBy === userId;
+    }
+
+    /** @param {unknown} id */
+    function currentPublicMarker(id) {
+        return publicMarkers.find((/** @type {any} */ marker) => marker.gameUuid === gameUuid
+            && sameMarkerId(marker.databaseId, id)) ?? null;
+    }
 
     let sortedGroups = $derived(
         [...categoryGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
@@ -169,6 +198,9 @@
     }
 
     function resetForm() {
+        formGeneration += 1;
+        saving = false;
+        editingSubmission = null;
         editingSubmissionId = null;
         submissionType = 'create';
         correctionKind = 'text';
@@ -205,6 +237,11 @@
 
     async function openCorrection(marker) {
         resetForm();
+        marker = currentPublicMarker(marker?.databaseId);
+        if (!marker) return;
+        const currentContext = contextGuard();
+        const generation = formGeneration;
+        const isCurrent = () => currentContext() && generation === formGeneration;
         view = 'form';
         submissionType = 'correction';
         correctionKind = 'text';
@@ -225,22 +262,42 @@
 
         checkingDuplicate = true;
         try {
-            duplicatePendingId = await findPendingMarkerCorrection({
+            const pendingId = await findPendingMarkerCorrection({
                 supabase: getSupabaseBrowserClient(),
-                gameId,
+                gameUuid,
                 userId,
                 markerId: marker.databaseId
             });
+            if (!isCurrent()) return;
+            duplicatePendingId = pendingId;
             if (duplicatePendingId !== null) errorMessage = t.duplicatePending;
         } catch (error) {
+            if (!isCurrent()) return;
             console.warn('DeepMap pending correction check:', error);
+            errorMessage = t.loadError;
         } finally {
-            checkingDuplicate = false;
+            if (isCurrent()) checkingDuplicate = false;
         }
     }
 
     async function refreshSubmissions({ manual = false } = {}) {
-        if (!userId || loading) return;
+        const generation = ++readGeneration;
+        const currentContext = contextGuard();
+        const game = gameUuid;
+        const user = userId;
+        const page = submissionsPage;
+        const size = submissionsPageSize;
+        const focus = focusSubmissionId;
+        const isCurrent = () => generation === readGeneration && currentContext()
+            && page === submissionsPage && size === submissionsPageSize && focus === focusSubmissionId;
+        if (!user || !isCommunityGameUuid(game)) {
+            submissions = [];
+            submissionsTotal = 0;
+            focusedSubmissionId = null;
+            loading = false;
+            errorMessage = user ? t.loadError : '';
+            return;
+        }
         loading = true;
         errorMessage = '';
         if (manual) {
@@ -248,47 +305,68 @@
             if (refreshTimer) clearTimeout(refreshTimer);
         }
         try {
-            const result = await loadMyMarkerSubmissionsPage({
+            let result = await loadMyMarkerSubmissionsPage({
                 supabase: getSupabaseBrowserClient(),
-                gameId,
-                limit: submissionsPageSize,
-                offset: (submissionsPage - 1) * submissionsPageSize
+                gameUuid: game,
+                limit: size,
+                offset: (page - 1) * size
             });
-            submissions = result.items;
-            submissionsTotal = result.total;
-            if (submissionsPage > submissionsPageCount) {
-                submissionsPage = submissionsPageCount;
-                const retry = await loadMyMarkerSubmissionsPage({
+            if (!isCurrent()) return;
+            // An empty beyond-end page contains no total_count. Read page one for the real total.
+            if (!result.items.length && page > 1) {
+                result = await loadMyMarkerSubmissionsPage({
                     supabase: getSupabaseBrowserClient(),
-                    gameId,
-                    limit: submissionsPageSize,
-                    offset: (submissionsPage - 1) * submissionsPageSize
+                    gameUuid: game, limit: size, offset: 0
                 });
-                submissions = retry.items;
-                submissionsTotal = retry.total;
+                if (!isCurrent()) return;
+                const lastPage = Math.max(1, Math.ceil(result.total / size));
+                submissionsPage = Math.min(page, lastPage);
+                return await refreshSubmissions({ manual });
             }
-            focusedSubmissionId = focusSubmissionId == null ? null : Number(focusSubmissionId);
-            if (focusedSubmissionId !== null && !submissions.some((item) => item.id === focusedSubmissionId)) {
+            let items = /** @type {any[]} */ (result.items.filter(ownsSubmission));
+            let focusId = null;
+            try { if (focus != null) focusId = markerIdKey(focus); } catch { /* Invalid links fail closed. */ }
+            if (focusId !== null && !items.some((item) => item.id === focusId)) {
                 const { data: focusedRow, error: focusedError } = await getSupabaseBrowserClient()
                     .from('marker_submissions')
-                    .select('id, game_id, marker_id, submission_type, correction_kind, status, submitted_by, payload, note, reviewed_by, reviewed_at, review_note, created_at, updated_at')
-                    .eq('id', focusedSubmissionId)
-                    .eq('submitted_by', userId)
+                    .select('id, game_id, game_uuid, marker_id, submission_type, correction_kind, status, submitted_by, payload, note, reviewed_by, reviewed_at, review_note, created_at, updated_at')
+                    .eq('id', focusId)
+                    .eq('game_uuid', game)
+                    .eq('submitted_by', user)
                     .maybeSingle();
-                if (!focusedError && focusedRow) submissions = [normaliseSubmission({ ...focusedRow, revision_count: 0, total_count: submissionsTotal }), ...submissions];
+                if (!isCurrent()) return;
+                if (focusedError) throw focusedError;
+                if (focusedRow) {
+                    const item = normaliseCommunitySubmission({ ...focusedRow,
+                        game_slug: result.items[0]?.gameSlug ?? null,
+                        revision_count: 0, total_count: result.total });
+                    if (ownsSubmission(item)) items = [item, ...items];
+                }
             }
+            if (!isCurrent()) return;
+            submissions = items;
+            submissionsTotal = result.total;
+            focusedSubmissionId = items.some((item) => item.id === focusId) ? focusId : null;
             if (focusedSubmissionId !== null) {
-                setTimeout(() => document.getElementById(`contribution-${focusedSubmissionId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
+                const selected = items.find((item) => item.id === focusedSubmissionId);
+                if (selected?.markerId && currentPublicMarker(selected.markerId)) onFocusMarker(selected.markerId);
+                setTimeout(() => {
+                    if (isCurrent()) document.getElementById(`contribution-${focusId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }, 60);
             }
             if (manual) {
                 refreshFeedback = t.refreshed;
-                refreshTimer = setTimeout(() => { refreshFeedback = ''; }, 2200);
+                refreshTimer = setTimeout(() => { if (isCurrent()) refreshFeedback = ''; }, 2200);
             }
         } catch (error) {
+            if (!isCurrent()) return;
+            submissions = [];
+            submissionsTotal = 0;
+            focusedSubmissionId = null;
             console.error('DeepMap community submissions:', error);
             errorMessage = t.loadError;
         } finally {
-            loading = false;
+            if (isCurrent()) loading = false;
         }
     }
 
@@ -403,7 +481,14 @@
     }
 
     async function saveSubmission() {
-        if (!userId || saving) return;
+        if (!userId || saving || !isCommunityGameUuid(gameUuid)) return;
+        if (editingSubmissionId !== null && (!ownsSubmission(editingSubmission)
+            || editingSubmission.status !== 'pending' || editingSubmission.id !== editingSubmissionId)) return;
+        if (submissionType === 'correction' && editingSubmissionId === null
+            && !currentPublicMarker(targetMarker?.databaseId)) return;
+        const currentContext = contextGuard();
+        const generation = formGeneration;
+        const isCurrent = () => currentContext() && generation === formGeneration;
         clearMessages();
         const validation = validate();
         if (validation) {
@@ -411,34 +496,32 @@
             return;
         }
 
-        if (submissionType === 'correction' && editingSubmissionId === null && targetMarker?.databaseId) {
-            try {
+        saving = true;
+        try {
+            if (submissionType === 'correction' && editingSubmissionId === null && targetMarker?.databaseId) {
                 const pendingId = await findPendingMarkerCorrection({
                     supabase: getSupabaseBrowserClient(),
-                    gameId,
+                    gameUuid,
                     userId,
                     markerId: targetMarker.databaseId
                 });
+                if (!isCurrent()) return;
                 if (pendingId !== null) {
                     duplicatePendingId = pendingId;
                     errorMessage = t.duplicatePending;
                     return;
                 }
-            } catch (error) {
-                console.warn('DeepMap pending correction recheck:', error);
             }
-        }
 
-        saving = true;
-        try {
             const supabase = getSupabaseBrowserClient();
             await ensureContributorProfile({ supabase });
+            if (!isCurrent()) return;
             const payload = payloadForCurrentForm();
 
             if (editingSubmissionId === null) {
                 await createMarkerSubmission({
                     supabase,
-                    gameId,
+                    legacyGameId,
                     userId,
                     type: submissionType,
                     markerId: submissionType === 'correction' ? targetMarker?.databaseId ?? null : null,
@@ -446,6 +529,7 @@
                     payload,
                     note
                 });
+                if (!isCurrent()) return;
                 successMessage = isModerator ? t.moderatorSubmitted : t.submitted;
             } else {
                 await updateMarkerSubmission({
@@ -455,25 +539,32 @@
                     payload,
                     note
                 });
+                if (!isCurrent()) return;
                 successMessage = t.updated;
             }
 
             onPositionModeChange(false);
             onPreview(null, { clear: true });
             await refreshSubmissions();
+            if (!isCurrent()) return;
             await onSubmitted();
+            if (!isCurrent()) return;
             view = 'mine';
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap save community submission:', error);
             errorMessage = error?.code === '23505' ? t.duplicatePending : (String(error?.message ?? error).includes('USERNAME_REQUIRED') ? t.usernameRequired : t.saveError);
         } finally {
-            saving = false;
+            if (isCurrent()) saving = false;
         }
     }
 
+    /** @param {any} item */
     function loadSubmission(item) {
-        if (!item || item.status !== 'pending') return;
+        if (!ownsSubmission(item) || item.status !== 'pending'
+            || !submissions.some((row) => row.id === item.id && ownsSubmission(row))) return;
         resetForm();
+        editingSubmission = item;
         editingSubmissionId = item.id;
         submissionType = item.type;
         correctionKind = item.correctionKind ?? 'text';
@@ -502,20 +593,23 @@
             : [];
 
         if (item.markerId) {
-            targetMarker = requestMarker?.databaseId === item.markerId
-                ? requestMarker
-                : {
+            targetMarker = currentPublicMarker(item.markerId) ?? {
                     databaseId: item.markerId,
                     categoryId: p.category_id ?? null,
                     mapLayer: p.map_layer ?? 'surface',
                     title: { en: p.marker_title ?? '', pt: p.marker_title ?? '' }
                 };
+            if (currentPublicMarker(item.markerId)) onFocusMarker(item.markerId);
         }
         view = 'form';
     }
 
     async function cancelCurrentSubmission() {
-        if (!editingSubmissionId || saving) return;
+        if (!editingSubmissionId || saving || !ownsSubmission(editingSubmission)
+            || editingSubmission.status !== 'pending' || editingSubmission.id !== editingSubmissionId) return;
+        const currentContext = contextGuard();
+        const generation = formGeneration;
+        const isCurrent = () => currentContext() && generation === formGeneration;
         if (!window.confirm(language === 'pt' ? 'Cancelar esta submissão?' : 'Cancel this submission?')) return;
         saving = true;
         clearMessages();
@@ -524,16 +618,20 @@
                 supabase: getSupabaseBrowserClient(),
                 submissionId: editingSubmissionId
             });
+            if (!isCurrent()) return;
             await refreshSubmissions();
+            if (!isCurrent()) return;
+            saving = false;
             resetForm();
             view = 'mine';
             successMessage = t.cancelledMessage;
             await onSubmitted();
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap cancel submission:', error);
             errorMessage = t.saveError;
         } finally {
-            saving = false;
+            if (isCurrent()) saving = false;
         }
     }
 
@@ -570,17 +668,47 @@
     }
 
     $effect(() => {
+        const game = gameUuid;
+        const user = userId;
+        untrack(() => {
+            readGeneration += 1;
+            submissions = [];
+            submissionsTotal = 0;
+            submissionsPage = 1;
+            focusedSubmissionId = null;
+            loading = false;
+            saving = false;
+            resetForm();
+            if (active && view === 'mine') void refreshSubmissions();
+        });
+        return () => {
+            readGeneration += 1;
+            formGeneration += 1;
+            if (refreshTimer) clearTimeout(refreshTimer);
+        };
+    });
+
+    $effect(() => {
+        const focus = focusSubmissionId;
+        untrack(() => {
+            if (active && view === 'mine') void refreshSubmissions();
+        });
+    });
+
+    $effect(() => {
         if (!active || requestRevision === lastRequestRevision) return;
         lastRequestRevision = requestRevision;
-        if (requestMode === 'mine') {
-            view = 'mine';
-            resetForm();
-            void refreshSubmissions();
-        } else if (requestMode === 'correction') {
-            void openCorrection(requestMarker);
-        } else {
-            openCreate();
-        }
+        untrack(() => {
+            if (requestMode === 'mine') {
+                view = 'mine';
+                resetForm();
+                void refreshSubmissions();
+            } else if (requestMode === 'correction') {
+                void openCorrection(requestMarker);
+            } else {
+                openCreate();
+            }
+        });
     });
 
     $effect(() => {
@@ -656,7 +784,7 @@
                 {:else}
                     <div class="submission-list">
                         {#each pending as item (item.id)}
-                            <button class="submission-card pending" type="button" onclick={() => loadSubmission(item)}>
+                            <button id={`contribution-${item.id}`} class:focused={focusedSubmissionId === item.id} class="submission-card pending" type="button" onclick={() => loadSubmission(item)}>
                                 <span><b>#{item.id}</b> · {item.type === 'create' ? t.addMarker : t.suggestCorrection}</span>
                                 <small>{t.pending} · {item.revisionCount} {t.revisions}</small>
                             </button>
@@ -802,8 +930,8 @@
                 </label>
 
                 <div class="actions">
-                    <button class="primary" type="button" onclick={saveSubmission} disabled={saving || checkingDuplicate || (submissionType === 'correction' && editingSubmissionId === null && duplicatePendingId !== null)}>{editingSubmissionId === null ? (isModerator ? t.moderatorSubmit : t.submit) : t.update}</button>
-                    {#if editingSubmissionId !== null}<button class="danger" type="button" onclick={cancelCurrentSubmission} disabled={saving}>{t.cancelSubmission}</button>{/if}
+                    <button class="primary" type="button" onclick={saveSubmission} disabled={saving || !isCommunityGameUuid(gameUuid) || checkingDuplicate || (editingSubmissionId !== null && !ownsSubmission(editingSubmission)) || (submissionType === 'correction' && editingSubmissionId === null && duplicatePendingId !== null)}>{editingSubmissionId === null ? (isModerator ? t.moderatorSubmit : t.submit) : t.update}</button>
+                    {#if editingSubmissionId !== null && ownsSubmission(editingSubmission) && editingSubmission.status === 'pending'}<button class="danger" type="button" onclick={cancelCurrentSubmission} disabled={saving}>{t.cancelSubmission}</button>{/if}
                     {#if submissionType === 'correction' && editingSubmissionId === null}<button type="button" onclick={onClose} disabled={saving}>{t.close}</button>{/if}
                 </div>
             {/if}

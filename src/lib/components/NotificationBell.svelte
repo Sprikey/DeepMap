@@ -1,110 +1,161 @@
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, untrack } from 'svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import {
-        NOTIFICATIONS_PAGE_SIZE,
-        getNotificationText,
-        normaliseNotification,
-        loadNotificationsPage,
-        loadUnreadNotificationCount,
-        markNotificationRead,
-        markAllNotificationsRead,
-        notificationTitle,
-        notificationBody,
-        notificationHref,
-        formatNotificationDate
+        NOTIFICATIONS_PAGE_SIZE, getNotificationText, loadNotificationsPage,
+        loadUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
+        notificationTitle, notificationBody, notificationHref, formatNotificationDate
     } from '$lib/notifications/notification-data.js';
 
+    /** @type {{ userId?: string | null, language?: string }} */
     let { userId = null, language = 'en' } = $props();
-
     let t = $derived(getNotificationText(language));
     let open = $state(false);
+    /** @type {import('$lib/notifications/notification-data.js').Notification[]} */
     let notifications = $state([]);
     let loading = $state(false);
     let unreadCount = $state(0);
-    let loadedForUser = $state(null);
+    let mounted = $state(false);
+    /** @type {string | null} */
+    let sessionUserId = $state(null);
+    let authRevision = $state(0);
+    /** @type {HTMLDivElement} */
     let notificationWrap;
+    /** @type {import('@supabase/supabase-js').RealtimeChannel | null} */
     let notificationChannel = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let refreshTimer = null;
+    /** @type {string | null} */
+    let activeUser = null;
+    let activeAuthRevision = -1;
+    let alive = false;
+    let sessionGeneration = 0;
+    let listGeneration = 0;
+    let countGeneration = 0;
+    let pendingWrites = 0;
+    let refreshDirty = false;
+
+    /** @param {string | null} user @param {number} epoch */
+    function isSessionCurrent(user, epoch) {
+        return alive && epoch === sessionGeneration && user !== null && user === activeUser
+            && user === userId && user === sessionUserId && activeAuthRevision === authRevision;
+    }
 
     async function loadUnreadCount() {
-        if (!userId) { unreadCount = 0; return; }
+        const user = activeUser;
+        const epoch = sessionGeneration;
+        const request = ++countGeneration;
+        if (!isSessionCurrent(user, epoch)) return;
+        if (pendingWrites) { refreshDirty = true; return; }
         try {
-            unreadCount = await loadUnreadNotificationCount({
-                supabase: getSupabaseBrowserClient(),
-                userId
-            });
+            const count = await loadUnreadNotificationCount({ supabase: getSupabaseBrowserClient(), userId: user });
+            if (isSessionCurrent(user, epoch) && request === countGeneration) unreadCount = count;
         } catch (error) {
-            console.warn('DeepMap notification count:', error?.message ?? error);
+            if (isSessionCurrent(user, epoch) && request === countGeneration) console.warn('DeepMap notification count:', error);
         }
     }
 
     async function loadNotifications() {
-        if (!userId) {
-            notifications = [];
-            unreadCount = 0;
-            loadedForUser = null;
-            return;
-        }
-
+        const user = activeUser;
+        const epoch = sessionGeneration;
+        const request = ++listGeneration;
+        const countRequest = ++countGeneration;
+        const isCurrent = () => isSessionCurrent(user, epoch) && request === listGeneration;
+        if (!isCurrent()) return;
+        if (pendingWrites) { refreshDirty = true; return; }
         loading = true;
         try {
             const supabase = getSupabaseBrowserClient();
-            const [pageResult, countResult] = await Promise.all([
-                loadNotificationsPage({ supabase, userId, limit: NOTIFICATIONS_PAGE_SIZE, offset: 0 }),
-                loadUnreadNotificationCount({ supabase, userId })
+            const [result, count] = await Promise.all([
+                loadNotificationsPage({ supabase, userId: user, limit: NOTIFICATIONS_PAGE_SIZE, offset: 0 }),
+                loadUnreadNotificationCount({ supabase, userId: user })
             ]);
-            notifications = pageResult.items;
-            unreadCount = countResult;
-            loadedForUser = userId;
+            if (!isCurrent()) return;
+            notifications = result.items;
+            if (countRequest === countGeneration) unreadCount = count;
         } catch (error) {
-            console.warn('DeepMap notifications:', error?.message ?? error);
+            if (!isCurrent()) return;
+            console.warn('DeepMap notifications:', error);
             notifications = [];
-            loadedForUser = userId;
         } finally {
-            loading = false;
+            if (isCurrent()) loading = false;
         }
     }
 
-    async function markRead(id) {
-        const item = notifications.find((notification) => notification.id === id);
-        if (!item || item.isRead) return;
+    function queueRefresh() {
+        if (!isSessionCurrent(activeUser, sessionGeneration)) return;
+        // Invalidate immediately, including responses arriving before the timer fires.
+        listGeneration += 1;
+        countGeneration += 1;
+        refreshDirty = true;
+        if (pendingWrites || refreshTimer !== null) return;
+        refreshTimer = setTimeout(() => {
+            refreshTimer = null;
+            refreshDirty = false;
+            void loadNotifications();
+        }, 0);
+    }
 
+    function beginWrite() {
+        refreshDirty = refreshDirty || loading;
+        listGeneration += 1;
+        countGeneration += 1;
+        loading = false;
+        pendingWrites += 1;
+    }
+
+    /** @param {string | null} user @param {number} epoch */
+    function finishWrite(user, epoch) {
+        if (!isSessionCurrent(user, epoch)) return;
+        pendingWrites -= 1;
+        if (!pendingWrites && refreshDirty) queueRefresh();
+    }
+
+    /** @param {string} id */
+    async function markRead(id) {
+        const user = activeUser;
+        const epoch = sessionGeneration;
+        const item = notifications.find((notification) => notification.id === id);
+        if (!isSessionCurrent(user, epoch) || !item || item.isRead) return;
+        beginWrite();
         item.isRead = true;
         notifications = [...notifications];
         unreadCount = Math.max(0, unreadCount - 1);
-
         try {
-            await markNotificationRead({
-                supabase: getSupabaseBrowserClient(),
-                userId,
-                notificationId: id
-            });
+            await markNotificationRead({ supabase: getSupabaseBrowserClient(), userId: user, notificationId: id });
         } catch (error) {
-            console.warn('DeepMap notification read:', error?.message ?? error);
-            void loadUnreadCount();
-        }
+            if (isSessionCurrent(user, epoch)) {
+                console.warn('DeepMap notification read:', error);
+                refreshDirty = true;
+            }
+        } finally { finishWrite(user, epoch); }
     }
 
     async function markAllRead() {
-        if (!userId || unreadCount === 0) return;
+        const user = activeUser;
+        const epoch = sessionGeneration;
+        if (!isSessionCurrent(user, epoch) || unreadCount === 0) return;
+        beginWrite();
         notifications = notifications.map((item) => ({ ...item, isRead: true }));
         unreadCount = 0;
-
         try {
-            await markAllNotificationsRead({
-                supabase: getSupabaseBrowserClient(),
-                userId
-            });
+            await markAllNotificationsRead({ supabase: getSupabaseBrowserClient(), userId: user });
         } catch (error) {
-            console.warn('DeepMap notifications mark all:', error?.message ?? error);
-            void loadUnreadCount();
-        }
+            if (isSessionCurrent(user, epoch)) {
+                console.warn('DeepMap notifications mark all:', error);
+                refreshDirty = true;
+            }
+        } finally { finishWrite(user, epoch); }
     }
 
+    /** @param {MouseEvent} event @param {import('$lib/notifications/notification-data.js').Notification} item */
     async function openNotification(event, item) {
         event.preventDefault();
+        const user = activeUser;
+        const epoch = sessionGeneration;
         const href = notificationHref(item);
         await markRead(item.id);
+        if (!isSessionCurrent(user, epoch)) return;
         open = false;
         window.location.href = href;
     }
@@ -112,92 +163,103 @@
     function toggle() {
         open = !open;
         if (open) {
-            if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('deepmap:header-panel-open', {
-                    detail: { source: 'notifications' }
-                }));
-            }
+            window.dispatchEvent(new CustomEvent('deepmap:header-panel-open', { detail: { source: 'notifications' } }));
             void loadNotifications();
         }
     }
 
+    /** @param {Event} event */
+    function handleHeaderPanelOpen(event) {
+        const source = /** @type {CustomEvent} */ (event).detail?.source;
+        if (source === 'account' || source === 'navigation') open = false;
+    }
+
+    /** @param {PointerEvent} event */
     function handleDocumentPointerDown(event) {
-        if (!open || !notificationWrap) return;
-        if (!notificationWrap.contains(event.target)) open = false;
+        if (open && notificationWrap && !notificationWrap.contains(/** @type {Node} */ (event.target))) open = false;
     }
-
-    function handleDocumentKeyDown(event) {
-        if (event.key === 'Escape') open = false;
-    }
-
+    /** @param {KeyboardEvent} event */
+    function handleDocumentKeyDown(event) { if (event.key === 'Escape') open = false; }
+    /** @param {Event} event */
     function handleNotificationCountSync(event) {
-        const next = Number(event?.detail?.unreadCount);
-        if (Number.isFinite(next) && next >= 0) unreadCount = next;
+        const next = Number(/** @type {CustomEvent} */ (event).detail?.unreadCount);
+        countGeneration += 1;
+        if (Number.isSafeInteger(next) && next >= 0) unreadCount = next;
         else void loadUnreadCount();
     }
 
-    function subscribeToNotifications() {
+    /** @param {string | null} user @param {number} revision */
+    function activateUser(user, revision) {
+        if (user === activeUser && revision === activeAuthRevision) return;
+        const changedUser = user !== activeUser;
+        sessionGeneration += 1;
+        listGeneration += 1;
+        countGeneration += 1;
+        activeUser = user;
+        activeAuthRevision = revision;
+        pendingWrites = 0;
+        refreshDirty = false;
+        loading = false;
+        if (refreshTimer !== null) clearTimeout(refreshTimer);
+        refreshTimer = null;
         const supabase = getSupabaseBrowserClient();
-        if (notificationChannel) {
-            void supabase.removeChannel(notificationChannel);
-            notificationChannel = null;
-        }
-        if (!userId) return;
-
-        notificationChannel = supabase
-            .channel(`deepmap-notifications-${userId}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'user_notifications',
-                filter: `user_id=eq.${userId}`
-            }, (payload) => {
-                const item = normaliseNotification(payload.new);
-                notifications = [item, ...notifications.filter((notification) => notification.id !== item.id)]
-                    .slice(0, NOTIFICATIONS_PAGE_SIZE);
-                if (!item.isRead) unreadCount += 1;
-
-                if (item.kind === 'account_suspended' || item.kind === 'account_reinstated') {
-                    window.dispatchEvent(new CustomEvent('deepmap:account-status-changed', {
-                        detail: { kind: item.kind }
-                    }));
+        if (notificationChannel) void supabase.removeChannel(notificationChannel);
+        notificationChannel = null;
+        if (changedUser || !user) { notifications = []; unreadCount = 0; }
+        if (!user) { open = false; return; }
+        const epoch = sessionGeneration;
+        notificationChannel = supabase.channel(`deepmap-notifications-${user}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_notifications', filter: `user_id=eq.${user}` }, (payload) => {
+                if (!isSessionCurrent(user, epoch)) return;
+                // Raw rows lack route context: only their kind is used for the existing account event.
+                const kind = payload.new.kind;
+                if (kind === 'account_suspended' || kind === 'account_reinstated') {
+                    window.dispatchEvent(new CustomEvent('deepmap:account-status-changed', { detail: { kind } }));
                 }
-            })
-            .subscribe();
+                queueRefresh();
+            }).subscribe();
+        if (open) void loadNotifications();
+        else void loadUnreadCount();
     }
 
     onMount(() => {
+        alive = true;
+        mounted = true;
+        const supabase = getSupabaseBrowserClient();
         document.addEventListener('pointerdown', handleDocumentPointerDown);
         document.addEventListener('keydown', handleDocumentKeyDown);
         window.addEventListener('deepmap:notifications-count-sync', handleNotificationCountSync);
-
-        if (userId) {
-            void loadUnreadCount();
-            subscribeToNotifications();
-        }
-
+        window.addEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (!alive) return;
+            const next = session?.user.id ?? null;
+            if (event === 'TOKEN_REFRESHED' && next === sessionUserId) return;
+            sessionUserId = next;
+            authRevision += 1;
+            if (next !== activeUser) { notifications = []; unreadCount = 0; }
+        });
         return () => {
+            alive = false;
+            sessionGeneration += 1;
+            listGeneration += 1;
+            countGeneration += 1;
+            if (refreshTimer !== null) clearTimeout(refreshTimer);
+            subscription.unsubscribe();
             document.removeEventListener('pointerdown', handleDocumentPointerDown);
             document.removeEventListener('keydown', handleDocumentKeyDown);
             window.removeEventListener('deepmap:notifications-count-sync', handleNotificationCountSync);
-            if (notificationChannel) {
-                void getSupabaseBrowserClient().removeChannel(notificationChannel);
-                notificationChannel = null;
-            }
+            window.removeEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
+            if (notificationChannel) void supabase.removeChannel(notificationChannel);
+            notificationChannel = null;
+            notifications = [];
+            unreadCount = 0;
         };
     });
 
     $effect(() => {
-        if (!userId) {
-            notifications = [];
-            unreadCount = 0;
-            loadedForUser = null;
-            return;
-        }
-        if (loadedForUser === userId) return;
-        void loadUnreadCount();
-        subscribeToNotifications();
-        loadedForUser = userId;
+        const user = userId && userId === sessionUserId ? userId : null;
+        const revision = authRevision;
+        if (mounted) untrack(() => activateUser(user, revision));
     });
 </script>
 

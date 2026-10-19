@@ -4,20 +4,16 @@
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { getSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import {
-        getNotificationText,
-        loadNotificationsPage,
-        loadUnreadNotificationCount,
-        markNotificationRead,
-        markAllNotificationsRead,
-        notificationTitle,
-        notificationBody,
-        notificationHref,
-        formatNotificationDate
+        getNotificationText, loadNotificationsWithRecovery, loadUnreadNotificationCount,
+        markNotificationRead, markAllNotificationsRead, notificationTitle,
+        notificationBody, notificationHref, formatNotificationDate
     } from '$lib/notifications/notification-data.js';
 
     let language = $state('en');
     let t = $derived(getNotificationText(language));
+    /** @type {string | null} */
     let userId = $state(null);
+    /** @type {import('$lib/notifications/notification-data.js').Notification[]} */
     let notifications = $state([]);
     let total = $state(0);
     let unreadCount = $state(0);
@@ -25,8 +21,21 @@
     let pageSize = $state(10);
     let loading = $state(true);
     let errorMessage = $state('');
-
     let pageCount = $derived(Math.max(1, Math.ceil(total / pageSize)));
+    let active = false;
+    let sessionGeneration = 0;
+    let readGeneration = 0;
+    let countGeneration = 0;
+    let sessionInitialized = false;
+    let pendingWrites = 0;
+    let reloadAfterWrite = false;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let sessionTimer = null;
+
+    /** @param {string | null} user @param {number} epoch */
+    function isSessionCurrent(user, epoch) {
+        return active && epoch === sessionGeneration && user !== null && user === userId;
+    }
 
     function visiblePages() {
         const maxVisible = 5;
@@ -37,25 +46,31 @@
     }
 
     async function loadPage() {
-        if (!userId) return;
+        const user = userId;
+        const epoch = sessionGeneration;
+        const request = ++readGeneration;
+        const countRequest = ++countGeneration;
+        const requestedPage = page;
+        const size = pageSize;
+        const isRequestCurrent = () => isSessionCurrent(user, epoch) && request === readGeneration;
+        const isCurrent = () => isRequestCurrent() && page === requestedPage && pageSize === size;
+        if (!isCurrent()) return;
+        if (pendingWrites) { reloadAfterWrite = true; return; }
         loading = true;
         errorMessage = '';
         try {
             const supabase = getSupabaseBrowserClient();
-            const [pageResult, countResult] = await Promise.all([
-                loadNotificationsPage({
-                    supabase,
-                    userId,
-                    limit: pageSize,
-                    offset: (page - 1) * pageSize
-                }),
-                loadUnreadNotificationCount({ supabase, userId })
+            const [result, count] = await Promise.all([
+                loadNotificationsWithRecovery({ supabase, userId: user, limit: size, page: requestedPage, isCurrent }),
+                loadUnreadNotificationCount({ supabase, userId: user })
             ]);
-            notifications = pageResult.items;
-            total = pageResult.total;
-            unreadCount = countResult;
-            if (page > pageCount) page = pageCount;
+            if (!isCurrent() || !result) return;
+            notifications = result.items;
+            total = result.total;
+            if (countRequest === countGeneration) unreadCount = count;
+            page = result.page;
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap notifications page:', error);
             notifications = [];
             total = 0;
@@ -63,79 +78,137 @@
                 ? 'Não foi possível carregar as notificações.'
                 : 'Could not load notifications.';
         } finally {
-            loading = false;
+            if (isRequestCurrent()) loading = false;
         }
     }
 
     async function handlePageSizeChange() {
+        readGeneration += 1;
         page = 1;
         await tick();
+        if (!active) return;
         await loadPage();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (active) window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    /** @param {number} nextPage */
     async function goPage(nextPage) {
         if (nextPage < 1 || nextPage > pageCount || nextPage === page) return;
         page = nextPage;
         await loadPage();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (active) window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    function beginWrite() {
+        reloadAfterWrite = reloadAfterWrite || loading;
+        readGeneration += 1;
+        countGeneration += 1;
+        loading = false;
+        pendingWrites += 1;
+    }
+
+    /** @param {string | null} user @param {number} epoch */
+    function finishWrite(user, epoch) {
+        if (!isSessionCurrent(user, epoch)) return;
+        pendingWrites -= 1;
+        if (!pendingWrites && reloadAfterWrite) {
+            reloadAfterWrite = false;
+            void loadPage();
+        }
+    }
+
+    /** @param {MouseEvent} event @param {import('$lib/notifications/notification-data.js').Notification} item */
     async function openNotification(event, item) {
         event.preventDefault();
+        const user = userId;
+        const epoch = sessionGeneration;
+        if (!isSessionCurrent(user, epoch)) return;
         if (!item.isRead) {
+            beginWrite();
             item.isRead = true;
             notifications = [...notifications];
             unreadCount = Math.max(0, unreadCount - 1);
             try {
-                await markNotificationRead({
-                    supabase: getSupabaseBrowserClient(),
-                    userId,
-                    notificationId: item.id
-                });
+                await markNotificationRead({ supabase: getSupabaseBrowserClient(), userId: user, notificationId: item.id });
             } catch (error) {
-                console.warn('DeepMap notification read:', error?.message ?? error);
-            }
+                if (isSessionCurrent(user, epoch)) console.warn('DeepMap notification read:', error);
+            } finally { finishWrite(user, epoch); }
         }
-        window.location.href = notificationHref(item);
+        if (isSessionCurrent(user, epoch)) window.location.href = notificationHref(item);
     }
 
     async function markAll() {
-        if (!userId || unreadCount === 0) return;
+        const user = userId;
+        const epoch = sessionGeneration;
+        if (!isSessionCurrent(user, epoch) || unreadCount === 0) return;
+        beginWrite();
         notifications = notifications.map((item) => ({ ...item, isRead: true }));
         unreadCount = 0;
         window.dispatchEvent(new CustomEvent('deepmap:notifications-count-sync', { detail: { unreadCount: 0 } }));
         try {
-            await markAllNotificationsRead({
-                supabase: getSupabaseBrowserClient(),
-                userId
-            });
+            await markAllNotificationsRead({ supabase: getSupabaseBrowserClient(), userId: user });
         } catch (error) {
-            console.warn('DeepMap notifications mark all:', error?.message ?? error);
-            await loadPage();
-        }
+            if (isSessionCurrent(user, epoch)) {
+                console.warn('DeepMap notifications mark all:', error);
+                reloadAfterWrite = true;
+            }
+        } finally { finishWrite(user, epoch); }
+    }
+
+    /** @param {string | null} user */
+    function setSession(user) {
+        if (!active) return;
+        const changedUser = user !== userId;
+        sessionInitialized = true;
+        sessionGeneration += 1;
+        readGeneration += 1;
+        countGeneration += 1;
+        pendingWrites = 0;
+        reloadAfterWrite = false;
+        userId = user;
+        errorMessage = '';
+        loading = !!user;
+        if (changedUser || !user) { notifications = []; total = 0; unreadCount = 0; page = 1; }
+        if (sessionTimer !== null) clearTimeout(sessionTimer);
+        const epoch = sessionGeneration;
+        // Supabase auth callbacks must return before starting browser-client reads.
+        sessionTimer = setTimeout(() => {
+            sessionTimer = null;
+            if (!active || epoch !== sessionGeneration) return;
+            if (user) void loadPage();
+            else void goto(`/login?next=${encodeURIComponent('/notifications')}`);
+        }, 0);
     }
 
     onMount(() => {
+        active = true;
         language = getSiteLanguage();
         const unsubscribeLanguage = subscribeSiteLanguage((next) => { language = next; });
-        let active = true;
-
-        void (async () => {
-            const supabase = getSupabaseBrowserClient();
-            const { data, error } = await supabase.auth.getUser();
+        const supabase = getSupabaseBrowserClient();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             if (!active) return;
-            if (error || !data.user) {
-                await goto(`/login?next=${encodeURIComponent('/notifications')}`);
-                return;
-            }
-            userId = data.user.id;
-            await loadPage();
+            const user = session?.user.id ?? null;
+            if (sessionInitialized && user === userId && (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) return;
+            setSession(user);
+        });
+        const initialGeneration = sessionGeneration;
+        void (async () => {
+            const { data, error } = await supabase.auth.getUser();
+            if (!active || initialGeneration !== sessionGeneration) return;
+            setSession(error ? null : data.user?.id ?? null);
         })();
-
         return () => {
             active = false;
+            sessionGeneration += 1;
+            readGeneration += 1;
+            countGeneration += 1;
+            if (sessionTimer !== null) clearTimeout(sessionTimer);
+            subscription.unsubscribe();
             unsubscribeLanguage();
+            userId = null;
+            notifications = [];
+            total = 0;
+            unreadCount = 0;
         };
     });
 </script>

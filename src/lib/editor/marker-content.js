@@ -1,3 +1,5 @@
+import { markerIdKey as bigintIdKey } from './marker-editor.js';
+
 export const QUICK_CONTENT_EDITOR_KEY = 'quick-content-v1';
 
 export const MARKER_CONTENT_TYPES = [
@@ -59,10 +61,11 @@ export async function loadEditorMarkerContent({ supabase, markerId }) {
 
     if (rowsError) throw rowsError;
 
-    const sectionById = new Map(quickSections.map((section) => [Number(section.id), section]));
+    const sectionById = new Map(quickSections.map((section) => [bigintIdKey(section.id), section]));
 
     return (rows ?? []).map((row) => {
-        const section = sectionById.get(Number(row.section_id));
+        const section = sectionById.get(bigintIdKey(row.section_id));
+        if (!section) throw new Error('MARKER_CONTENT_SECTION_CONFLICT');
         return {
             type: section?.section_type ?? 'note',
             textEn: row.text_en ?? '',
@@ -71,8 +74,11 @@ export async function loadEditorMarkerContent({ supabase, markerId }) {
     });
 }
 
-export async function replaceEditorMarkerContent({ supabase, markerId, items = [] }) {
+/** @param {{ supabase: import('@supabase/supabase-js').SupabaseClient, markerId: string | number, items?: any[], isCurrent?: () => boolean }} options */
+export async function replaceEditorMarkerContent({ supabase, isCurrent = () => true, markerId, items = [] }) {
     const normalised = normaliseMarkerContentItems(items);
+
+    if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
     const { data: existingSections, error: existingError } = await supabase
         .from('marker_sections')
@@ -86,6 +92,7 @@ export async function replaceEditorMarkerContent({ supabase, markerId, items = [
         .map((section) => section.id);
 
     if (quickSectionIds.length) {
+        if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
         const { error: deleteError } = await supabase
             .from('marker_sections')
             .delete()
@@ -99,6 +106,8 @@ export async function replaceEditorMarkerContent({ supabase, markerId, items = [
     for (let index = 0; index < normalised.length; index += 1) {
         const item = normalised[index];
         const definition = MARKER_CONTENT_TYPES.find((type) => type.id === item.type);
+
+        if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
         const { data: section, error: sectionError } = await supabase
             .from('marker_sections')
@@ -115,6 +124,8 @@ export async function replaceEditorMarkerContent({ supabase, markerId, items = [
             .single();
 
         if (sectionError) throw sectionError;
+
+        if (!isCurrent()) throw new Error('EDITOR_STALE_SESSION');
 
         const { error: rowError } = await supabase
             .from('marker_section_rows')

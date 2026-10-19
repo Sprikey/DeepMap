@@ -1,13 +1,14 @@
 <script>
-    import { tick } from 'svelte';
+    import { tick, onMount, untrack } from 'svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { normaliseHttpUrl } from '$lib/map/media.js';
-    import { loadDeepMapGameData } from '$lib/map/map-data.js';
-    import { deepMapGames, getDeepMapGameFallback, getDeepMapGameMapHref, getDeepMapGameName } from '$lib/games/registry.js';
+    import { getGameRendererBySlug } from '$lib/games/registry.js';
+    import { loadModerationGameCatalog } from '$lib/games/game-context.js';
+    import { markerIdKey } from '$lib/editor/marker-editor.js';
     import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
     import MarkerContentEditor from '$lib/editor/MarkerContentEditor.svelte';
     import { contentTypeLabel, serialiseMarkerContentItems } from '$lib/editor/marker-content.js';
-    import { loadMarkerSubmissionsPage, reviewMarkerSubmission } from '$lib/community/marker-contributions.js';
+    import { isCommunityGameUuid, loadMarkerSubmissionsPage, loadMarkerReviewContext, reviewMarkerSubmission } from '$lib/community/marker-contributions.js';
 
     let { language = 'en', active = true } = $props();
 
@@ -24,6 +25,7 @@
             addImage: 'Add image', reportImage: 'Report existing image', targetImage: 'Image ID', note: 'Contributor note', moderatorNote: 'Moderator note',
             approve: 'Approve', reject: 'Reject', close: 'Close', working: 'Working…', approvedOk: 'Submission approved.', rejectedOk: 'Submission rejected.',
             loadError: 'Could not load moderation queue.', reviewError: 'Could not review this submission.', openMap: 'Open on map', content: 'Additional content',
+            optionsError: 'Could not load all review options. Current/submitted choices remain available.',
             changes: 'Submitted data', current: 'Current', suggested: 'Suggested', finalVersion: 'Final version to publish', comparison: 'Change comparison', comparisonHelp: 'Only fields that actually changed are shown.', noStructuredChanges: 'No structured fields changed. Check the contributor note below.', noCurrentMarker: 'The current marker could not be loaded for comparison.', images: 'Images', addImageSummary: 'Add image', reportImageSummary: 'Report image', gameUnavailable: 'This game is not registered in the admin registry yet.', historyDetails: 'Decision details', submittedAt: 'Submitted', decision: 'Decision', viewDetails: 'View details', revisionsHistory: 'Revision history', revision: 'Revision', by: 'by', legacyDetails: 'Full revision details are not available for this older record.'
         },
         pt: {
@@ -38,11 +40,12 @@
             addImage: 'Adicionar imagem', reportImage: 'Reportar imagem existente', targetImage: 'ID da imagem', note: 'Nota do utilizador', moderatorNote: 'Nota da moderação',
             approve: 'Aprovar', reject: 'Rejeitar', close: 'Fechar', working: 'A processar…', approvedOk: 'Submissão aprovada.', rejectedOk: 'Submissão reprovada.',
             loadError: 'Não foi possível carregar a fila de moderação.', reviewError: 'Não foi possível rever esta submissão.', openMap: 'Abrir no mapa', content: 'Conteúdo adicional',
+            optionsError: 'Não foi possível carregar todas as opções de revisão. As opções atuais/submetidas continuam disponíveis.',
             changes: 'Dados submetidos', current: 'Atual', suggested: 'Sugerido', finalVersion: 'Versão final a publicar', comparison: 'Comparação da alteração', comparisonHelp: 'São mostrados apenas os campos que realmente mudaram.', noStructuredChanges: 'Não existem campos estruturados alterados. Revê a nota do utilizador abaixo.', noCurrentMarker: 'Não foi possível carregar o marcador atual para comparação.', images: 'Imagens', addImageSummary: 'Adicionar imagem', reportImageSummary: 'Reportar imagem', gameUnavailable: 'Este jogo ainda não está registado no painel de administração.', historyDetails: 'Detalhes da decisão', submittedAt: 'Enviado', decision: 'Decisão', viewDetails: 'Ver detalhes', revisionsHistory: 'Histórico de versões', revision: 'Versão', by: 'por', legacyDetails: 'Os detalhes completos das versões não estão disponíveis para este registo antigo.'
         }
     };
 
-    let languageKey = $derived(String(language ?? '').toLowerCase().startsWith('pt') ? 'pt' : 'en');
+    let languageKey = $derived(/** @type {'en' | 'pt'} */ (String(language ?? '').toLowerCase().startsWith('pt') ? 'pt' : 'en'));
     let t = $derived(TEXT[languageKey] ?? TEXT.en);
     let mode = $state('pending');
     let historyStatus = $state('approved');
@@ -50,21 +53,34 @@
     let page = $state(1);
     let pendingPageSize = $state(10);
     let historyPageSize = $state(10);
-    let items = $state([]);
+    let items = $state(/** @type {any[]} */ ([]));
     let total = $state(0);
-    let selectedId = $state(null);
+    let selectedId = $state(/** @type {string | null} */ (null));
+    let selectionGameUuid = $state(/** @type {string | null} */ (null));
     let loading = $state(false);
     let working = $state(false);
     let errorMessage = $state('');
     let successMessage = $state('');
-    let loadedOnce = false;
-
-    let categories = $state({});
-    let categoryGroups = $state([]);
-    let mapDefinitions = $state({});
-    let locations = $state([]);
-    let contextGameId = $state(null);
-    const contextCache = new Map();
+    let staffUserId = $state(/** @type {string | null} */ (null));
+    let gameCatalog = $state(/** @type {Awaited<ReturnType<typeof loadModerationGameCatalog>>} */ ([]));
+    let catalogError = $state('');
+    let contextLoading = $state(false);
+    let optionsLoading = $state(false);
+    let optionsError = $state('');
+    let reviewContext = $state(/** @type {Awaited<ReturnType<typeof loadMarkerReviewContext>> | null} */ (null));
+    let categories = $state(/** @type {Record<string, any>} */ ({}));
+    let categoryGroups = $state(/** @type {any[]} */ ([]));
+    let mapDefinitions = $state(/** @type {Record<string, any>} */ ({}));
+    let queueGeneration = 0;
+    let catalogGeneration = 0;
+    let selectionGeneration = 0;
+    let revisionGeneration = 0;
+    let accessGeneration = 0;
+    let sessionGeneration = 0;
+    let operationGeneration = 0;
+    let mounted = false;
+    let reviewLayerKey = $state('');
+    let reviewCategoryKey = $state('');
 
     let reviewMapLayer = $state('surface');
     let reviewCategoryGroupId = $state('');
@@ -83,7 +99,8 @@
     let reviewTargetImageId = $state('');
     let reviewNote = $state('');
     let fieldErrors = $state({});
-    let historyRevisions = $state([]);
+    let historyRevisions = $state(/** @type {any[]} */ ([]));
+    let revisionsError = $state('');
     let historyRevisionsLoading = $state(false);
     let historyRevisionsLoaded = $state(false);
     let refreshFeedback = $state('');
@@ -97,13 +114,128 @@
     let filteredCategories = $derived(sortedCategories.filter((category) => !reviewCategoryGroupId || category.group === reviewCategoryGroupId));
     let sortedLayers = $derived(Object.values(mapDefinitions).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
 
+    function sessionGuard() {
+        const generation = sessionGeneration;
+        const user = staffUserId;
+        return () => mounted && active && Boolean(user) && staffUserId === user && sessionGeneration === generation;
+    }
+
+    function scopeGuard() {
+        const sessionCurrent = sessionGuard();
+        const game = gameFilter;
+        const currentMode = mode;
+        const status = historyStatus;
+        const currentPage = page;
+        const size = pageSize;
+        return () => sessionCurrent() && game === gameFilter && currentMode === mode
+            && status === historyStatus && currentPage === page && size === pageSize;
+    }
+
+    function clearSelection() {
+        selectionGeneration += 1;
+        revisionGeneration += 1;
+        selectedId = null;
+        selectionGameUuid = null;
+        reviewContext = null;
+        categories = {};
+        categoryGroups = [];
+        mapDefinitions = {};
+        contextLoading = false;
+        optionsLoading = false;
+        optionsError = '';
+        historyRevisions = [];
+        historyRevisionsLoading = false;
+        historyRevisionsLoaded = false;
+        revisionsError = '';
+        fieldErrors = {};
+    }
+
+    function revokeStaffData() {
+        sessionGeneration += 1;
+        queueGeneration += 1;
+        catalogGeneration += 1;
+        operationGeneration += 1;
+        staffUserId = null;
+        gameFilter = 'all';
+        page = 1;
+        items = [];
+        total = 0;
+        gameCatalog = [];
+        loading = false;
+        working = false;
+        refreshFeedback = '';
+        catalogError = '';
+        errorMessage = '';
+        successMessage = '';
+        clearSelection();
+    }
+
+    async function loadGameCatalog() {
+        const generation = ++catalogGeneration;
+        const sessionCurrent = sessionGuard();
+        const isCurrent = () => generation === catalogGeneration && sessionCurrent();
+        catalogError = '';
+        try {
+            const catalog = await loadModerationGameCatalog({ supabase: getSupabaseBrowserClient() });
+            if (isCurrent()) gameCatalog = catalog;
+        } catch (error) {
+            if (!isCurrent()) return;
+            gameCatalog = [];
+            catalogError = t.loadError;
+        }
+    }
+
+    async function checkStaffAccess() {
+        const generation = ++accessGeneration;
+        revokeStaffData();
+        const isCurrent = () => mounted && active && generation === accessGeneration;
+        try {
+            const supabase = getSupabaseBrowserClient();
+            const { data, error } = await supabase.auth.getUser();
+            if (!isCurrent() || error || !data?.user) return;
+            const { data: role, error: roleError } = await supabase.rpc('get_deepmap_role');
+            if (!isCurrent()) return;
+            if (roleError || !['admin', 'moderator'].includes(role)) {
+                errorMessage = t.loadError;
+                return;
+            }
+            staffUserId = data.user.id;
+            await Promise.all([loadGameCatalog(), load()]);
+        } catch (error) {
+            if (isCurrent()) errorMessage = t.loadError;
+        }
+    }
+
+    onMount(() => {
+        mounted = true;
+        const supabase = getSupabaseBrowserClient();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'INITIAL_SESSION') return;
+            // A refreshed token for the same staff user does not change review scope.
+            if (session?.user?.id === staffUserId && event !== 'SIGNED_OUT') return;
+            accessGeneration += 1;
+            revokeStaffData();
+            // Leave Supabase's synchronous auth callback before asking for role metadata.
+            if (session?.user && active) queueMicrotask(() => { if (mounted && active) void checkStaffAccess(); });
+        });
+        const accountChanged = () => { void checkStaffAccess(); };
+        window.addEventListener('deepmap:account-status-changed', accountChanged);
+        return () => {
+            mounted = false;
+            accessGeneration += 1;
+            revokeStaffData();
+            subscription.unsubscribe();
+            window.removeEventListener('deepmap:account-status-changed', accountChanged);
+        };
+    });
+
     function localisedLabel(item) {
         return item?.label?.[language] ?? item?.label?.en ?? item?.label?.pt ?? item?.id ?? '';
     }
 
     function localisedCategory(id) {
-        const category = categories[id];
-        return category?.label?.[language] ?? category?.label?.en ?? category?.label?.pt ?? id ?? '—';
+        // Historical payloads only carry an adapter, not authoritative historical taxonomy.
+        return displayValue(id);
     }
 
     function formatDate(value) {
@@ -129,51 +261,124 @@
         }));
     }
 
-    async function ensureGameContext(gameId) {
-        if (!gameId) return false;
-        if (contextCache.has(gameId)) {
-            const cached = contextCache.get(gameId);
-            categories = cached.categories;
-            categoryGroups = cached.categoryGroups;
-            mapDefinitions = cached.mapDefinitions;
-            locations = cached.locations;
-            contextGameId = gameId;
-            return true;
-        }
-
-        const registered = deepMapGames.some((game) => game.id === gameId);
-        if (!registered) {
-            categories = {};
-            categoryGroups = [];
-            mapDefinitions = {};
-            locations = [];
-            contextGameId = gameId;
-            return false;
-        }
-
-        const data = await loadDeepMapGameData({
-            supabase: getSupabaseBrowserClient(),
-            gameId,
-            fallback: getDeepMapGameFallback(gameId)
-        });
-        const context = {
-            categories: data.categories ?? {},
-            categoryGroups: data.categoryGroups ?? [],
-            mapDefinitions: data.mapDefinitions ?? {},
-            locations: data.locations ?? []
-        };
-        contextCache.set(gameId, context);
-        categories = context.categories;
-        categoryGroups = context.categoryGroups;
-        mapDefinitions = context.mapDefinitions;
-        locations = context.locations;
-        contextGameId = gameId;
-        return true;
+    /** @param {any} item */
+    function targetLocation(item) {
+        if (!item || reviewContext?.gameUuid !== item.gameUuid || reviewContext?.submissionId !== item.id) return null;
+        return reviewContext?.target ?? null;
     }
 
-    function targetLocation(item) {
-        if (!item?.markerId || contextGameId !== item.gameId) return null;
-        return locations.find((location) => Number(location.databaseId) === Number(item.markerId)) ?? null;
+    /** @param {any} parent */
+    function parentLabel(parent) {
+        if (!parent) return languageKey === 'pt' ? 'Não resolvido' : 'Unresolved';
+        const inactive = languageKey === 'pt' ? 'inativo' : 'inactive';
+        return `${localisedLabel(parent)}${parent.isActive === false ? ` (${inactive})` : ''}`;
+    }
+
+    /** @typedef {{layers: any[], groups: any[], categories: any[]}} ReviewOptions */
+
+    /** @param {ReviewOptions} options */
+    function applyReviewParents(options = { layers: [], groups: [], categories: [] }) {
+        const layersByUuid = new Map(options.layers.map((layer) => [layer.uuid, layer]));
+        const groupsByUuid = new Map(options.groups.map((group) => [group.uuid, group]));
+        const categoriesByUuid = new Map(options.categories.map((category) => [category.uuid, category]));
+        if (!reviewContext) return;
+        for (const parents of [reviewContext.current, reviewContext.submitted]) {
+            // B7e2 metadata wins over option copies, even if the active query disagrees.
+            if (parents.layer) layersByUuid.set(parents.layer.uuid, { ...parents.layer, sortOrder: layersByUuid.get(parents.layer.uuid)?.sortOrder ?? 0 });
+            if (parents.group) groupsByUuid.set(parents.group.uuid, { ...parents.group, sortOrder: groupsByUuid.get(parents.group.uuid)?.sortOrder ?? 0 });
+            if (parents.category) categoriesByUuid.set(parents.category.uuid, { ...parents.category,
+                sortOrder: categoriesByUuid.get(parents.category.uuid)?.sortOrder ?? 0,
+                group: parents.group?.uuid ?? '', groupId: parents.group?.id ?? null });
+        }
+        mapDefinitions = Object.fromEntries(layersByUuid);
+        categoryGroups = [...groupsByUuid.values()];
+        categories = Object.fromEntries(categoriesByUuid);
+    }
+
+    /** @param {unknown} value */
+    function isOptionText(value) {
+        return typeof value === 'string' && value.trim().length > 0;
+    }
+
+    /** @param {any} rows @param {'layer' | 'group' | 'category'} kind @param {any} item */
+    function normaliseReviewOptions(rows, kind, item) {
+        if (!Array.isArray(rows)) throw new Error('REVIEW_OPTIONS_INVALID');
+        const uuids = new Set();
+        const adapters = new Set();
+        return rows.map((/** @type {any} */ row) => {
+            const rawUuid = row?.[`${kind}_uuid`];
+            const uuid = typeof rawUuid === 'string' ? rawUuid.toLowerCase() : rawUuid;
+            if (!row || row.game_uuid !== item.gameUuid || row.game_id !== item.legacyGameId
+                || !isCommunityGameUuid(uuid) || !isOptionText(row.id) || row.is_active !== true
+                || !Number.isFinite(row.sort_order)
+                || (row.name_en !== null && typeof row.name_en !== 'string')
+                || (row.name_pt !== null && typeof row.name_pt !== 'string')
+                || uuids.has(uuid) || adapters.has(row.id)
+                || (kind === 'layer' && !isCommunityGameUuid(row.game_map_id))) throw new Error('REVIEW_OPTIONS_INVALID');
+            if (kind === 'category' && !(row.group_id === null && row.group_uuid === null)
+                && (!isOptionText(row.group_id) || !isCommunityGameUuid(row.group_uuid))) throw new Error('REVIEW_OPTIONS_GROUP_INVALID');
+            uuids.add(uuid);
+            adapters.add(row.id);
+            return {
+                uuid, id: row.id, gameUuid: row.game_uuid, legacyGameId: row.game_id,
+                gameMapUuid: kind === 'layer' ? row.game_map_id.toLowerCase() : null,
+                label: { en: row.name_en, pt: row.name_pt }, sortOrder: row.sort_order,
+                isActive: row.is_active,
+                group: kind === 'category' ? row.group_uuid?.toLowerCase() ?? '' : '',
+                groupId: kind === 'category' ? row.group_id : null
+            };
+        });
+    }
+
+    /** @param {ReviewOptions} options */
+    function validateReviewOptionRelations(options) {
+        if (!reviewContext) throw new Error('REVIEW_OPTIONS_CONTEXT_REQUIRED');
+        // Detect conflicts before changing collections; labels/active flags stay B7e2-owned.
+        for (const kind of /** @type {const} */ (['layer', 'category', 'group'])) {
+            const rows = kind === 'layer' ? options.layers : kind === 'category' ? options.categories : options.groups;
+            for (const scope of [reviewContext.current, reviewContext.submitted]) {
+                const parent = scope[kind];
+                if (parent && rows.some((option) => (option.uuid === parent.uuid && option.id !== parent.id)
+                    || (option.id === parent.id && option.uuid !== parent.uuid))) throw new Error('REVIEW_OPTIONS_IDENTITY_CONFLICT');
+            }
+        }
+        const knownGroups = [...options.groups, reviewContext.current.group, reviewContext.submitted.group].filter(Boolean);
+        for (const category of options.categories) {
+            if (category.group && knownGroups.some((group) => (group.uuid === category.group && group.id !== category.groupId)
+                || (group.id === category.groupId && group.uuid !== category.group))) throw new Error('REVIEW_OPTIONS_GROUP_INVALID');
+        }
+    }
+
+    /** @param {any} item @param {() => boolean} isCurrent */
+    async function loadReviewOptions(item, isCurrent) {
+        optionsLoading = true;
+        optionsError = '';
+        try {
+            if (!isCommunityGameUuid(item.gameUuid) || !isOptionText(item.legacyGameId)) throw new Error('REVIEW_OPTIONS_SCOPE_REQUIRED');
+            const supabase = getSupabaseBrowserClient();
+            const queries = [
+                supabase.from('map_layers').select('id, game_id, game_uuid, layer_uuid, game_map_id, name_en, name_pt, sort_order, is_active'),
+                supabase.from('marker_category_groups').select('id, game_id, game_uuid, group_uuid, name_en, name_pt, sort_order, is_active'),
+                supabase.from('marker_categories').select('id, game_id, game_uuid, category_uuid, group_id, group_uuid, name_en, name_pt, sort_order, is_active')
+            ];
+            const results = await Promise.all(queries.map((query) => query.eq('game_uuid', item.gameUuid)
+                .eq('game_id', item.legacyGameId).eq('is_active', true).order('sort_order')));
+            if (!isCurrent()) return;
+            if (results.some((result) => result.error)) throw new Error('REVIEW_OPTIONS_UNAVAILABLE');
+            const options = {
+                layers: normaliseReviewOptions(results[0].data, 'layer', item),
+                groups: normaliseReviewOptions(results[1].data, 'group', item),
+                categories: normaliseReviewOptions(results[2].data, 'category', item)
+            };
+            validateReviewOptionRelations(options);
+            applyReviewParents(options);
+        } catch (error) {
+            if (!isCurrent()) return;
+            applyReviewParents();
+            optionsError = t.optionsError;
+        } finally {
+            if (isCurrent()) optionsLoading = false;
+        }
     }
 
     function payloadValue(payload, key, fallback = '') {
@@ -188,11 +393,6 @@
     function displayValue(value) {
         if (value == null || String(value).trim() === '') return '—';
         return String(value);
-    }
-
-    function layerLabel(id) {
-        const layer = mapDefinitions?.[id];
-        return layer ? localisedLabel(layer) : displayValue(id);
     }
 
     function contentSummary(items = []) {
@@ -219,8 +419,15 @@
             rows.push({ key, label, before: formatter(before), suggested: formatter(after) });
         };
 
-        add('map_layer', t.layer, target.mapLayer, payload.map_layer, layerLabel);
-        add('category_id', t.category, target.categoryId, payload.category_id, localisedCategory);
+        const parentChanges = /** @type {Array<[string, 'layer' | 'category', string]>} */ ([['map_layer', 'layer', t.layer], ['category_id', 'category', t.category]]);
+        for (const [key, kind, label] of parentChanges) {
+            if (!hasPayloadKey(payload, key)) continue;
+            const before = reviewContext?.current[kind];
+            const after = reviewContext?.submitted[kind];
+            if (before?.uuid !== after?.uuid || valuesDiffer(before?.id, payload[key])) {
+                rows.push({ key, label, before: parentLabel(before), suggested: parentLabel(after) });
+            }
+        }
         add('title_en', t.titleEn, target.title?.en, payload.title_en);
         add('title_pt', t.titlePt, target.title?.pt, payload.title_pt);
         add('region_id', t.region, target.regionId, payload.region_id);
@@ -250,7 +457,7 @@
         }
 
         if (item.correctionKind === 'image' || hasPayloadKey(payload, 'image_action') || hasPayloadKey(payload, 'image_url') || hasPayloadKey(payload, 'target_image_id')) {
-            const imageCount = Array.isArray(target.images) ? target.images.length : 0;
+            const imageCount = target.imageCount;
             const before = imageCount === 1
                 ? `1 ${language === 'pt' ? 'imagem' : 'image'}`
                 : `${imageCount} ${language === 'pt' ? 'imagens' : 'images'}`;
@@ -269,9 +476,14 @@
     function populateReviewForm(item) {
         const payload = item?.payload ?? {};
         const target = targetLocation(item);
-        reviewMapLayer = String(payloadValue(payload, 'map_layer', target?.mapLayer ?? sortedLayers[0]?.id ?? 'surface'));
-        reviewCategoryId = String(payloadValue(payload, 'category_id', target?.categoryId ?? ''));
-        reviewCategoryGroupId = categories[reviewCategoryId]?.group ?? sortedGroups[0]?.id ?? '';
+        const layer = hasPayloadKey(payload, 'map_layer') ? reviewContext?.submitted.layer : reviewContext?.current.layer;
+        const category = hasPayloadKey(payload, 'category_id') ? reviewContext?.submitted.category : reviewContext?.current.category;
+        const group = hasPayloadKey(payload, 'category_id') ? reviewContext?.submitted.group : reviewContext?.current.group;
+        reviewLayerKey = layer?.uuid ?? '';
+        reviewCategoryKey = category?.uuid ?? '';
+        reviewMapLayer = layer?.id ?? '';
+        reviewCategoryId = category?.id ?? '';
+        reviewCategoryGroupId = group?.uuid ?? '';
         reviewTitleEn = String(payloadValue(payload, 'title_en', target?.title?.en ?? ''));
         reviewTitlePt = String(payloadValue(payload, 'title_pt', target?.title?.pt ?? ''));
         reviewRegionId = String(payloadValue(payload, 'region_id', target?.regionId ?? ''));
@@ -280,7 +492,7 @@
         reviewVideoUrl = String(payloadValue(payload, 'video_url', target?.videoUrl ?? ''));
         reviewCoordinateX = String(payloadValue(payload, 'coordinate_x', target?.coordinates?.[1] ?? ''));
         reviewCoordinateY = String(payloadValue(payload, 'coordinate_y', target?.coordinates?.[0] ?? ''));
-        reviewContentItems = reviewItemsFrom(payload.content_items ?? target?.contentItems ?? []);
+        reviewContentItems = reviewItemsFrom(hasPayloadKey(payload, 'content_items') ? payload.content_items : target?.contentItems ?? []);
         reviewImageUrl = String(payload.image_url ?? '');
         reviewImageAction = payload.image_action ?? 'add';
         reviewTargetImageId = payload.target_image_id == null ? '' : String(payload.target_image_id);
@@ -294,8 +506,8 @@
 
     function validateReview() {
         const errors = {};
-        if (!reviewMapLayer) errors.layer = t.required;
-        if (!reviewCategoryId) errors.category = t.required;
+        if (!reviewMapLayer || !mapDefinitions[reviewLayerKey] || mapDefinitions[reviewLayerKey].id !== reviewMapLayer) errors.layer = t.required;
+        if (!reviewCategoryId || !categories[reviewCategoryKey] || categories[reviewCategoryKey].id !== reviewCategoryId) errors.category = t.required;
         if (!reviewTitleEn.trim()) errors.titleEn = t.required;
         if (!hasCoordinateValue(reviewCoordinateX)) errors.coordinateX = t.required;
         if (!hasCoordinateValue(reviewCoordinateY)) errors.coordinateY = t.required;
@@ -327,68 +539,103 @@
     }
 
     function mapHref(item = selected) {
-        if (!item) return '#';
-        const base = getDeepMapGameMapHref(item.gameId);
+        if (!item || !reviewContext || reviewContext.gameUuid !== item.gameUuid
+            || reviewContext.submissionId !== item.id) return null;
+        const game = gameCatalog.find((game) => game.gameUuid === item.gameUuid);
+        const base = `/games/${encodeURIComponent(reviewContext.gameSlug)}/map`;
+        const renderer = getGameRendererBySlug(reviewContext.gameSlug);
+        if (!game?.publicGameMapUuid || renderer?.mapHref !== base) return null;
+        const finalLayer = mapDefinitions[reviewLayerKey];
+        const finalCategory = categories[reviewCategoryKey];
+        if (!finalLayer || finalLayer.gameMapUuid !== game.publicGameMapUuid || !finalCategory) return null;
+        // Preserve the pre-B7f2 payload-first preview; form values only fill absent/null keys.
         const payload = item.payload ?? {};
-        const x = Number(payload.coordinate_x ?? reviewCoordinateX);
-        const y = Number(payload.coordinate_y ?? reviewCoordinateY);
+        const layer = payload.map_layer != null ? reviewContext.submitted.layer : finalLayer;
+        if (!layer || layer.isActive !== true || layer.gameMapUuid !== game.publicGameMapUuid
+            || (reviewContext.current.layer && reviewContext.current.layer.gameMapUuid !== game.publicGameMapUuid)
+            || (payload.category_id != null && !reviewContext.submitted.category)) return null;
+        const xRaw = payload.coordinate_x ?? reviewCoordinateX;
+        const yRaw = payload.coordinate_y ?? reviewCoordinateY;
+        const x = hasCoordinateValue(xRaw) ? Number(xRaw) : NaN;
+        const y = hasCoordinateValue(yRaw) ? Number(yRaw) : NaN;
         const hasSubmittedCoordinates = Number.isFinite(x) && Number.isFinite(y)
             && (payload.coordinate_x != null || payload.coordinate_y != null || item.type === 'create');
 
-        if (!hasSubmittedCoordinates && item.markerId) {
+        if (!hasSubmittedCoordinates && item.markerId && reviewContext.target?.isPublished) {
             return `${base}?marker=${encodeURIComponent(item.markerId)}`;
         }
 
-        const layer = payload.map_layer ?? reviewMapLayer ?? 'surface';
-        const category = payload.category_id ?? reviewCategoryId ?? '';
+        const category = payload.category_id != null ? reviewContext.submitted.category : finalCategory;
         const params = new URLSearchParams();
         if (Number.isFinite(x) && Number.isFinite(y)) {
             params.set('reviewX', String(x));
             params.set('reviewY', String(y));
-            params.set('layer', String(layer));
-            if (category) params.set('category', String(category));
+            params.set('layer', layer.id);
+            if (category) params.set('category', category.id);
         }
         if (item.markerId) params.set('marker', String(item.markerId));
         params.set('submission', String(item.id));
         return `${base}?${params.toString()}`;
     }
 
-    async function load() {
-        if (!active || loading) return;
+    async function load({ preserveSelection = false } = {}) {
+        const generation = ++queueGeneration;
+        if (!mounted || !active || !staffUserId) return;
+        const scopeCurrent = scopeGuard();
+        const isCurrent = () => generation === queueGeneration && scopeCurrent();
+        const gameUuid = gameFilter === 'all' ? null : gameFilter;
+        const status = mode === 'pending' ? 'pending' : historyStatus;
+        const requestedPage = page;
+        const size = pageSize;
+        if (!preserveSelection) clearSelection();
         loading = true;
         errorMessage = '';
         successMessage = '';
         try {
-            const result = await loadMarkerSubmissionsPage({
+            let result = await loadMarkerSubmissionsPage({
                 supabase: getSupabaseBrowserClient(),
-                gameId: gameFilter === 'all' ? null : gameFilter,
-                status: mode === 'pending' ? 'pending' : historyStatus,
-                limit: pageSize,
-                offset: (page - 1) * pageSize
+                gameUuid, status, limit: size, offset: (requestedPage - 1) * size
             });
+            if (!isCurrent()) return;
+            if (!result.items.length && requestedPage > 1) {
+                result = await loadMarkerSubmissionsPage({ supabase: getSupabaseBrowserClient(), gameUuid, status, limit: size, offset: 0 });
+                if (!isCurrent()) return;
+                page = Math.min(requestedPage, Math.max(1, Math.ceil(result.total / size)));
+                return await load();
+            }
+            if (result.items.some((item) => !isCommunityGameUuid(item.gameUuid)
+                || item.status !== status || (gameUuid !== null && item.gameUuid !== gameUuid))) throw new Error('MODERATION_SCOPE_MISMATCH');
             items = result.items;
             total = result.total;
-            if (selectedId !== null && !items.some((item) => item.id === selectedId)) selectedId = null;
-            if (page > pageCount) page = pageCount;
+            if (selectedId !== null && !items.some((item) => item.id === selectedId && item.gameUuid === selectionGameUuid)) clearSelection();
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap global moderation:', error);
             items = [];
             total = 0;
+            clearSelection();
             errorMessage = t.loadError;
         } finally {
-            loading = false;
+            if (isCurrent()) loading = false;
         }
     }
 
     async function loadHistoryRevisions(submissionId) {
+        const generation = ++revisionGeneration;
+        const scopeCurrent = scopeGuard();
+        const selectedGame = selected?.gameUuid;
+        const isCurrent = () => generation === revisionGeneration && scopeCurrent()
+            && selectedId === submissionId && selected?.gameUuid === selectedGame;
         historyRevisions = [];
+        revisionsError = '';
         historyRevisionsLoaded = false;
         if (mode !== 'history' || submissionId == null) return;
         historyRevisionsLoading = true;
         try {
             const { data, error } = await getSupabaseBrowserClient().rpc('get_marker_submission_revisions', {
-                p_submission_id: submissionId
+                p_submission_id: markerIdKey(submissionId)
             });
+            if (!isCurrent()) return;
             if (error) throw error;
             historyRevisions = (data ?? []).map((row) => ({
                 revisionNo: Number(row.revision_no ?? 0),
@@ -398,11 +645,15 @@
                 createdAt: row.created_at
             }));
         } catch (error) {
+            if (!isCurrent()) return;
             console.warn('DeepMap moderation revisions:', error?.message ?? error);
             historyRevisions = [];
+            revisionsError = t.loadError;
         } finally {
-            historyRevisionsLoading = false;
-            historyRevisionsLoaded = true;
+            if (isCurrent()) {
+                historyRevisionsLoading = false;
+                historyRevisionsLoaded = true;
+            }
         }
     }
 
@@ -418,46 +669,75 @@
 
     async function refreshQueue() {
         if (loading || working) return;
+        const scopeCurrent = scopeGuard();
         refreshFeedback = '';
-        await load();
-        if (!errorMessage) {
+        const catalogRequest = loadGameCatalog();
+        const queueRequest = load();
+        const generation = queueGeneration;
+        await Promise.all([catalogRequest, queueRequest]);
+        if (generation === queueGeneration && scopeCurrent() && !errorMessage) {
             refreshFeedback = t.refreshed;
             window.setTimeout(() => {
-                if (refreshFeedback === t.refreshed) refreshFeedback = '';
+                if (generation === queueGeneration && scopeCurrent()) refreshFeedback = '';
             }, 2200);
         }
     }
 
     async function selectSubmission(item) {
+        if (!mounted || !active || !staffUserId || loading || !items.some((row) => row.id === item.id && row.gameUuid === item.gameUuid)) return;
         if (selectedId === item.id) {
-            selectedId = null;
-            historyRevisions = [];
-            historyRevisionsLoaded = false;
-            fieldErrors = {};
+            clearSelection();
             return;
         }
-        loading = true;
+        clearSelection();
+        const generation = selectionGeneration;
+        const scopeCurrent = scopeGuard();
+        const isCurrent = () => generation === selectionGeneration && scopeCurrent() && selectedId === item.id;
+        selectedId = item.id;
+        selectionGameUuid = item.gameUuid;
+        contextLoading = true;
         errorMessage = '';
         successMessage = '';
         try {
-            const registered = await ensureGameContext(item.gameId);
-            selectedId = item.id;
-            populateReviewForm(item);
-            if (mode === 'history') await loadHistoryRevisions(item.id);
-            if (!registered) errorMessage = t.gameUnavailable;
+            const context = await loadMarkerReviewContext({ supabase: getSupabaseBrowserClient(), gameUuid: item.gameUuid, submissionId: item.id });
+            if (!isCurrent()) return;
+            reviewContext = context;
+            items = items.map((row) => row.id !== item.id ? row : { ...row,
+                payload: context.payload, status: context.status, gameSlug: context.gameSlug,
+                gameName: context.gameName, legacyGameId: context.legacyGameId });
+            applyReviewParents();
+            const contextItem = { ...item, payload: context.payload, status: context.status, legacyGameId: context.legacyGameId };
+            populateReviewForm(contextItem);
+            contextLoading = false;
+            const optionsRequest = loadReviewOptions(contextItem, isCurrent);
+            if (mode === 'history') await Promise.all([optionsRequest, loadHistoryRevisions(item.id)]);
+            else await optionsRequest;
+            if (!isCurrent()) return;
             if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) {
-                window.setTimeout(() => reviewColumnElement?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+                window.setTimeout(() => { if (isCurrent()) reviewColumnElement?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 0);
             }
         } catch (error) {
+            if (!isCurrent()) return;
+            reviewContext = null;
             console.error('DeepMap moderation game context:', error);
-            errorMessage = t.loadError;
+            errorMessage = t.reviewError;
         } finally {
-            loading = false;
+            if (isCurrent()) contextLoading = false;
         }
     }
 
     async function review(decision) {
-        if (!selected || selected.status !== 'pending' || working) return;
+        if (!selected || selected.status !== 'pending' || working || contextLoading
+            || (decision === 'approved' && optionsLoading)
+            || reviewContext?.submissionId !== selected.id || reviewContext?.gameUuid !== selected.gameUuid
+            || !['approved', 'rejected'].includes(decision)) return;
+        const item = selected;
+        const generation = ++operationGeneration;
+        const selectedGeneration = selectionGeneration;
+        const scopeCurrent = scopeGuard();
+        const sessionCurrent = sessionGuard();
+        const isCurrent = () => generation === operationGeneration && scopeCurrent()
+            && selectedGeneration === selectionGeneration && selectedId === item.id;
         if (decision === 'approved' && !validateReview()) {
             errorMessage = t.requiredSummary;
             return;
@@ -468,19 +748,30 @@
         try {
             await reviewMarkerSubmission({
                 supabase: getSupabaseBrowserClient(),
-                submissionId: selected.id,
+                submissionId: item.id,
                 decision,
                 reviewNote,
                 payloadOverride: decision === 'approved' ? buildReviewPayload() : null
             });
-            successMessage = decision === 'approved' ? t.approvedOk : t.rejectedOk;
-            selectedId = null;
+            if (!isCurrent()) {
+                if (sessionCurrent()) {
+                    if (selectedId === item.id) clearSelection();
+                    await load({ preserveSelection: true });
+                }
+                return;
+            }
+            clearSelection();
+            const refreshCurrent = scopeGuard();
+            const refreshGeneration = queueGeneration + 1;
             await load();
+            if (refreshCurrent() && refreshGeneration === queueGeneration && generation === operationGeneration
+                && selectedId === null && !errorMessage) successMessage = decision === 'approved' ? t.approvedOk : t.rejectedOk;
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap global moderation review:', error);
             errorMessage = t.reviewError;
         } finally {
-            working = false;
+            if (generation === operationGeneration && sessionCurrent()) working = false;
         }
     }
 
@@ -520,14 +811,27 @@
     }
 
     function handleCategoryGroupChange() {
-        if (reviewCategoryId && categories[reviewCategoryId]?.group !== reviewCategoryGroupId) reviewCategoryId = '';
+        if (reviewCategoryKey && categories[reviewCategoryKey]?.group !== reviewCategoryGroupId) {
+            reviewCategoryKey = '';
+            reviewCategoryId = '';
+        }
         fieldErrors = { ...fieldErrors, category: undefined };
     }
 
+    function handleReviewLayerChange() {
+        reviewMapLayer = mapDefinitions[reviewLayerKey]?.id ?? '';
+    }
+
+    function handleReviewCategoryChange() {
+        reviewCategoryId = categories[reviewCategoryKey]?.id ?? '';
+    }
+
     $effect(() => {
-        if (!active || loadedOnce) return;
-        loadedOnce = true;
-        void load();
+        const enabled = active;
+        untrack(() => {
+            if (enabled) void checkStaffAccess();
+            else { accessGeneration += 1; revokeStaffData(); }
+        });
     });
 </script>
 
@@ -539,7 +843,7 @@
             <h2>{t.title}</h2>
         </div>
         <div class="toolbar-actions">
-            <label class="map-filter"><span>{t.map}</span><select value={gameFilter} onchange={setGameFilter}><option value="all">{t.allMaps}</option>{#each deepMapGames as game}<option value={game.id}>{game.name}</option>{/each}</select></label>
+            <label class="map-filter"><span>{t.map}</span><select value={gameFilter} onchange={setGameFilter}><option value="all">{t.allMaps}</option>{#each gameCatalog as game}<option value={game.gameUuid}>{game.gameName} · {game.gameSlug}</option>{/each}</select></label>
             <label class="page-size"><span>{t.perPage}</span>{#if mode === 'history'}<select bind:value={historyPageSize} onchange={handlePageSizeChange} disabled={loading || working}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select>{:else}<select bind:value={pendingPageSize} onchange={handlePageSizeChange} disabled={loading || working}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select>{/if}</label><div class="refresh-control"><button type="button" onclick={refreshQueue} disabled={loading || working}>{loading ? t.refreshing : t.refresh}</button>{#if refreshFeedback}<small class="refresh-feedback" role="status">{refreshFeedback}</small>{/if}</div>
         </div>
     </div>
@@ -551,6 +855,7 @@
     </div>
 
     {#if errorMessage}<p class="message error" role="alert">{errorMessage}</p>{/if}
+    {#if catalogError}<p class="message error" role="alert">{catalogError}</p>{/if}
     {#if successMessage}<p class="message success" role="status">{successMessage}</p>{/if}
 
     <div class="moderation-layout">
@@ -563,7 +868,7 @@
                 <div class="queue">
                     {#each items as item (item.id)}
                         <button class:selected={selectedId === item.id} type="button" onclick={() => selectSubmission(item)}>
-                            <span class="queue-top"><b>{getDeepMapGameName(item.gameId)}</b><em>#{item.id}</em></span>
+                            <span class="queue-top"><b>{item.gameName ?? item.gameSlug ?? item.gameUuid}</b><em>#{item.id}</em></span>
                             <strong>{item.type === 'create' ? t.newMarker : t.correction}</strong>
                             <small>@{item.submittedUsername ?? '—'} · {item.revisionCount} {t.versions}{#if item.status !== 'pending'} · {formatDate(item.reviewedAt)} · {t.viewDetails}{/if}</small>
                         </button>
@@ -585,18 +890,37 @@
                 <article class="review-card">
                     <div class="review-head">
                         <div>
-                            <span class="eyebrow">{getDeepMapGameName(selected.gameId)}</span>
+                            <span class="eyebrow">{selected.gameName ?? selected.gameSlug ?? selected.gameUuid}</span>
                             <h3>#{selected.id} · {selected.type === 'create' ? t.newMarker : t.correction}</h3>
                         </div>
-                        <div class="review-head-actions"><a href={mapHref(selected)} target="_blank" rel="noreferrer">{t.openMap}</a><button type="button" onclick={() => { selectedId = null; }}>{t.close}</button></div>
+                        <div class="review-head-actions">{#if mapHref(selected)}<a href={mapHref(selected)} target="_blank" rel="noreferrer">{t.openMap}</a>{/if}<button type="button" onclick={clearSelection}>{t.close}</button></div>
                     </div>
 
+                    {#if contextLoading}
+                        <p>…</p>
+                    {:else if !reviewContext}
+                        <p class="message error">{t.reviewError}</p>
+                    {:else}
+                    {#if optionsError}<p class="message error" role="alert">{optionsError}</p>{/if}
                     <div class="meta-grid">
                         <span>{t.submittedBy}<strong>@{selected.submittedUsername ?? '—'}</strong></span>
                         <span>{t.marker}<strong>{selected.markerId ? `#${selected.markerId}` : t.newMarker}</strong></span>
                         {#if selected.status !== 'pending'}
                             <span>{t.reviewedBy}<strong>@{selected.reviewedUsername ?? '—'}</strong></span>
                             <span>{t.reviewedAt}<strong>{formatDate(selected.reviewedAt)}</strong></span>
+                        {/if}
+                    </div>
+
+                    <div class="meta-grid">
+                        <span>{t.current} · {t.layer}<strong>{parentLabel(reviewContext.current.layer)}</strong></span>
+                        <span>{t.current} · {t.category}<strong>{parentLabel(reviewContext.current.category)}</strong></span>
+                        <span>{t.current} · {t.type}<strong>{parentLabel(reviewContext.current.group)}</strong></span>
+                        <span>{t.suggested} · {t.layer}<strong>{parentLabel(reviewContext.submitted.layer)}</strong></span>
+                        <span>{t.suggested} · {t.category}<strong>{parentLabel(reviewContext.submitted.category)}</strong></span>
+                        <span>{t.suggested} · {t.type}<strong>{parentLabel(reviewContext.submitted.group)}</strong></span>
+                        {#if reviewContext.target}
+                            <span>{t.current} · {t.marker}<strong>{reviewContext.target.isPublished ? (languageKey === 'pt' ? 'Publicado' : 'Published') : (languageKey === 'pt' ? 'Não publicado' : 'Unpublished')}</strong></span>
+                            <span>{t.current} · {t.images}<strong>{reviewContext.target.imageCount}</strong></span>
                         {/if}
                     </div>
 
@@ -627,10 +951,10 @@
                         {/if}
                         <div class="review-intro"><strong>{selected.type === 'correction' ? t.finalVersion : t.review}</strong><small>{t.reviewHelp}</small></div>
                         <div class="form-grid two">
-                            <label class:invalid={Boolean(fieldErrors.layer)}><span>{t.layer} *</span><select bind:value={reviewMapLayer} disabled={working}>{#each sortedLayers as layer}<option value={layer.id}>{localisedLabel(layer)}</option>{/each}</select>{#if fieldErrors.layer}<small class="field-error">{fieldErrors.layer}</small>{/if}</label>
-                            <label><span>{t.type}</span><select bind:value={reviewCategoryGroupId} onchange={handleCategoryGroupChange} disabled={working}>{#each sortedGroups as group}<option value={group.id}>{localisedLabel(group)}</option>{/each}</select></label>
+                            <label class:invalid={Boolean(fieldErrors.layer)}><span>{t.layer} *</span><select bind:value={reviewLayerKey} onchange={handleReviewLayerChange} disabled={working || optionsLoading}><option value="">{parentLabel(null)}</option>{#each sortedLayers as layer}<option value={layer.uuid}>{parentLabel(layer)}</option>{/each}</select>{#if fieldErrors.layer}<small class="field-error">{fieldErrors.layer}</small>{/if}</label>
+                            <label><span>{t.type}</span><select bind:value={reviewCategoryGroupId} onchange={handleCategoryGroupChange} disabled={working || optionsLoading}><option value="">—</option>{#each sortedGroups as group}<option value={group.uuid}>{parentLabel(group)}</option>{/each}</select></label>
                         </div>
-                        <label class:invalid={Boolean(fieldErrors.category)}><span>{t.category} *</span><select bind:value={reviewCategoryId} disabled={working}><option value="">{t.chooseCategory}</option>{#each filteredCategories as category}<option value={category.id}>{localisedLabel(category)}</option>{/each}</select>{#if fieldErrors.category}<small class="field-error">{fieldErrors.category}</small>{/if}</label>
+                        <label class:invalid={Boolean(fieldErrors.category)}><span>{t.category} *</span><select bind:value={reviewCategoryKey} onchange={handleReviewCategoryChange} disabled={working || optionsLoading}><option value="">{t.chooseCategory}</option>{#each filteredCategories as category}<option value={category.uuid}>{parentLabel(category)}</option>{/each}</select>{#if fieldErrors.category}<small class="field-error">{fieldErrors.category}</small>{/if}</label>
                         <fieldset class="location-box"><legend>{t.coordinates} *</legend><div class="coordinate-row"><span>X *</span><CoordinateStepper axis="x" bind:value={reviewCoordinateX} invalid={Boolean(fieldErrors.coordinateX)} disabled={working} />{#if fieldErrors.coordinateX}<small class="field-error">{fieldErrors.coordinateX}</small>{/if}</div><div class="coordinate-row"><span>Y *</span><CoordinateStepper axis="y" bind:value={reviewCoordinateY} invalid={Boolean(fieldErrors.coordinateY)} disabled={working} />{#if fieldErrors.coordinateY}<small class="field-error">{fieldErrors.coordinateY}</small>{/if}</div></fieldset>
                         <div class="form-grid two"><label class:invalid={Boolean(fieldErrors.titleEn)}><span>{t.titleEn} *</span><input bind:value={reviewTitleEn} disabled={working} />{#if fieldErrors.titleEn}<small class="field-error">{fieldErrors.titleEn}</small>{/if}</label><label><span>{t.titlePt} ({t.optional})</span><input bind:value={reviewTitlePt} disabled={working} /></label></div>
                         <label><span>{t.region} ({t.optional})</span><input bind:value={reviewRegionId} disabled={working} /></label>
@@ -645,7 +969,7 @@
                         <MarkerContentEditor {language} bind:value={reviewContentItems} disabled={working} />
                         {#if selected.note}<p class="note"><b>{t.note}:</b> {selected.note}</p>{/if}
                         <label><span>{t.moderatorNote} ({t.optional})</span><textarea rows="2" bind:value={reviewNote} disabled={working}></textarea></label>
-                        <div class="actions"><button class="approve" type="button" onclick={() => review('approved')} disabled={working}>{working ? t.working : t.approve}</button><button class="reject" type="button" onclick={() => review('rejected')} disabled={working}>{t.reject}</button><button type="button" onclick={() => { selectedId = null; }} disabled={working}>{t.close}</button></div>
+                        <div class="actions"><button class="approve" type="button" onclick={() => review('approved')} disabled={working || optionsLoading}>{working ? t.working : t.approve}</button><button class="reject" type="button" onclick={() => review('rejected')} disabled={working}>{t.reject}</button><button type="button" onclick={clearSelection} disabled={working}>{t.close}</button></div>
                     {:else}
                         <section class="history-result" aria-label={t.historyDetails}>
                             <strong>{t.historyDetails}</strong>
@@ -676,6 +1000,7 @@
                             {/if}
                         {/if}
 
+                        {#if revisionsError}<p class="message error" role="alert">{revisionsError}</p>{/if}
                         {#if historyRevisionsLoading}
                             <div class="revision-history"><strong>{t.revisionsHistory}</strong><p>…</p></div>
                         {:else if historyRevisions.length}
@@ -700,8 +1025,8 @@
 
                         <div class="proposal">
                             <strong>{t.changes}</strong>
-                            {#if selected.payload?.map_layer}<p>{t.layer}: {selected.payload.map_layer}</p>{/if}
-                            {#if selected.payload?.category_id}<p>{t.category}: {localisedCategory(selected.payload.category_id)}</p>{/if}
+                            {#if hasPayloadKey(selected.payload, 'map_layer')}<p>{t.layer}: {parentLabel(reviewContext.submitted.layer)} · {displayValue(selected.payload.map_layer)}</p>{/if}
+                            {#if hasPayloadKey(selected.payload, 'category_id')}<p>{t.category}: {parentLabel(reviewContext.submitted.category)} · {displayValue(selected.payload.category_id)}</p>{/if}
                             {#if selected.payload?.title_en}<p>EN: {selected.payload.title_en}</p>{/if}
                             {#if selected.payload?.title_pt}<p>PT: {selected.payload.title_pt}</p>{/if}
                             {#if selected.payload?.region_id}<p>{t.region}: {selected.payload.region_id}</p>{/if}
@@ -714,6 +1039,7 @@
                         </div>
                         {#if selected.note}<p class="note"><b>{t.note}:</b> {selected.note}</p>{/if}
                         {#if selected.reviewNote}<p class="note"><b>{t.moderatorNote}:</b> {selected.reviewNote}</p>{/if}
+                    {/if}
                     {/if}
                 </article>
             {:else}

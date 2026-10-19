@@ -9,7 +9,8 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json --watch"
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json --watch",
+		"review:bundle": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/create-review-bundle.ps1"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.1",

@@ -1,5 +1,6 @@
 <script>
-    import { tick } from 'svelte';
+    import { onMount, tick, untrack } from 'svelte';
+    import { loadAdminAuditWithRecovery } from './admin-audit.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
 
     let { language = 'en', active = true } = $props();
@@ -15,21 +16,31 @@
         }
     };
 
-    let languageKey = $derived(String(language ?? '').toLowerCase().startsWith('pt') ? 'pt' : 'en');
+    let languageKey = $derived(/** @type {'pt' | 'en'} */ (String(language ?? '').toLowerCase().startsWith('pt') ? 'pt' : 'en'));
     let t = $derived(TEXT[languageKey] ?? TEXT.en);
-    let items = $state([]);
+    let items = $state(/** @type {import('./admin-audit.js').AdminAuditRow[]} */ ([]));
     let total = $state(0);
     let page = $state(1);
     let pageSize = $state(10);
     let loading = $state(false);
     let errorMessage = $state('');
-    let loadedOnce = false;
     let pageCount = $derived(Math.max(1, Math.ceil(total / pageSize)));
-    let expandedId = $state(null);
+    let expandedId = $state(/** @type {string | null} */ (null));
     let refreshFeedback = $state('');
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
     let refreshTimer;
-    let detailCache = $state({});
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let loadTimer;
+    /** @typedef {{loading: boolean, loaded: boolean, submission: any, revisions: any[], error: string}} AuditDetail */
+    let detailCache = $state(/** @type {Record<string, AuditDetail>} */ ({}));
+    let mounted = false;
+    /** @type {string | null} */
+    let currentUserId = null;
+    let sessionGeneration = 0;
+    let listGeneration = 0;
+    let detailGeneration = 0;
 
+    /** @param {any} value */
     function formatDate(value){
         if(!value) return '—';
         const date = new Date(value);
@@ -37,8 +48,10 @@
         return new Intl.DateTimeFormat(languageKey === 'pt' ? 'pt-PT' : 'en-GB',{dateStyle:'medium',timeStyle:'short'}).format(date);
     }
 
+    /** @param {string} action */
     function label(action){
         const pt = languageKey === 'pt';
+        /** @type {Record<string, string>} */
         const labels = {
             moderator_granted: pt ? 'Moderador atribuído' : 'Moderator granted',
             moderator_revoked: pt ? 'Moderador removido' : 'Moderator revoked',
@@ -50,6 +63,7 @@
         return labels[action] ?? action;
     }
 
+    /** @param {string} detail */
     function parseBanDetail(detail){
         const raw = String(detail ?? '').trim();
         if(!raw) return { reason:'', expiresAt:null, permanent:false, fallback:'' };
@@ -67,11 +81,13 @@
         return { reason:raw, expiresAt:null, permanent:false, fallback:raw };
     }
 
+    /** @param {import('./admin-audit.js').AdminAuditRow} item */
     function detailInfo(item){
         if(item?.action === 'user_banned') return parseBanDetail(item.detail);
         return { reason:'', expiresAt:null, permanent:false, fallback:String(item?.detail ?? '').trim() };
     }
 
+    /** @param {any} value */
     function prettyValue(value){
         if(value == null || value === '') return '—';
         if(Array.isArray(value)) return value.length ? JSON.stringify(value, null, 2) : '—';
@@ -79,6 +95,7 @@
         return String(value);
     }
 
+    /** @param {any} payload */
     function payloadEntries(payload){
         if(!payload || typeof payload !== 'object') return [];
         const preferred=['title_en','title_pt','category_id','map_layer','region_id','description_en','description_pt','video_url','coordinate_x','coordinate_y','image_url','image_action','target_image_id','content_items'];
@@ -86,21 +103,36 @@
         return keys.map((key)=>({key,value:payload[key]}));
     }
 
+    function invalidateDetails() {
+        detailGeneration += 1;
+        detailCache = Object.fromEntries(Object.entries(detailCache).filter(([, detail]) => !detail.loading));
+    }
+
+    /** @param {import('./admin-audit.js').AdminAuditRow} item */
     async function loadSubmissionDetail(item){
-        if(!item?.submission_id || detailCache[item.event_id]?.loaded || detailCache[item.event_id]?.loading) return;
-        detailCache={...detailCache,[item.event_id]:{loading:true,loaded:false,submission:null,revisions:[],error:''}};
+        if(!item.submissionId || detailCache[item.eventId]?.loaded) return;
+        const request = ++detailGeneration;
+        const epoch = sessionGeneration;
+        const user = currentUserId;
+        const isCurrent = () => mounted && active && !!user && user === currentUserId
+            && epoch === sessionGeneration && request === detailGeneration
+            && expandedId === item.eventId && items.some((row) => row === item);
+        if (!isCurrent()) return;
+        detailCache={...detailCache,[item.eventId]:{loading:true,loaded:false,submission:null,revisions:[],error:''}};
         try{
             const supabase=getSupabaseBrowserClient();
             const [{data:submission,error:submissionError},{data:revisions,error:revisionError}]=await Promise.all([
-                supabase.from('marker_submissions').select('id, game_id, marker_id, submission_type, correction_kind, status, payload, note, review_note, created_at, reviewed_at, updated_at').eq('id',item.submission_id).maybeSingle(),
-                supabase.rpc('get_marker_submission_revisions',{p_submission_id:item.submission_id})
+                supabase.from('marker_submissions').select('id, game_id, marker_id, submission_type, correction_kind, status, payload, note, review_note, created_at, reviewed_at, updated_at').eq('id',item.submissionId).maybeSingle(),
+                supabase.rpc('get_marker_submission_revisions',{p_submission_id:item.submissionId})
             ]);
+            if (!isCurrent()) return;
             if(submissionError) throw submissionError;
             if(revisionError) throw revisionError;
-            detailCache={...detailCache,[item.event_id]:{loading:false,loaded:true,submission:submission??null,revisions:revisions??[],error:''}};
+            detailCache={...detailCache,[item.eventId]:{loading:false,loaded:true,submission:submission??null,revisions:revisions??[],error:''}};
         }catch(error){
+            if (!isCurrent()) return;
             console.warn('DeepMap admin audit submission detail:',error);
-            detailCache={...detailCache,[item.event_id]:{loading:false,loaded:true,submission:null,revisions:[],error:t.noExtraDetails}};
+            detailCache={...detailCache,[item.eventId]:{loading:false,loaded:true,submission:null,revisions:[],error:t.noExtraDetails}};
         }
     }
 
@@ -113,39 +145,100 @@
     }
 
     async function load({ manual = false } = {}){
-        if(!active || loading) return;
-        loading=true; errorMessage='';
-        if(manual){
-            refreshFeedback='';
-            if(refreshTimer) clearTimeout(refreshTimer);
-        }
+        if(!mounted || !active || !currentUserId) return;
+        const request = ++listGeneration;
+        const epoch = sessionGeneration;
+        const user = currentUserId;
+        const isCurrent = () => mounted && active && user === currentUserId
+            && epoch === sessionGeneration && request === listGeneration;
+        invalidateDetails();
+        detailCache = {};
+        loading=true; errorMessage=''; refreshFeedback='';
+        if(refreshTimer) clearTimeout(refreshTimer);
         try{
-            const {data,error}=await getSupabaseBrowserClient().rpc('get_deepmap_admin_audit',{p_limit:pageSize,p_offset:(page-1)*pageSize});
-            if(error) throw error;
-            items=data ?? [];
-            total=items.length ? Number(items[0].total_count ?? 0) : 0;
-            if(expandedId && !items.some((item)=>item.event_id===expandedId)) expandedId=null;
+            const result = await loadAdminAuditWithRecovery({
+                supabase: getSupabaseBrowserClient(), limit: pageSize, page, isCurrent
+            });
+            if (!isCurrent() || !result) return;
+            items=result.items; total=result.total; page=result.page;
+            if(expandedId && !items.some((item)=>item.eventId===expandedId)) expandedId=null;
+            if (expandedId) {
+                const selected = items.find((item) => item.eventId === expandedId);
+                if (selected) void loadSubmissionDetail(selected);
+            }
             if(manual){
                 refreshFeedback=t.refreshed;
-                refreshTimer=setTimeout(()=>{refreshFeedback='';},2200);
+                refreshTimer=setTimeout(()=>{ if (isCurrent()) refreshFeedback=''; },2200);
             }
         }catch(error){
+            if (!isCurrent()) return;
             console.error('DeepMap admin audit:',error);
-            items=[]; total=0; errorMessage=t.loadError;
-        }finally{loading=false;}
+            items=[]; total=0; expandedId=null; detailCache={}; errorMessage=t.loadError;
+        }finally{ if (isCurrent()) loading=false; }
     }
 
     async function refresh(){ await load({manual:true}); }
     async function handlePageSizeChange(){ page=1;expandedId=null;await tick();await load(); }
-    async function goPage(next){ if(next<1||next>pageCount||next===page)return; page=next; expandedId=null; await load(); }
+    /** @param {number} next */
+    async function goPage(next){ if(loading||next<1||next>pageCount||next===page)return; page=next; expandedId=null; await load(); }
+    /** @param {import('./admin-audit.js').AdminAuditRow} item */
     async function toggleDetails(item){
-        const id=item.event_id;
+        invalidateDetails();
+        const id=item.eventId;
         if(expandedId===id){expandedId=null;return;}
         expandedId=id;
-        if(item.submission_id) await loadSubmissionDetail(item);
+        if(item.submissionId) await loadSubmissionDetail(item);
     }
 
-    $effect(()=>{ if(!active || loadedOnce)return; loadedOnce=true; void load(); });
+    function clearAudit() {
+        listGeneration += 1;
+        invalidateDetails();
+        items=[]; total=0; page=1; pageSize=10; expandedId=null; detailCache={};
+        loading=false; errorMessage=''; refreshFeedback='';
+        if(refreshTimer) clearTimeout(refreshTimer);
+        if(loadTimer) clearTimeout(loadTimer);
+    }
+
+    /** Parent still owns Admin authorization; this listener only invalidates session data.
+     * @param {string | null} user
+     */
+    function sessionChanged(user) {
+        sessionGeneration += 1;
+        currentUserId=user;
+        clearAudit();
+        if (mounted && active && user) {
+            const epoch=sessionGeneration;
+            // Leave Supabase's auth callback before starting another client request.
+            loadTimer=setTimeout(()=>{ if(mounted && epoch===sessionGeneration) void load(); },0);
+        }
+    }
+
+    onMount(() => {
+        mounted=true;
+        const supabase=getSupabaseBrowserClient();
+        const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{
+            if (mounted) sessionChanged(session?.user.id ?? null);
+        });
+        const epoch=sessionGeneration;
+        void (async()=>{
+            try {
+                const {data,error}=await supabase.auth.getUser();
+                if(mounted && epoch===sessionGeneration) sessionChanged(error ? null : data.user?.id ?? null);
+            } catch {
+                if(mounted && epoch===sessionGeneration) sessionChanged(null);
+            }
+        })();
+        return ()=>{
+            mounted=false;
+            sessionChanged(null);
+            subscription.unsubscribe();
+        };
+    });
+
+    $effect(()=>{
+        if (!active) untrack(clearAudit);
+        else untrack(()=>{ if(mounted && currentUserId) void load(); });
+    });
 </script>
 
 {#if active}
@@ -165,29 +258,29 @@
     {:else if !items.length}<div class="empty">{t.none}</div>
     {:else}
         <div class="events">
-            {#each items as item (item.event_id)}
+            {#each items as item (item.eventId)}
                 {@const info = detailInfo(item)}
-                <article class:expanded={expandedId===item.event_id}>
-                    <button class="event-summary" type="button" onclick={()=>toggleDetails(item)} aria-expanded={expandedId===item.event_id}>
-                        <span class="event-title"><strong>{label(item.action)}</strong><time>{formatDate(item.created_at)}</time></span>
+                <article class:expanded={expandedId===item.eventId}>
+                    <button class="event-summary" type="button" onclick={()=>toggleDetails(item)} aria-expanded={expandedId===item.eventId}>
+                        <span class="event-title"><strong>{label(item.action)}</strong><time>{formatDate(item.createdAt)}</time></span>
                         <span class="meta">
-                            {#if item.actor_username}<span>{t.actor}: <b>@{item.actor_username}</b></span>{/if}
-                            {#if item.target_username}<span>{t.target}: <b>@{item.target_username}</b></span>{/if}
-                            {#if item.game_id}<span>{t.game}: <b>{item.game_id}</b></span>{/if}
-                            {#if item.submission_id}<span>{t.submission}: <b>#{item.submission_id}</b></span>{/if}
+                            {#if item.actorUsername}<span>{t.actor}: <b>@{item.actorUsername}</b></span>{/if}
+                            {#if item.targetUsername}<span>{t.target}: <b>@{item.targetUsername}</b></span>{/if}
+                            {#if (item.routeGameName ?? item.routeGameSlug)}<span>{t.game}: <b>{(item.routeGameName ?? item.routeGameSlug)}</b></span>{/if}
+                            {#if item.submissionId}<span>{t.submission}: <b>#{item.submissionId}</b></span>{/if}
                         </span>
-                        <span class="expand-label">{expandedId===item.event_id?t.close:t.details} <b>{expandedId===item.event_id?'−':'+'}</b></span>
+                        <span class="expand-label">{expandedId===item.eventId?t.close:t.details} <b>{expandedId===item.eventId?'−':'+'}</b></span>
                     </button>
 
-                    {#if expandedId===item.event_id}
+                    {#if expandedId===item.eventId}
                         <div class="event-details">
                             <dl>
                                 <div><dt>{t.event}</dt><dd>{label(item.action)}</dd></div>
-                                <div><dt>{t.date}</dt><dd>{formatDate(item.created_at)}</dd></div>
-                                {#if item.actor_username}<div><dt>{t.actor}</dt><dd>@{item.actor_username}</dd></div>{/if}
-                                {#if item.target_username}<div><dt>{t.target}</dt><dd>@{item.target_username}</dd></div>{/if}
-                                {#if item.game_id}<div><dt>{t.game}</dt><dd>{item.game_id}</dd></div>{/if}
-                                {#if item.submission_id}<div><dt>{t.submission}</dt><dd>#{item.submission_id}</dd></div>{/if}
+                                <div><dt>{t.date}</dt><dd>{formatDate(item.createdAt)}</dd></div>
+                                {#if item.actorUsername}<div><dt>{t.actor}</dt><dd>@{item.actorUsername}</dd></div>{/if}
+                                {#if item.targetUsername}<div><dt>{t.target}</dt><dd>@{item.targetUsername}</dd></div>{/if}
+                                {#if (item.routeGameName ?? item.routeGameSlug)}<div><dt>{t.game}</dt><dd>{(item.routeGameName ?? item.routeGameSlug)}</dd></div>{/if}
+                                {#if item.submissionId}<div><dt>{t.submission}</dt><dd>#{item.submissionId}</dd></div>{/if}
                                 {#if item.action==='user_banned'}
                                     {#if info.reason}<div class="wide"><dt>{t.reason}</dt><dd>{info.reason}</dd></div>{/if}
                                     <div class="wide"><dt>{info.permanent?t.permanent:t.suspendedUntil}</dt><dd>{info.permanent?t.permanent:(info.expiresAt?formatDate(info.expiresAt):'—')}</dd></div>
@@ -195,8 +288,8 @@
                                     <div class="wide"><dt>{item.action?.startsWith('submission_')?t.note:t.details}</dt><dd>{info.fallback}</dd></div>
                                 {/if}
                             </dl>
-                            {#if item.submission_id}
-                                {@const detail = detailCache[item.event_id]}
+                            {#if item.submissionId}
+                                {@const detail = detailCache[item.eventId]}
                                 {#if detail?.loading}<p class="detail-loading">{t.loadingDetails}</p>
                                 {:else if detail?.submission}
                                     <section class="submission-detail">

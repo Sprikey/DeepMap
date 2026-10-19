@@ -7,23 +7,80 @@
     let language=$state('en');
     let loading=$state(true);
     let status=$state(null);
+    let invalidateSession = () => {};
     const TEXT={en:{title:'Account suspended',intro:'Your account can still browse public DeepMap content, but community interactions are disabled while this suspension is active.',reason:'Reason',until:'Until',permanent:'Permanent suspension',browse:'Continue browsing',logout:'Log out',active:'This account is not suspended.'},pt:{title:'Conta suspensa',intro:'A tua conta pode continuar a consultar o conteúdo público do DeepMap, mas as interações da comunidade ficam bloqueadas enquanto esta suspensão estiver ativa.',reason:'Motivo',until:'Até',permanent:'Suspensão permanente',browse:'Continuar a explorar',logout:'Terminar sessão',active:'Esta conta não está suspensa.'}};
     let t=$derived(TEXT[language]??TEXT.en);
 
     function formatDate(value){if(!value)return t.permanent;const d=new Date(value);if(Number.isNaN(d.getTime()))return t.permanent;return new Intl.DateTimeFormat(language==='pt'?'pt-PT':'en-GB',{dateStyle:'long',timeStyle:'short'}).format(d);}
-    async function logout(){await getSupabaseBrowserClient().auth.signOut();await goto('/');}
+    async function logout(){invalidateSession();await getSupabaseBrowserClient().auth.signOut();await goto('/');}
 
-    onMount(()=>{
+    onMount(() => {
         language=getSiteLanguage();const unsub=subscribeSiteLanguage(next=>language=next);
-        void (async()=>{
-            const supabase=getSupabaseBrowserClient();const {data:userData}=await supabase.auth.getUser();
-            if(!userData.user){await goto('/login');return;}
-            const {data,error}=await supabase.rpc('get_deepmap_account_status');
-            if(!error)status=Array.isArray(data)?data[0]:data;
-            loading=false;
-            if(status && status.is_banned!==true) await goto('/profile');
+        const supabase = getSupabaseBrowserClient();
+        let mounted = true;
+        let generation = 0;
+        /** @type {string | null} */
+        let userId = null;
+        /** @type {ReturnType<typeof setTimeout> | undefined} */
+        let timer;
+        invalidateSession = () => {
+            generation += 1;
+            clearTimeout(timer);
+            status = null;
+            loading = true;
+        };
+
+        /** @param {string | null} nextUserId */
+        function replaceSession(nextUserId) {
+            generation += 1;
+            const request = generation;
+            userId = nextUserId;
+            status = null;
+            loading = true;
+            clearTimeout(timer);
+            const isCurrent = () => mounted && generation === request && userId === nextUserId;
+            // Auth callbacks update identity synchronously; SDK work starts later.
+            timer = setTimeout(async () => {
+                if (!isCurrent()) return;
+                try {
+                    if (!nextUserId) {
+                        await goto('/login');
+                        return;
+                    }
+                    const { data, error } = await supabase.rpc('get_deepmap_account_status');
+                    if (!isCurrent()) return;
+                    if (!error) status = Array.isArray(data) ? data[0] : data;
+                    if (status && status.is_banned !== true) await goto('/profile');
+                } catch {
+                    // Keep the existing non-status fallback; no stale request owns UI.
+                } finally {
+                    if (isCurrent()) loading = false;
+                }
+            }, 0);
+        }
+
+        const initialGeneration = generation;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (mounted) replaceSession(session?.user?.id ?? null);
+        });
+
+        void (async () => {
+            try {
+                const { data, error } = await supabase.auth.getUser();
+                if (!mounted || generation !== initialGeneration) return;
+                replaceSession(error ? null : (data.user?.id ?? null));
+            } catch {
+                if (mounted && generation === initialGeneration) replaceSession(null);
+            }
         })();
-        return unsub;
+
+        return () => {
+            mounted = false;
+            invalidateSession();
+            invalidateSession = () => {};
+            subscription.unsubscribe();
+            unsub();
+        };
     });
 </script>
 

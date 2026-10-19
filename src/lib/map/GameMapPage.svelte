@@ -1,27 +1,31 @@
 
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, untrack } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import { getSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
 
-    import { translations } from '$lib/games/elden-ring/translations.js';
+    import { requireRendererLegacyGameId } from '$lib/games/registry.js';
 
-    import {
-        categories as fallbackCategories,
-        categoryGroups as fallbackCategoryGroups,
-        defaultCategoryVisibility as fallbackCategoryVisibility
-    } from '$lib/games/elden-ring/categories.js';
-
-    import { locations as fallbackLocations } from '$lib/games/elden-ring/locations.js';
-    import { mapDefinitions as fallbackMapDefinitions } from '$lib/games/elden-ring/maps.js';
-    import { loadDeepMapGameData } from '$lib/map/map-data.js';
+    import { loadDeepMapGameDataWithUuidLayers } from '$lib/map/map-data.js';
     import { getVideoEmbedUrl, normaliseHttpUrl } from '$lib/map/media.js';
     import MarkerEditorPanel from '$lib/editor/MarkerEditorPanel.svelte';
+    import { markerIdKey, sameMarkerId } from '$lib/editor/marker-editor.js';
     import CategoryManagerPanel from '$lib/editor/CategoryManagerPanel.svelte';
     import MapLabelEditorPanel from '$lib/editor/MapLabelEditorPanel.svelte';
     import CommunityMarkerPanel from '$lib/community/CommunityMarkerPanel.svelte';
 
-    const GAME_ID = 'elden-ring';
+    /** @type {{ gameContext: Awaited<ReturnType<typeof import('$lib/games/game-context.js').resolvePublicGameContext>>, renderer: import('$lib/games/registry.js').GameRenderer }} */
+    let { gameContext, renderer } = $props();
+    // The thin route keys this component by DB game/map/slug. Config is fixed per mount.
+    const config = untrack(() => renderer);
+    const legacyGameId = requireRendererLegacyGameId(config);
+    const { translations, defaultLayerKey } = config;
+    const fallbackCategories = config.fallback.categories;
+    const fallbackCategoryGroups = config.fallback.categoryGroups;
+    const fallbackCategoryVisibility = config.defaultCategoryVisibility;
+    const fallbackLocations = config.fallback.locations;
+    const fallbackMapDefinitions = config.fallback.mapDefinitions;
     const PREVIEW_MARKER_COLOR = '#2f8fff';
     const PREVIEW_MARKER_OPACITY = 0.82;
 
@@ -30,13 +34,15 @@
     let categories = $state({ ...fallbackCategories });
     let categoryGroups = $state([...fallbackCategoryGroups]);
     let locations = $state([...fallbackLocations]);
-    let mapLabels = $state([]);
+    let mapLabels = $state([...config.fallback.mapLabels]);
     let mapDefinitions = $state({ ...fallbackMapDefinitions });
 
     let mapContainer;
+    /** @type {any} Leaflet instance, also released when the keyed route unmounts. */
     let map;
     let Leaflet;
     let mapImageOverlay = null;
+    let mapDisposed = false;
     let locationMarkersById = new Map();
 
     // O Editor 2.0 é privado. Esta flag serve apenas para decidir se a UI
@@ -53,11 +59,69 @@
     let communityMarkerPanelRef;
 
 
+    let accessRevision = 0;
+    let mapDataRevision = 0;
+    let mapSessionRevision = 0;
+    const popupEvents = new AbortController();
+    const mapTimers = new Set();
+    const mapFrames = new Set();
+    /** @param {() => void} callback @param {number} delay */
+    function deferMap(callback, delay) {
+        const timer = setTimeout(() => {
+            mapTimers.delete(timer);
+            if (!mapDisposed) callback();
+        }, delay);
+        mapTimers.add(timer);
+    }
+    /** @param {() => void} callback */
+    function frameMap(callback) {
+        const frame = requestAnimationFrame(() => {
+            mapFrames.delete(frame);
+            if (!mapDisposed) callback();
+        });
+        mapFrames.add(frame);
+    }
+    const sessionScope = createSessionScope(() => {
+        ++mapSessionRevision;
+        ++accessRevision;
+        ++mapDataRevision;
+        if (editorMode) toggleEditor();
+        closeCommunityPanel();
+        currentMapUser = null;
+        currentMapRole = 'guest';
+        isEditorAdmin = false;
+        editorAccessChecked = false;
+        locations = []; mapLabels = [];
+        if (map) { renderLocationMarkers(); renderMapLabels(); }
+        const revision = mapSessionRevision;
+        deferMap(() => {
+            if (revision !== mapSessionRevision) return;
+            if (sessionScope.accountId) void loadEditorAccess();
+            else editorAccessChecked = true;
+            if (map) void refreshMapAfterSession();
+        }, 0);
+    });
+    async function refreshMapAfterSession() {
+        try {
+            if (await loadGameMapData()) {
+                renderLocationMarkers(); renderMapLabels();
+            }
+        } catch (error) {
+            if (!mapDisposed) console.warn('DeepMap session map refresh:', error);
+        }
+    }
+
     async function loadEditorAccess() {
+        const ownsSession = sessionScope.capture();
+        const revision = ++accessRevision;
+        const isCurrent = () => !mapDisposed && ownsSession() && revision === accessRevision;
+        if (!isCurrent()) return;
         try {
             const supabase = getSupabaseBrowserClient();
             const { data: userData, error: userError } = await supabase.auth.getUser();
 
+            if (!isCurrent()) return;
+            if (userData.user?.id !== sessionScope.accountId) return;
             currentMapUser = userError ? null : userData.user;
 
             if (userError || !userData.user) {
@@ -66,8 +130,20 @@
                 return;
             }
 
+            // Public browsing stays available; pending accounts have no editor or contribution UI.
+            const { data: legalPending, error: legalError } = await supabase.rpc('requires_legal_acceptance');
+            if (!isCurrent()) return;
+            if (legalError || legalPending !== false) {
+                currentMapUser = null;
+                currentMapRole = 'guest';
+                isEditorAdmin = false;
+                if (communityPanelOpen) closeCommunityPanel();
+                return;
+            }
+
             const { data: role, error: roleError } = await supabase.rpc('get_deepmap_role');
 
+            if (!isCurrent()) return;
             if (!roleError) {
                 currentMapRole = typeof role === 'string' ? role : 'user';
                 isEditorAdmin = currentMapRole === 'admin';
@@ -77,6 +153,7 @@
 
             // Compatibilidade enquanto a migration de moderadores ainda não foi aplicada.
             const { data: adminStatus, error: adminError } = await supabase.rpc('is_deepmap_admin');
+            if (!isCurrent()) return;
             if (adminError) {
                 console.warn('DeepMap editor access check:', adminError.message);
                 currentMapRole = 'user';
@@ -87,9 +164,11 @@
             currentMapRole = adminStatus === true ? 'admin' : 'user';
             isEditorAdmin = adminStatus === true;
         } catch (error) {
+            if (!isCurrent()) return;
             console.warn('DeepMap editor access check:', error);
             isEditorAdmin = false;
         } finally {
+            if (!isCurrent()) return;
             editorAccessChecked = true;
             if (typeof window !== 'undefined' && isEditorAdmin) {
                 const params = new URLSearchParams(window.location.search);
@@ -117,7 +196,14 @@
             if (communityPanelOpen) closeCommunityPanel();
             closeMobileSidebar();
         };
-        const handleAccountStatusChanged = () => { void loadEditorAccess(); };
+        const handleAccountStatusChanged = () => {
+            ++accessRevision;
+            if (editorMode) toggleEditor();
+            closeCommunityPanel();
+            isEditorAdmin = false; currentMapRole = 'guest'; editorAccessChecked = false;
+            void loadEditorAccess();
+        };
+        const stopSession = sessionScope.start(getSupabaseBrowserClient());
         syncMobileLayout();
         media.addEventListener?.('change', syncMobileLayout);
         document.addEventListener('pointerdown', handleEditorOutsidePointer);
@@ -128,6 +214,17 @@
             document.removeEventListener('pointerdown', handleEditorOutsidePointer);
             window.removeEventListener('deepmap:header-panel-open', handleHeaderPanelOpen);
             window.removeEventListener('deepmap:account-status-changed', handleAccountStatusChanged);
+            // A dynamic route can remount for another DB game/map without a full reload.
+            mapDisposed = true;
+            if (map) map.remove();
+            map = null;
+            stopSession();
+            popupEvents.abort();
+            ++accessRevision; ++mapDataRevision;
+            for (const timer of mapTimers) clearTimeout(timer);
+            mapTimers.clear();
+            for (const frame of mapFrames) cancelAnimationFrame(frame);
+            mapFrames.clear();
         };
     });
 
@@ -184,7 +281,7 @@
     );
 
     function syncCategoryVisibility() {
-        const nextVisibility = {};
+        const nextVisibility = /** @type {Record<string, boolean>} */ ({});
 
         for (const categoryId of Object.keys(categories)) {
             nextVisibility[categoryId] = categoryVisibility[categoryId] !== false;
@@ -225,18 +322,38 @@
     }
 
     async function loadGameMapData() {
+        const revision = ++mapDataRevision;
+        const session = mapSessionRevision;
         const supabase = getSupabaseBrowserClient();
-        const data = await loadDeepMapGameData({
-            supabase,
-            gameId: GAME_ID,
-            fallback: {
-                mapDefinitions: { ...fallbackMapDefinitions },
-                categoryGroups: [...fallbackCategoryGroups],
-                categories: { ...fallbackCategories },
-                locations: [...fallbackLocations],
-                mapLabels: []
-            }
-        });
+        // All public reads use DB UUIDs; legacyGameId is only a writer compatibility adapter.
+        const isCurrent = () => !mapDisposed && revision === mapDataRevision && session === mapSessionRevision;
+        let data;
+        try {
+            data = await loadDeepMapGameDataWithUuidLayers({
+                supabase,
+                gameUuid: gameContext.gameUuid,
+                gameMapUuid: gameContext.gameMapUuid,
+                legacyGameId,
+                fallback: {
+                    mapDefinitions: { ...fallbackMapDefinitions },
+                    categoryGroups: [...fallbackCategoryGroups],
+                    categories: { ...fallbackCategories },
+                    locations: [...fallbackLocations],
+                    mapLabels: [...config.fallback.mapLabels]
+                }
+            });
+        } catch (error) {
+            if (!isCurrent()) return false;
+            throw error;
+        }
+        if (!isCurrent()) return false;
+
+        // Renderer default is a layer key, never a DB game_map UUID.
+        const initialLayer = data.mapDefinitions[defaultLayerKey];
+        if (!initialLayer?.image || !(initialLayer.width > 0) || !(initialLayer.height > 0)
+            || !data.mapDefinitions[activeMapLayer]?.layerUuid) {
+            throw new Error('Current map layers are unavailable for this renderer.');
+        }
 
         mapDefinitions = data.mapDefinitions;
         categoryGroups = data.categoryGroups;
@@ -246,6 +363,7 @@
         syncCategoryVisibility();
 
         console.info('DeepMap map data sources:', data.sources);
+        return true;
     }
 
     function setCategoryVisibility(categoryId, visible) {
@@ -288,9 +406,13 @@
        MAPAS / CAMADAS
        ========================================== */
 
-    let activeMapLayer = 'surface';
+    let activeMapLayer = $state(defaultLayerKey);
+    // Derived from the renderer key and DB rows; there is no second selection state.
+    let activeLayerUuid = $derived((/** @type {{ layerUuid?: string } | undefined} */ (
+        Object.values(mapDefinitions).find((layer) => layer.id === activeMapLayer)
+    ))?.layerUuid ?? null);
     let markerLayerGroups = {};
-    let mapLabelLayerGroups = {};
+    let mapLabelLayerGroups = /** @type {Record<string, any>} */ ({});
 
     function getMapBounds(mapDefinition) {
         return [
@@ -314,6 +436,12 @@
 
         const definition = mapDefinitions[layerId];
         if (!definition) return;
+
+        const identity = /** @type {{ layerUuid?: string, gameUuid?: string, gameMapUuid?: string }} */ (definition);
+        if (!identity.layerUuid || identity.gameUuid !== gameContext.gameUuid
+            || identity.gameMapUuid !== gameContext.gameMapUuid) {
+            throw new Error('Layer does not belong to the current map context.');
+        }
 
         for (const group of [...Object.values(markerLayerGroups), ...Object.values(mapLabelLayerGroups)]) {
             if (map.hasLayer(group)) {
@@ -468,13 +596,11 @@
             if (item.embedUrl) {
                 return `
                     <div class="deepmap-popup-media-slide deepmap-popup-video-slide${index === 0 ? ' active' : ''}" data-media-index="${index}">
-                        <iframe
-                            src="${escapeHtml(item.embedUrl)}"
-                            title="${escapeHtml(videoLabel)} — ${escapeHtml(title)}"
-                            loading="lazy"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                            allowfullscreen
-                        ></iframe>
+                        <button type="button" class="deepmap-popup-video-link" data-load-video="${escapeHtml(item.embedUrl)}"
+                            data-video-title="${escapeHtml(videoLabel)} — ${escapeHtml(title)}">
+                            ▶ ${currentLanguage === 'pt' ? 'Ver vídeo' : 'Watch video'}
+                            (${new URL(item.embedUrl).hostname.includes('vimeo') ? 'Vimeo' : 'YouTube'})
+                        </button>
                     </div>
                 `;
             }
@@ -566,7 +692,7 @@
                         </div>
                     ` : ''}
                     ${canSuggest ? `
-                        <button type="button" class="deepmap-suggest-correction" data-suggest-marker="${Number(location.databaseId)}">
+                        <button type="button" class="deepmap-suggest-correction" data-suggest-marker="${escapeHtml(String(location.databaseId))}">
                             ${currentLanguage === 'pt' ? 'Sugerir correção' : 'Suggest correction'}
                         </button>
                     ` : ''}
@@ -619,7 +745,23 @@
     function setupPopupMedia(marker) {
         const popupElement = marker?.getPopup?.()?.getElement?.();
         const mediaRoot = popupElement?.querySelector('.deepmap-popup-media');
-        if (!mediaRoot) return;
+        if (!mediaRoot || mediaRoot.dataset.mediaReady === 'true') return;
+        mediaRoot.dataset.mediaReady = 'true';
+
+        mediaRoot.querySelectorAll('[data-load-video]').forEach((/** @type {HTMLButtonElement} */ button) => {
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const iframe = document.createElement('iframe');
+                iframe.src = button.getAttribute('data-load-video') ?? '';
+                iframe.title = button.getAttribute('data-video-title') ?? '';
+                iframe.allow = 'encrypted-media; picture-in-picture; fullscreen';
+                iframe.allowFullscreen = true;
+                iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+                button.replaceWith(iframe);
+                ensurePopupInsideMap(marker);
+            }, { once: true, signal: popupEvents.signal });
+        });
 
         const slides = [...mediaRoot.querySelectorAll('.deepmap-popup-media-slide')];
         if (slides.length <= 1) return;
@@ -640,7 +782,7 @@
             // Não usar popup.update() aqui: quando o conteúdo do popup é uma
             // string, o Leaflet volta a escrever o innerHTML e destrói os
             // handlers das setas. Basta reajustar a posição após a troca.
-            requestAnimationFrame(() => ensurePopupInsideMap(marker));
+            frameMap(() => ensurePopupInsideMap(marker));
         }
 
         if (previous) previous.onclick = (event) => {
@@ -673,7 +815,7 @@
         // o DOM para manter a galeria clicável.
         mediaRoot.querySelectorAll('img').forEach((image) => {
             if (!image.complete) {
-                image.addEventListener('load', () => ensurePopupInsideMap(marker), { once: true });
+                image.addEventListener('load', () => ensurePopupInsideMap(marker), { once: true, signal: popupEvents.signal });
             }
         });
 
@@ -691,14 +833,14 @@
             event.stopPropagation();
             marker.closePopup();
             openCommunityCorrection(location);
-        });
+        }, { signal: popupEvents.signal });
     }
 
 
     function ensurePopupInsideMap(marker) {
         if (!map || !mapContainer || !marker) return;
 
-        requestAnimationFrame(() => {
+        frameMap(() => {
             const popupElement = marker?.getPopup?.()?.getElement?.();
             if (!popupElement || !map?.hasLayer?.(marker)) return;
 
@@ -831,7 +973,7 @@
                 editorMarkerMoved &&
                 !editorShowOriginalLocation &&
                 editorSelectedMarkerId !== null &&
-                Number(location.databaseId) === Number(editorSelectedMarkerId)
+                sameMarkerId(location.databaseId, editorSelectedMarkerId)
             ) {
                 continue;
             }
@@ -860,6 +1002,11 @@
                 }
             );
 
+            marker.on('popupclose', () => {
+                // Reopening always requires a fresh click.
+                marker.setPopupContent(buildLocationPopup(location));
+            });
+
             marker.on('popupopen', () => {
                 setupPopupMedia(marker);
                 setupPopupActions(marker, location);
@@ -868,7 +1015,7 @@
 
             // Tooltip traduzido ao passar o rato.
             marker.bindTooltip(
-                getLocationTitle(location),
+                escapeHtml(getLocationTitle(location)),
                 {
                     direction: 'top',
                     offset: [0, -32],
@@ -902,7 +1049,10 @@
             });
 
             marker.addTo(group);
-            if (location.databaseId != null) locationMarkersById.set(Number(location.databaseId), marker);
+            if (location.databaseId != null) {
+                try { locationMarkersById.set(markerIdKey(location.databaseId), marker); }
+                catch { /* Unsafe identities cannot be focused by Community. */ }
+            }
         }
     }
 
@@ -1004,6 +1154,7 @@
 
     // Comunicação entre o mapa Leaflet e a ferramenta atualmente aberta.
     let editorPoint = $state(null);
+    /** @type {string | null} */
     let editorSelectedMarkerId = $state(null);
     let editorSelectedLabelId = $state(null);
     let editorMarkerMoved = $state(false);
@@ -1135,7 +1286,9 @@
     }
 
     function handleEditorSelectionChange(markerId) {
-        editorSelectedMarkerId = markerId;
+        // Reject unsafe numeric IDs received from public map selection.
+        try { editorSelectedMarkerId = markerId === null ? null : markerIdKey(markerId); }
+        catch { editorSelectedMarkerId = null; }
         editorMarkerMoved = false;
         editorShowOriginalLocation = false;
         editorPositionMode = null;
@@ -1194,7 +1347,9 @@
     }
 
     async function handleEditorDataChanged(event) {
-        await loadGameMapData();
+        const ownsSession = sessionScope.capture();
+        if (!ownsSession() || !isEditorAdmin) return;
+        if (!await loadGameMapData() || !ownsSession() || !isEditorAdmin) return;
         renderLocationMarkers();
         renderMapLabels();
 
@@ -1275,12 +1430,13 @@
     let communityRequestMode = $state('create');
     let communityRequestMarker = $state(null);
     let communityRequestRevision = $state(0);
-    let communityFocusSubmissionId = $state(null);
+    let communityFocusSubmissionId = $state(/** @type {string | null} */ (null));
     let communityPoint = $state(null);
     let communityPointRevision = $state(0);
     let communityPositionMode = $state(false);
     let communityPositionCandidateReady = $state(false);
     let communityPreviewMarker = null;
+    let communityMarkerFocusGeneration = 0;
 
 
     function closeMobileSidebar() {
@@ -1362,13 +1518,15 @@
         clearCommunityPreview();
     }
 
+    /** @param {string | null} focusSubmissionId */
     function openCommunityMine(focusSubmissionId = null) {
         if (!currentMapUser || isEditorAdmin) return;
         if (isMapUserSuspended) { openSuspensionStatus(); return; }
         closeMobileSidebar();
         communityRequestMode = 'mine';
         communityRequestMarker = null;
-        communityFocusSubmissionId = focusSubmissionId == null ? null : Number(focusSubmissionId);
+        try { communityFocusSubmissionId = focusSubmissionId == null ? null : markerIdKey(focusSubmissionId); }
+        catch { communityFocusSubmissionId = null; }
         communityRequestRevision += 1;
         communityPanelOpen = true;
         communityPositionMode = false;
@@ -1377,6 +1535,8 @@
     }
 
     function openCommunityCorrection(location) {
+        if (!location || location.gameUuid !== gameContext.gameUuid
+            || !locations.includes(location)) return;
         if (!currentMapUser || isEditorAdmin || !location?.databaseId) return;
         if (isMapUserSuspended) { openSuspensionStatus(); return; }
         closeMobileSidebar();
@@ -1413,13 +1573,15 @@
         const contributionRaw = params.get('contribution');
         const reviewXRaw = params.get('reviewX');
         const reviewYRaw = params.get('reviewY');
-        const markerId = markerRaw == null ? NaN : Number(markerRaw);
-        const contributionId = contributionRaw == null ? NaN : Number(contributionRaw);
+        let markerId = null;
+        let contributionId = null;
+        try { if (markerRaw !== null) markerId = markerIdKey(markerRaw); } catch { /* Fail closed. */ }
+        try { if (contributionRaw !== null) contributionId = markerIdKey(contributionRaw); } catch { /* Fail closed. */ }
         const reviewX = reviewXRaw == null ? NaN : Number(reviewXRaw);
         const reviewY = reviewYRaw == null ? NaN : Number(reviewYRaw);
         return {
-            markerId: Number.isFinite(markerId) && markerId > 0 ? markerId : null,
-            contributionId: Number.isFinite(contributionId) && contributionId > 0 ? contributionId : null,
+            markerId: markerId !== null && BigInt(markerId) > 0n ? markerId : null,
+            contributionId: contributionId !== null && BigInt(contributionId) > 0n ? contributionId : null,
             reviewX: reviewXRaw !== null && Number.isFinite(reviewX) ? reviewX : null,
             reviewY: reviewYRaw !== null && Number.isFinite(reviewY) ? reviewY : null,
             reviewLayer: params.get('layer') || null,
@@ -1428,13 +1590,26 @@
     }
 
     function openMarkerDeepLink(markerId) {
+        const generation = ++communityMarkerFocusGeneration;
         if (!map || markerId == null) return false;
-        const location = locations.find((item) => Number(item.databaseId) === Number(markerId));
-        const marker = locationMarkersById.get(Number(markerId));
+        const contextGame = gameContext.gameUuid;
+        const contextMap = gameContext.gameMapUuid;
+        const revision = communityRequestRevision;
+        const focus = communityFocusSubmissionId;
+        const definitions = /** @type {Record<string, any>} */ (mapDefinitions);
+        const location = locations.find((/** @type {any} */ item) => item.gameUuid === gameContext.gameUuid
+            && sameMarkerId(item.databaseId, markerId)
+            && definitions[item.mapLayer]?.gameMapUuid === gameContext.gameMapUuid);
+        let key;
+        try { key = markerIdKey(markerId); } catch { return false; }
+        const marker = locationMarkersById.get(key);
         if (!location || !marker) return false;
         if (location.mapLayer && location.mapLayer !== activeMapLayer) setActiveMapLayer(location.mapLayer);
         map.setView(location.coordinates, Math.max(map.getZoom(), -1), { animate: true });
-        setTimeout(() => {
+        deferMap(() => {
+            if (generation !== communityMarkerFocusGeneration || gameContext.gameUuid !== contextGame
+                || gameContext.gameMapUuid !== contextMap || communityRequestRevision !== revision
+                || communityFocusSubmissionId !== focus || locationMarkersById.get(key) !== marker) return;
             marker.openPopup();
             ensurePopupInsideMap(marker);
         }, 180);
@@ -1443,7 +1618,7 @@
 
     function handleContributionDeepLink() {
         const { contributionId } = getMapDeepLinkParams();
-        if (!contributionId || !currentMapUser || isEditorAdmin || isMapUserSuspended) return;
+        if (!editorAccessChecked || !contributionId || !currentMapUser || isEditorAdmin || isMapUserSuspended) return;
         openCommunityMine(contributionId);
     }
 
@@ -1467,25 +1642,39 @@
        INICIALIZAÇÃO DO MAPA
        ========================================== */
 
-    onMount(async () => {
+    onMount(() => {
+        void initialiseMap().catch((error) => {
+            if (!mapDisposed) console.error('DeepMap map bootstrap:', error);
+        });
+    });
+
+    async function initialiseMap() {
+        // The UUID-native server context gates bootstrap; legacy payloads stay separate.
+        if (!gameContext?.gameUuid || !gameContext?.gameMapUuid) {
+            throw new Error('Public game context unavailable.');
+        }
+
         // A língua escolhida mantém-se ao navegar entre mapa e perfil.
         currentLanguage = getSiteLanguage();
 
         // Falha fechada: sem sessão/RPC/admin, o Editor nem sequer aparece.
         void loadEditorAccess();
 
-        // Primeiro tentamos Supabase. Enquanto a migração estiver incompleta,
-        // cada coleção em falta continua a usar os ficheiros legacy.
-        await loadGameMapData();
-
         const L = await import('leaflet');
 
         await import('leaflet/dist/leaflet.css');
+        if (mapDisposed) return;
+
+        // Layers/taxonomy/markers/labels/attribution require UUID-owned DB rows.
+        while (!mapDisposed && !await loadGameMapData()) { /* Retry only after an invalidated bootstrap. */ }
+        if (mapDisposed) return;
+
+        if (!activeLayerUuid) throw new Error('Active layer UUID unavailable.');
 
         Leaflet = L;
 
-        const surfaceDefinition = mapDefinitions.surface;
-        const bounds = getMapBounds(surfaceDefinition);
+        const initialDefinition = mapDefinitions[defaultLayerKey];
+        const bounds = getMapBounds(initialDefinition);
 
         map = L.map(
             mapContainer,
@@ -1501,7 +1690,7 @@
         );
 
         mapImageOverlay = L.imageOverlay(
-            surfaceDefinition.image,
+            initialDefinition.image,
             bounds
         ).addTo(map);
 
@@ -1538,10 +1727,11 @@
         setupMarkerLayers();
         renderLocationMarkers();
         renderMapLabels();
+        handleContributionDeepLink();
 
         const { markerId: deepLinkMarkerId, reviewX: deepLinkReviewX, reviewY: deepLinkReviewY } = getMapDeepLinkParams();
-        if (deepLinkReviewX !== null && deepLinkReviewY !== null) setTimeout(() => openReviewCoordinateDeepLink(), 120);
-        else if (deepLinkMarkerId) setTimeout(() => openMarkerDeepLink(deepLinkMarkerId), 120);
+        if (deepLinkReviewX !== null && deepLinkReviewY !== null) deferMap(() => openReviewCoordinateDeepLink(), 120);
+        else if (deepLinkMarkerId) deferMap(() => openMarkerDeepLink(deepLinkMarkerId), 120);
 
 
         /* CLIQUE NO MAPA — EDITOR */
@@ -1593,17 +1783,18 @@
         });
 
         mapImageOverlay.on('load', () => {
-            map.fitBounds(bounds);
+            if (!mapDisposed && map) map.fitBounds(bounds);
         });
 
         map.fitBounds(bounds);
 
-        setTimeout(() => {
+        deferMap(() => {
             if (map) {
                 map.invalidateSize();
             }
         }, 250);
-    });
+    }
+
 </script>
 
 
@@ -1636,7 +1827,7 @@
         {/if}
 
         <div class="game-brand">
-            <span class="game-title">Elden Ring</span>
+            <span class="game-title">{gameContext.name}</span>
         </div>
 
         <div class="subheader-actions">
@@ -1698,14 +1889,13 @@
                 {#if editorTool === 'marker'}
                     <MarkerEditorPanel
                         bind:this={markerEditorPanelRef}
-                        gameId={GAME_ID}
+                        gameUuid={gameContext.gameUuid}
+                        gameMapUuid={gameContext.gameMapUuid}
+                        legacyGameId={legacyGameId}
                         language={currentLanguage}
                         active={editorMode}
                         point={editorPoint}
                         selectedMarkerId={editorSelectedMarkerId}
-                        {categories}
-                        {categoryGroups}
-                        {mapDefinitions}
                         onChanged={handleEditorDataChanged}
                         onPreview={previewEditorMarker}
                         onSelectionChange={handleEditorSelectionChange}
@@ -1717,12 +1907,13 @@
                     />
                 {:else if editorTool === 'label'}
                     <MapLabelEditorPanel
-                        gameId={GAME_ID}
+                        gameUuid={gameContext.gameUuid}
+                        gameMapUuid={gameContext.gameMapUuid}
+                        legacyGameId={legacyGameId}
                         language={currentLanguage}
                         active={editorMode}
                         point={editorPoint}
                         selectedLabelId={editorSelectedLabelId}
-                        {mapDefinitions}
                         onChanged={handleEditorDataChanged}
                         onPreview={previewEditorMapLabel}
                         onSelectionChange={handleEditorLabelSelection}
@@ -1734,10 +1925,9 @@
                     />
                 {:else if editorTool === 'category'}
                     <CategoryManagerPanel
-                        gameId={GAME_ID}
+                        gameUuid={gameContext.gameUuid}
+                        legacyGameId={legacyGameId}
                         language={currentLanguage}
-                        {categories}
-                        {categoryGroups}
                         standalone={true}
                         onChanged={handleEditorDataChanged}
                     />
@@ -1750,7 +1940,10 @@
     {#if communityPanelOpen && currentMapUser && !isEditorAdmin && !isMapUserSuspended}
         <CommunityMarkerPanel
             bind:this={communityMarkerPanelRef}
-            gameId={GAME_ID}
+            gameUuid={gameContext.gameUuid}
+            legacyGameId={legacyGameId}
+            publicMarkers={locations}
+            onFocusMarker={openMarkerDeepLink}
             language={currentLanguage}
             active={communityPanelOpen}
             userId={currentMapUser.id}
@@ -1826,7 +2019,7 @@
                     {:else}
                         <div class="community-sidebar-actions">
                             <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
-                            <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
+                            <button type="button" onclick={() => openCommunityMine()}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
                         </div>
                     {/if}
                 {/if}
@@ -1974,7 +2167,7 @@
                     {:else}
                         <div class="community-sidebar-actions">
                             <button type="button" onclick={openCommunityCreate}>＋ {currentLanguage === 'pt' ? 'Adicionar marcador' : 'Add marker'}</button>
-                            <button type="button" onclick={openCommunityMine}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
+                            <button type="button" onclick={() => openCommunityMine()}>{currentLanguage === 'pt' ? 'As minhas contribuições' : 'My contributions'}</button>
                         </div>
                     {/if}
                 {/if}
@@ -2755,6 +2948,9 @@
     }
 
     :global(.deepmap-popup-video-link) {
+        border: 0;
+        cursor: pointer;
+        padding: 16px 40px;
         width: 100%;
         height: 100%;
         display: grid;

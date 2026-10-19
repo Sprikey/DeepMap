@@ -1,8 +1,33 @@
 <script>
-    import { tick } from 'svelte';
+    import { onMount, untrack, tick } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
 
     let { language = 'en', active = false } = $props();
+
+    let sessionRevision = $state(0);
+    let activationRevision = 0;
+    let readRevision = 0;
+    const sessionScope = createSessionScope(() => {
+        ++sessionRevision;
+        clearAccountState();
+    });
+    function clearAccountState() {
+        ++readRevision;
+        users = []; total = 0; loading = false; workingId = null;
+        banEditingId = null; banReason = ''; banDuration = '7d';
+        errorMessage = ''; successMessage = ''; refreshFeedback = '';
+        if (refreshTimer) clearTimeout(refreshTimer);
+    }
+    function captureOperation() {
+        const ownsSession = sessionScope.capture();
+        const revision = activationRevision;
+        return () => ownsSession() && active && revision === activationRevision;
+    }
+    onMount(() => {
+        const stop = sessionScope.start(getSupabaseBrowserClient());
+        return () => { stop(); if (refreshTimer) clearTimeout(refreshTimer); };
+    });
 
     const TEXT = {
         en: {
@@ -38,11 +63,11 @@
     let total = $state(0);
     let loading = $state(false);
     let refreshFeedback = $state('');
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
     let refreshTimer;
     let workingId = $state(null);
     let errorMessage = $state('');
     let successMessage = $state('');
-    let loadedOnce = false;
     let banEditingId = $state(null);
     let banReason = $state('');
     let banDuration = $state('7d');
@@ -54,10 +79,16 @@
     function visiblePages(){ const maxVisible=5; let start=Math.max(1,page-Math.floor(maxVisible/2)); let end=Math.min(pageCount,start+maxVisible-1); start=Math.max(1,end-maxVisible+1); return Array.from({length:end-start+1},(_,i)=>start+i); }
 
     async function loadUsers(){
-        if(!active || loading)return;
+        const ownsSession = captureOperation();
+        if(!ownsSession())return;
+        const revision = ++readRevision;
+        const query = JSON.stringify([roleFilter, searchTerm, pageSize, page]);
+        const isCurrent = () => ownsSession() && revision === readRevision
+            && query === JSON.stringify([roleFilter, searchTerm, pageSize, page]);
         loading=true; errorMessage='';
         try{
             const {data,error}=await getSupabaseBrowserClient().rpc('get_deepmap_users',{p_role_filter:roleFilter,p_search:searchTerm||null,p_limit:pageSize,p_offset:(page-1)*pageSize});
+            if(!isCurrent())return;
             if(error)throw error;
             users=(data??[]).map(row=>({
                 id:row.user_id, username:row.username??'', displayName:row.display_name??'Explorer', joinedAt:row.joined_at, role:row.role??'user',
@@ -66,26 +97,31 @@
             }));
             total=data?.length?Number(data[0].total_count??0):0;
             if(page>pageCount)page=pageCount;
-        }catch(error){console.error('DeepMap users admin:',error);users=[];total=0;errorMessage=t.loadError;}
-        finally{loading=false;}
+        }catch(error){if(!isCurrent())return;console.error('DeepMap users admin:',error);users=[];total=0;errorMessage=t.loadError;}
+        finally{if(ownsSession() && revision === readRevision)loading=false;}
     }
 
     async function refreshUsers(){
         if(loading||workingId!==null)return;
         refreshFeedback='';
         if(refreshTimer)clearTimeout(refreshTimer);
-        await loadUsers();
-        if(!errorMessage){
+        const ownsSession = captureOperation();
+        const request = loadUsers();
+        const revision = readRevision;
+        const isCurrent = () => ownsSession() && revision === readRevision;
+        await request;
+        if(isCurrent() && !loading && !errorMessage){
             refreshFeedback=t.refreshed;
-            refreshTimer=setTimeout(()=>{refreshFeedback='';},2200);
+            refreshTimer=setTimeout(()=>{if(isCurrent())refreshFeedback='';},2200);
         }
     }
 
     async function handlePageSizeChange(){
         page=1;
         banEditingId=null;
+        const isCurrent = captureOperation();
         await tick();
-        await loadUsers();
+        if(isCurrent()) await loadUsers();
     }
 
     async function setFilter(next){ if(roleFilter===next&&page===1)return; roleFilter=next; page=1; banEditingId=null; await loadUsers(); }
@@ -98,14 +134,17 @@
         const enable=user.role!=='moderator';
         const template=enable?t.promoteConfirm:t.removeConfirm;
         if(!window.confirm(template.replace('{username}',user.username||user.displayName||'user')))return;
+        const isCurrent = captureOperation();
+        if(!isCurrent() || !users.includes(user))return;
         workingId=user.id;errorMessage='';successMessage='';
         try{
             const {error}=await getSupabaseBrowserClient().rpc('set_deepmap_moderator',{p_user_id:user.id,p_enabled:enable});
+            if(!isCurrent())return;
             if(error)throw error;
             successMessage=enable?t.promoted:t.removed;
             await loadUsers();
-        }catch(error){console.error('DeepMap moderator role update:',error);errorMessage=t.updateError;}
-        finally{workingId=null;}
+        }catch(error){if(!isCurrent())return;console.error('DeepMap moderator role update:',error);errorMessage=t.updateError;}
+        finally{if(isCurrent())workingId=null;}
     }
 
     function openBanEditor(user){
@@ -125,28 +164,46 @@
     async function confirmBan(user){
         if(!user||workingId)return;
         if(!banReason.trim()){errorMessage=t.banReasonRequired;return;}
+        const isCurrent = captureOperation();
+        if(!isCurrent() || !users.includes(user))return;
         workingId=user.id;errorMessage='';successMessage='';
         try{
             const {error}=await getSupabaseBrowserClient().rpc('set_deepmap_user_ban',{p_user_id:user.id,p_reason:banReason.trim(),p_expires_at:expiryForDuration()});
+            if(!isCurrent())return;
             if(error)throw error;
             successMessage=t.bannedOk;cancelBan();await loadUsers();
-        }catch(error){console.error('DeepMap user ban:',error);errorMessage=t.banError;}
-        finally{workingId=null;}
+        }catch(error){if(!isCurrent())return;console.error('DeepMap user ban:',error);errorMessage=t.banError;}
+        finally{if(isCurrent())workingId=null;}
     }
 
     async function clearBan(user){
         if(!user||workingId||user.role==='admin')return;
         if(!window.confirm(`${t.unban}: @${user.username||user.displayName}?`))return;
+        const isCurrent = captureOperation();
+        if(!isCurrent() || !users.includes(user))return;
         workingId=user.id;errorMessage='';successMessage='';
         try{
             const {error}=await getSupabaseBrowserClient().rpc('clear_deepmap_user_ban',{p_user_id:user.id});
+            if(!isCurrent())return;
             if(error)throw error;
             successMessage=t.unbannedOk;await loadUsers();
-        }catch(error){console.error('DeepMap user unban:',error);errorMessage=t.unbanError;}
-        finally{workingId=null;}
+        }catch(error){if(!isCurrent())return;console.error('DeepMap user unban:',error);errorMessage=t.unbanError;}
+        finally{if(isCurrent())workingId=null;}
     }
 
-    $effect(()=>{if(!active||loadedOnce)return;loadedOnce=true;void loadUsers();});
+    $effect(() => {
+        const enabled = active;
+        const session = sessionRevision;
+        untrack(() => {
+            ++activationRevision;
+            clearAccountState();
+            if (enabled && session && sessionScope.accountId) void loadUsers();
+        });
+        return () => {
+            ++activationRevision; ++readRevision;
+            if (refreshTimer) clearTimeout(refreshTimer);
+        };
+    });
 </script>
 
 {#if active}

@@ -1,4 +1,6 @@
 <script>
+    import { onMount, untrack } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import MarkerImagesPanel from '$lib/editor/MarkerImagesPanel.svelte';
     import MarkerContentEditor from '$lib/editor/MarkerContentEditor.svelte';
@@ -9,19 +11,20 @@
         createEditorMarker,
         deleteEditorMarker,
         loadEditorMarkers,
+        markerIdKey,
+        sameMarkerId,
         slugifyMarkerTitle,
         updateEditorMarker
     } from '$lib/editor/marker-editor.js';
 
     let {
-        gameId,
+        gameUuid,
+        gameMapUuid,
+        legacyGameId,
         language = 'en',
         active = false,
         point = null,
-        selectedMarkerId = null,
-        categories = {},
-        categoryGroups = [],
-        mapDefinitions = {},
+        selectedMarkerId = /** @type {string | number | null} */ (null),
         onChanged = async () => {},
         onPreview = () => {},
         onSelectionChange = () => {},
@@ -31,6 +34,14 @@
         onMoveStateChange = () => {},
         onOriginalVisibilityChange = () => {}
     } = $props();
+
+    let sessionRevision = $state(0);
+    const sessionScope = createSessionScope(() => {
+        ++sessionRevision;
+        markers = []; editorLayers = []; editorCategories = []; editorGroups = []; editorDataReady = false; loading = false; saving = false; deleting = false; contentLoading = false;
+        errorMessage = ''; successMessage = '';
+    });
+    onMount(() => sessionScope.start(getSupabaseBrowserClient()));
 
     const TEXT = {
         en: {
@@ -159,20 +170,36 @@
 
     let t = $derived(TEXT[language] ?? TEXT.en);
 
+    /** @type {Awaited<ReturnType<typeof loadEditorMarkers>>['markers']} */
     let markers = $state([]);
+    /** @type {Awaited<ReturnType<typeof loadEditorMarkers>>['layers']} */
+    let editorLayers = $state([]);
+    /** @type {Awaited<ReturnType<typeof loadEditorMarkers>>['categories']} */
+    let editorCategories = $state([]);
+    /** @type {Awaited<ReturnType<typeof loadEditorMarkers>>['groups']} */
+    let editorGroups = $state([]);
+    let editorDataReady = $state(false);
+    let contextKey = $derived(JSON.stringify([gameUuid, gameMapUuid, legacyGameId, sessionRevision]));
+    /** @type {string | null} */
+    let loadedContextKey = null;
+    let contextRevision = $state(0);
+    let loadRevision = 0;
     let loading = $state(false);
     let saving = $state(false);
     let deleting = $state(false);
     let errorMessage = $state('');
     let successMessage = $state('');
-    let loadedOnce = false;
     let lastPointRevision = null;
+    /** @type {string | null} */
     let lastSelectedMarkerId = null;
 
+    /** @type {string | null} */
     let editingId = $state(null);
-    let mapLayer = $state('surface');
-    let categoryGroupId = $state('');
-    let categoryId = $state('');
+    let selectedLayerUuid = $state('');
+    let selectedCategoryUuid = $state('');
+    let categoryGroupUuid = $state('');
+    let mapLayer = $derived(editorLayers.find((layer) => layer.layerUuid === selectedLayerUuid)?.id ?? '');
+    let categoryId = $derived(editorCategories.find((category) => category.categoryUuid === selectedCategoryUuid)?.id ?? '');
     let slug = $state('');
     let manualSlug = $state(false);
     let titleEn = $state('');
@@ -189,21 +216,22 @@
     let markerMoved = $state(false);
     let contentItems = $state([]);
     let contentLoadToken = 0;
+    let contentLoading = $state(false);
 
     let sortedGroups = $derived(
-        [...categoryGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        [...editorGroups].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     );
 
     let sortedCategories = $derived(
-        Object.values(categories).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        [...editorCategories].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     );
 
     let filteredCategories = $derived(
-        sortedCategories.filter((category) => !categoryGroupId || category.group === categoryGroupId)
+        sortedCategories.filter((category) => !categoryGroupUuid || category.groupUuid === categoryGroupUuid)
     );
 
     let sortedLayers = $derived(
-        Object.values(mapDefinitions).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        [...editorLayers].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     );
 
     let draftMarkers = $derived(markers.filter((marker) => !marker.isPublished));
@@ -212,8 +240,18 @@
         editingId === null ? null : markers.find((marker) => marker.id === editingId) ?? null
     );
 
+    let imageChangedCallback = $derived.by(() => {
+        const current = captureContext();
+        const markerId = editingId;
+        return async (/** @type {any} */ event) => {
+            if (current.isCurrent() && sameMarkerId(markerId, editingId)) await onChanged(event);
+        };
+    });
+
     let videoLinkUrl = $derived(normaliseHttpUrl(videoUrl));
+    let loadedVideo = $state(/** @type {string | null} */ (null));
     let videoEmbedUrl = $derived(getVideoEmbedUrl(videoUrl));
+    $effect(() => { videoUrl; editingId; contextKey; loadedVideo = null; });
 
     function localisedLabel(item) {
         return item?.label?.[language] ?? item?.label?.en ?? item?.label?.pt ?? item?.id ?? '';
@@ -236,9 +274,12 @@
 
     function resetForm({ keepCoordinates = true } = {}) {
         editingId = null;
-        mapLayer = sortedLayers[0]?.id ?? 'surface';
-        categoryGroupId = sortedGroups[0]?.id ?? '';
-        categoryId = '';
+        ++contentLoadToken;
+        contentLoading = false;
+        lastSelectedMarkerId = null;
+        selectedLayerUuid = (sortedLayers.find((layer) => layer.isActive) ?? sortedLayers[0])?.layerUuid ?? '';
+        categoryGroupUuid = sortedGroups[0]?.groupUuid ?? '';
+        selectedCategoryUuid = '';
         slug = '';
         manualSlug = false;
         titleEn = '';
@@ -270,9 +311,9 @@
         if (!marker) return;
 
         editingId = marker.id;
-        mapLayer = marker.mapLayer;
-        categoryId = marker.categoryId;
-        categoryGroupId = categories[marker.categoryId]?.group ?? sortedGroups[0]?.id ?? '';
+        selectedLayerUuid = marker.layerUuid;
+        selectedCategoryUuid = marker.categoryUuid;
+        categoryGroupUuid = editorCategories.find((category) => category.categoryUuid === marker.categoryUuid)?.groupUuid ?? '';
         slug = marker.slug;
         manualSlug = true;
         titleEn = marker.titleEn;
@@ -298,42 +339,82 @@
 
     async function refreshMarkerContent(markerId) {
         const token = ++contentLoadToken;
+        const current = captureContext();
+        contentItems = [];
+        contentLoading = true;
         try {
             const items = await loadEditorMarkerContent({
                 supabase: getSupabaseBrowserClient(),
                 markerId
             });
-            if (token === contentLoadToken && editingId === markerId) contentItems = items;
+            if (token === contentLoadToken && current.isCurrent() && sameMarkerId(editingId, markerId)) contentItems = items;
         } catch (error) {
+            if (token !== contentLoadToken || !current.isCurrent() || !sameMarkerId(editingId, markerId)) return;
             console.warn('DeepMap marker content load:', error);
-            if (token === contentLoadToken && editingId === markerId) contentItems = [];
+            if (token === contentLoadToken && current.isCurrent() && sameMarkerId(editingId, markerId)) contentItems = [];
+        } finally {
+            if (token === contentLoadToken && current.isCurrent() && sameMarkerId(editingId, markerId)) contentLoading = false;
         }
     }
 
     function handleCategoryGroupChange() {
-        if (categoryId && categories[categoryId]?.group !== categoryGroupId) categoryId = '';
+        if (selectedCategoryUuid && editorCategories.find((category) => category.categoryUuid === selectedCategoryUuid)?.groupUuid !== categoryGroupUuid) selectedCategoryUuid = '';
+    }
+
+    function captureContext() {
+        const requestedContext = contextKey;
+        const ownsSession = sessionScope.capture();
+        const revision = contextRevision;
+        return {
+            gameUuid, gameMapUuid, legacyGameId,
+            isCurrent: () => ownsSession() && active && revision === contextRevision && requestedContext === contextKey
+        };
     }
 
     async function refreshMarkers({ preserveSelection = true } = {}) {
+        const current = captureContext();
+        const revision = ++loadRevision;
+        const previousId = preserveSelection ? editingId : null;
+        const currentLoad = () => current.isCurrent() && revision === loadRevision;
+        editorDataReady = false;
         loading = true;
         errorMessage = '';
-        const previousId = preserveSelection ? editingId : null;
-
         try {
-            markers = await loadEditorMarkers({
+            const next = await loadEditorMarkers({
                 supabase: getSupabaseBrowserClient(),
-                gameId
+                ...current,
+                isCurrent: currentLoad
             });
-
+            if (!currentLoad()) return false;
+            markers = next.markers;
+            editorLayers = next.layers;
+            editorCategories = next.categories;
+            editorGroups = next.groups;
             if (previousId !== null) {
-                const same = markers.find((marker) => marker.id === previousId);
+                const same = markers.find((marker) => sameMarkerId(marker.id, previousId));
                 if (same) loadMarkerIntoForm(same);
+                else resetForm({ keepCoordinates: false });
+            } else {
+                if (!editorLayers.some((layer) => layer.layerUuid === selectedLayerUuid)) {
+                    selectedLayerUuid = (sortedLayers.find((layer) => layer.isActive) ?? sortedLayers[0])?.layerUuid ?? '';
+                }
+                if (!editorCategories.some((category) => category.categoryUuid === selectedCategoryUuid)) selectedCategoryUuid = '';
+                if (!editorGroups.some((group) => group.groupUuid === categoryGroupUuid)) categoryGroupUuid = sortedGroups[0]?.groupUuid ?? '';
             }
+            editorDataReady = true;
+            return true;
         } catch (error) {
+            if (!currentLoad()) return false;
             console.error('DeepMap marker editor load:', error);
+            markers = [];
+            editorLayers = [];
+            editorCategories = [];
+            editorGroups = [];
+            resetForm({ keepCoordinates: false });
             errorMessage = t.loadError;
+            return false;
         } finally {
-            loading = false;
+            if (currentLoad()) loading = false;
         }
     }
 
@@ -346,7 +427,11 @@
         }
 
         const marker = markers.find((item) => String(item.id) === value);
-        if (!marker) return;
+        if (!marker) {
+            resetForm({ keepCoordinates: false });
+            errorMessage = t.loadError;
+            return;
+        }
 
         onSelectionChange(marker.id);
         loadMarkerIntoForm(marker);
@@ -373,6 +458,8 @@
 
     function validate(marker) {
         if (
+            !selectedLayerUuid ||
+            !selectedCategoryUuid ||
             !marker.mapLayer ||
             !marker.categoryId ||
             !marker.titleEn.trim() ||
@@ -394,7 +481,7 @@
     }
 
     async function saveMarker(nextPublished) {
-        if (saving || deleting) return;
+        if (saving || deleting || loading || contentLoading || !editorDataReady) return;
 
         clearMessages();
         const markerInput = buildMarkerInput(nextPublished);
@@ -405,6 +492,15 @@
             return;
         }
 
+        const current = captureContext();
+        if (!current.isCurrent()) return;
+        const targetId = editingId;
+        if (targetId !== null && !markers.some((marker) => sameMarkerId(marker.id, targetId))) {
+            errorMessage = t.saveError;
+            return;
+        }
+        const parents = { selectedLayerUuid, selectedCategoryUuid };
+        const items = contentItems.map((item) => ({ ...item }));
         const wasEditing = editingId !== null;
         const wasPublished = isPublished;
 
@@ -413,39 +509,46 @@
 
         try {
             const supabase = getSupabaseBrowserClient();
-            const saved = editingId === null
-                ? await createEditorMarker({ supabase, gameId, marker: markerInput })
+            const saved = targetId === null
+                ? await createEditorMarker({ supabase, ...current, ...parents, marker: markerInput })
                 : await updateEditorMarker({
                     supabase,
-                    gameId,
-                    markerId: editingId,
+                    ...current,
+                    ...parents,
+                    markerId: targetId,
                     marker: markerInput
                 });
 
+            if (!current.isCurrent()) return;
             await replaceEditorMarkerContent({
                 supabase,
                 markerId: saved.id,
-                items: contentItems
+                items,
+                isCurrent: current.isCurrent
             });
 
-            await refreshMarkers({ preserveSelection: false });
+            if (!current.isCurrent()) return;
+            const refreshed = await refreshMarkers({ preserveSelection: false });
+            if (!current.isCurrent()) return;
 
             // Guardar/publicar termina a operação atual.
             // O marcador volta a ser selecionado apenas se o admin o escolher outra vez.
             resetForm({ keepCoordinates: false });
 
-            successMessage = nextPublished
+            if (!refreshed) errorMessage = t.loadError;
+            else successMessage = nextPublished
                 ? (wasEditing && wasPublished ? t.changesSaved : t.publishedSaved)
                 : t.draftSaved;
 
             await onChanged({ action: 'save', marker: saved });
         } catch (error) {
+            if (!current.isCurrent()) return;
             console.error('DeepMap marker editor save:', error);
             errorMessage = error?.code === '23505'
                 ? (language === 'pt' ? 'Já existe um marcador com esse slug neste jogo.' : 'A marker with that slug already exists in this game.')
                 : t.saveError;
         } finally {
-            saving = false;
+            if (current.isCurrent()) saving = false;
         }
     }
 
@@ -490,9 +593,10 @@
     }
 
     async function removeMarker() {
-        if (editingId === null || saving || deleting) return;
+        if (editingId === null || saving || deleting || loading || !editorDataReady) return;
         if (!window.confirm(t.confirmDelete)) return;
 
+        const current = captureContext();
         deleting = true;
         clearMessages();
 
@@ -501,26 +605,48 @@
 
             await deleteEditorMarker({
                 supabase: getSupabaseBrowserClient(),
-                gameId,
+                ...current,
                 markerId: deletedId
             });
 
+            if (!current.isCurrent()) return;
             resetForm({ keepCoordinates: false });
-            await refreshMarkers({ preserveSelection: false });
-            successMessage = t.deleted;
+            const refreshed = await refreshMarkers({ preserveSelection: false });
+            if (!current.isCurrent()) return;
+            if (refreshed) successMessage = t.deleted;
             await onChanged({ action: 'delete', markerId: deletedId });
         } catch (error) {
+            if (!current.isCurrent()) return;
             console.error('DeepMap marker editor delete:', error);
             errorMessage = t.deleteError;
         } finally {
-            deleting = false;
+            if (current.isCurrent()) deleting = false;
         }
     }
 
     $effect(() => {
-        if (!active || loadedOnce) return;
-        loadedOnce = true;
-        void refreshMarkers({ preserveSelection: false });
+        if (!sessionRevision || !sessionScope.accountId || !active || loadedContextKey === contextKey) return;
+        loadedContextKey = contextKey;
+        untrack(() => {
+            ++contextRevision;
+            markers = [];
+            editorLayers = [];
+            editorCategories = [];
+            editorGroups = [];
+            lastSelectedMarkerId = null;
+            lastPointRevision = point?.revision ?? null;
+            saving = false;
+            deleting = false;
+            resetForm({ keepCoordinates: false });
+            void refreshMarkers({ preserveSelection: false });
+        });
+        return () => {
+            ++contextRevision;
+            ++loadRevision;
+            ++contentLoadToken;
+            loadedContextKey = null;
+            editorDataReady = false;
+        };
     });
 
     $effect(() => {
@@ -538,18 +664,22 @@
     });
 
     $effect(() => {
-        if (!active) return;
+        if (!active || loading || saving || deleting || !editorDataReady) return;
 
         if (selectedMarkerId === null) {
             lastSelectedMarkerId = null;
             return;
         }
 
-        if (selectedMarkerId === lastSelectedMarkerId) return;
-
-        lastSelectedMarkerId = selectedMarkerId;
-        const marker = markers.find((item) => item.id === selectedMarkerId);
-        if (marker) loadMarkerIntoForm(marker);
+        if (sameMarkerId(selectedMarkerId, lastSelectedMarkerId)) return;
+        const marker = markers.find((item) => sameMarkerId(item.id, selectedMarkerId));
+        if (marker) {
+            lastSelectedMarkerId = markerIdKey(selectedMarkerId);
+            loadMarkerIntoForm(marker);
+        } else {
+            untrack(() => resetForm({ keepCoordinates: false }));
+            errorMessage = t.loadError;
+        }
     });
 
     // Slug automático enquanto o marcador ainda é novo e o utilizador não o editou manualmente.
@@ -605,7 +735,7 @@
         <div class="marker-library">
             <div class="marker-library-heading">
                 <strong>{t.existingMarker}</strong>
-                <button class="small-button" type="button" onclick={() => resetForm({ keepCoordinates: true })} disabled={saving || deleting}>
+                <button class="small-button" type="button" onclick={() => resetForm({ keepCoordinates: true })} disabled={saving || deleting || loading || !editorDataReady}>
                     {t.newMarker}
                 </button>
             </div>
@@ -652,18 +782,18 @@
         <div class="form-grid two-columns">
             <label>
                 <span>{t.layer}</span>
-                <select bind:value={mapLayer} disabled={saving || deleting}>
+                <select bind:value={selectedLayerUuid} disabled={saving || deleting || loading || !editorDataReady}>
                     {#each sortedLayers as layer}
-                        <option value={layer.id}>{localisedLabel(layer)}</option>
+                        <option value={layer.layerUuid}>{localisedLabel(layer)}</option>
                     {/each}
                 </select>
             </label>
 
             <label>
                 <span>{t.type}</span>
-                <select bind:value={categoryGroupId} onchange={handleCategoryGroupChange} disabled={saving || deleting}>
+                <select bind:value={categoryGroupUuid} onchange={handleCategoryGroupChange} disabled={saving || deleting || loading || !editorDataReady}>
                     {#each sortedGroups as group}
-                        <option value={group.id}>{localisedLabel(group)}</option>
+                        <option value={group.groupUuid}>{localisedLabel(group)}</option>
                     {/each}
                 </select>
             </label>
@@ -671,10 +801,10 @@
 
         <label>
             <span>{t.category}</span>
-            <select bind:value={categoryId} disabled={saving || deleting}>
+            <select bind:value={selectedCategoryUuid} disabled={saving || deleting || loading || !editorDataReady}>
                 <option value="">{t.chooseCategory}</option>
                 {#each filteredCategories as category}
-                    <option value={category.id}>{localisedLabel(category)}</option>
+                    <option value={category.categoryUuid}>{localisedLabel(category)}</option>
                 {/each}
             </select>
         </label>
@@ -682,24 +812,24 @@
         <div class="form-grid two-columns">
             <label>
                 <span>{t.titleEn}</span>
-                <input bind:value={titleEn} disabled={saving || deleting} />
+                <input bind:value={titleEn} disabled={saving || deleting || loading || !editorDataReady} />
             </label>
 
             <label>
                 <span>{t.titlePt} ({t.optional})</span>
-                <input bind:value={titlePt} disabled={saving || deleting} />
+                <input bind:value={titlePt} disabled={saving || deleting || loading || !editorDataReady} />
             </label>
         </div>
 
         <div class="form-grid two-columns coordinates-grid">
             <label>
                 <span>{t.x}</span>
-                <CoordinateStepper axis="x" bind:value={coordinateX} disabled={saving || deleting} />
+                <CoordinateStepper axis="x" bind:value={coordinateX} disabled={saving || deleting || loading || !editorDataReady} />
             </label>
 
             <label>
                 <span>{t.y}</span>
-                <CoordinateStepper axis="y" bind:value={coordinateY} disabled={saving || deleting} />
+                <CoordinateStepper axis="y" bind:value={coordinateY} disabled={saving || deleting || loading || !editorDataReady} />
             </label>
         </div>
 
@@ -709,7 +839,7 @@
                 class="position-button"
                 type="button"
                 onclick={togglePositionMode}
-                disabled={saving || deleting}
+                disabled={saving || deleting || loading || !editorDataReady}
             >
                 {positionModeActive ? t.choosingPosition : editingId === null ? t.choosePosition : t.changePosition}
             </button>
@@ -720,7 +850,7 @@
                         type="checkbox"
                         bind:checked={showOriginalLocation}
                         onchange={() => onOriginalVisibilityChange(showOriginalLocation)}
-                        disabled={saving || deleting}
+                        disabled={saving || deleting || loading || !editorDataReady}
                     />
                     <span>{t.showOriginal}</span>
                 </label>
@@ -759,35 +889,42 @@
 
         <label>
             <span>{t.region}</span>
-            <input bind:value={regionId} placeholder="Limgrave" disabled={saving || deleting} />
+            <input bind:value={regionId} placeholder="Limgrave" disabled={saving || deleting || loading || !editorDataReady} />
         </label>
 
 
         <label>
             <span>{t.descriptionEn}</span>
-            <textarea rows="3" bind:value={descriptionEn} disabled={saving || deleting}></textarea>
+            <textarea rows="3" bind:value={descriptionEn} disabled={saving || deleting || loading || !editorDataReady}></textarea>
         </label>
 
         <label>
             <span>{t.descriptionPt} ({t.optional})</span>
-            <textarea rows="3" bind:value={descriptionPt} disabled={saving || deleting}></textarea>
+            <textarea rows="3" bind:value={descriptionPt} disabled={saving || deleting || loading || !editorDataReady}></textarea>
         </label>
 
         <label>
             <span>{t.video}</span>
-            <input type="url" bind:value={videoUrl} placeholder="https://…" disabled={saving || deleting} />
+            <input type="url" bind:value={videoUrl} placeholder="https://…" disabled={saving || deleting || loading || !editorDataReady} />
         </label>
 
         {#if videoEmbedUrl}
             <div class="video-preview">
                 <span>{t.videoPreview}</span>
+                {#if loadedVideo === videoEmbedUrl}
                 <iframe
                     src={videoEmbedUrl}
                     title={t.videoPreview}
                     loading="lazy"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allow="encrypted-media; picture-in-picture; fullscreen"
+                    referrerpolicy="strict-origin-when-cross-origin"
                     allowfullscreen
                 ></iframe>
+                {:else}
+                    <button type="button" class="video-link-preview" onclick={() => loadedVideo = videoEmbedUrl}>
+                        ▶ {language === 'pt' ? 'Ver vídeo' : 'Watch video'}
+                    </button>
+                {/if}
             </div>
         {:else if videoLinkUrl}
             <a class="video-link-preview" href={videoLinkUrl} target="_blank" rel="noreferrer">
@@ -797,14 +934,16 @@
             <p class="inline-warning">{t.invalidVideo}</p>
         {/if}
 
-        <MarkerContentEditor {language} bind:value={contentItems} disabled={saving || deleting} />
+        <MarkerContentEditor {language} bind:value={contentItems} disabled={saving || deleting || loading || contentLoading || !editorDataReady} />
 
-        <MarkerImagesPanel
-            markerId={editingId}
-            {language}
-            disabled={saving || deleting}
-            {onChanged}
-        />
+        {#key JSON.stringify([contextKey, editingId])}
+            <MarkerImagesPanel
+                markerId={editingId}
+                {language}
+                disabled={saving || deleting || loading || !editorDataReady}
+                onChanged={imageChangedCallback}
+            />
+        {/key}
 
         <details class="section-fold advanced-fold">
             <summary>{t.advanced}</summary>
@@ -815,7 +954,7 @@
                         bind:value={slug}
                         oninput={() => manualSlug = true}
                         placeholder="church-of-elleh"
-                        disabled={saving || deleting}
+                        disabled={saving || deleting || loading || !editorDataReady}
                     />
                     <small>{t.autoSlugHelp}</small>
                 </label>
@@ -824,26 +963,26 @@
 
         <div class="editor-actions">
             {#if isPublished}
-                <button class="primary-button" type="button" onclick={() => saveMarker(true)} disabled={saving || deleting}>
+                <button class="primary-button" type="button" onclick={() => saveMarker(true)} disabled={saving || deleting || loading || contentLoading || !editorDataReady}>
                     {saving ? t.saving : t.saveChanges}
                 </button>
-                <button class="secondary-button" type="button" onclick={() => saveMarker(false)} disabled={saving || deleting}>
+                <button class="secondary-button" type="button" onclick={() => saveMarker(false)} disabled={saving || deleting || loading || contentLoading || !editorDataReady}>
                     {t.moveDraft}
                 </button>
             {:else}
-                <button class="secondary-button" type="button" onclick={() => saveMarker(false)} disabled={saving || deleting}>
+                <button class="secondary-button" type="button" onclick={() => saveMarker(false)} disabled={saving || deleting || loading || contentLoading || !editorDataReady}>
                     {saving ? t.saving : t.saveDraft}
                 </button>
-                <button class="primary-button" type="button" onclick={() => saveMarker(true)} disabled={saving || deleting}>
+                <button class="primary-button" type="button" onclick={() => saveMarker(true)} disabled={saving || deleting || loading || contentLoading || !editorDataReady}>
                     {saving ? t.saving : t.publish}
                 </button>
             {/if}
 
             {#if editingId !== null}
-                <button class="secondary-button" type="button" onclick={cancelEditing} disabled={saving || deleting}>
+                <button class="secondary-button" type="button" onclick={cancelEditing} disabled={saving || deleting || loading || contentLoading || !editorDataReady}>
                     {t.cancelEdit}
                 </button>
-                <button class="danger-button" type="button" onclick={removeMarker} disabled={saving || deleting}>
+                <button class="danger-button" type="button" onclick={removeMarker} disabled={saving || deleting || loading || contentLoading || !editorDataReady}>
                     {deleting ? t.deleting : t.delete}
                 </button>
             {/if}

@@ -29,13 +29,35 @@ export function getNotificationText(language) {
     return NOTIFICATION_TEXT[normaliseNotificationLanguage(language)];
 }
 
+/** Canonical positive PostgreSQL BIGINT identity, matching map deep links.
+ * @param {unknown} value
+ */
+export function notificationIdKey(value) {
+    if (typeof value === 'number' ? !Number.isSafeInteger(value)
+        : typeof value !== 'string' || !/^[0-9]+$/.test(value)) throw new Error('NOTIFICATION_BIGINT_ID_REQUIRED');
+    const id = BigInt(String(value));
+    if (id <= 0n || id > 9223372036854775807n) throw new Error('NOTIFICATION_BIGINT_ID_REQUIRED');
+    return id.toString();
+}
+
+/** @param {unknown} value */
+function notificationCount(value) {
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value;
+    if (typeof value === 'string' && /^[0-9]+$/.test(value) && BigInt(value) <= BigInt(Number.MAX_SAFE_INTEGER)) return Number(value);
+    throw new Error('NOTIFICATION_COUNT_INVALID');
+}
+
+/** @param {any} row */
 export function normaliseNotification(row) {
     return {
-        id: Number(row.id),
+        id: notificationIdKey(row.id),
         kind: row.kind ?? 'submission_review',
-        gameId: row.game_id ?? null,
-        submissionId: row.submission_id == null ? null : Number(row.submission_id),
-        markerId: row.marker_id == null ? null : Number(row.marker_id),
+        legacyGameId: row.game_id ?? null,
+        routeGameUuid: typeof row.route_game_uuid === 'string' ? row.route_game_uuid : null,
+        routeGameSlug: typeof row.route_game_slug === 'string' && row.route_game_slug.length ? row.route_game_slug : null,
+        routeMarkerIsPublished: typeof row.route_marker_is_published === 'boolean' ? row.route_marker_is_published : null,
+        submissionId: row.submission_id == null ? null : notificationIdKey(row.submission_id),
+        markerId: row.marker_id == null ? null : notificationIdKey(row.marker_id),
         submissionType: row.submission_type ?? null,
         decision: row.decision ?? null,
         reviewNote: row.review_note ?? '',
@@ -45,22 +67,39 @@ export function normaliseNotification(row) {
     };
 }
 
-const NOTIFICATION_COLUMNS = 'id, user_id, kind, game_id, submission_id, marker_id, submission_type, decision, review_note, metadata, is_read, created_at';
+/** @typedef {ReturnType<typeof normaliseNotification>} Notification */
+/** @typedef {{ supabase: import('@supabase/supabase-js').SupabaseClient, userId: string | null }} NotificationRead */
 
+/** @param {NotificationRead & { limit?: number, offset?: number }} options */
 export async function loadNotificationsPage({ supabase, userId, limit = NOTIFICATIONS_PAGE_SIZE, offset = 0 }) {
-    if (!userId) return { items: [], total: 0 };
-
-    const { data, error, count } = await supabase
-        .from('user_notifications')
-        .select(NOTIFICATION_COLUMNS, { count: 'exact' })
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-
+    if (!userId) return { items: /** @type {Notification[]} */ ([]), total: 0 };
+    const { data, error } = await supabase.rpc('get_my_notifications_with_route_context', {
+        p_limit: limit,
+        p_offset: offset
+    });
     if (error) throw error;
-    return { items: (data ?? []).map(normaliseNotification), total: Number(count ?? 0) };
+    return { items: /** @type {Notification[]} */ ((data ?? []).map(normaliseNotification)), total: data?.length ? notificationCount(data[0].total_count) : 0 };
 }
 
+/** Bounded same-RPC recovery; a second concurrent deletion reuses page one's
+ * snapshot instead of recursively retrying or inventing another count API.
+ * @param {NotificationRead & { limit: number, page: number, isCurrent: () => boolean }} options
+ */
+export async function loadNotificationsWithRecovery({ supabase, userId, limit, page, isCurrent }) {
+    let result = await loadNotificationsPage({ supabase, userId, limit, offset: (page - 1) * limit });
+    if (!isCurrent()) return null;
+    if (result.items.length || page === 1) return { ...result, page };
+    const first = await loadNotificationsPage({ supabase, userId, limit, offset: 0 });
+    if (!isCurrent()) return null;
+    if (!first.items.length) return { ...first, total: 0, page: 1 };
+    const correctedPage = Math.min(page, Math.max(1, Math.ceil(first.total / limit)));
+    if (correctedPage === 1) return { ...first, page: 1 };
+    result = await loadNotificationsPage({ supabase, userId, limit, offset: (correctedPage - 1) * limit });
+    if (!isCurrent()) return null;
+    return result.items.length ? { ...result, page: correctedPage } : { ...first, page: 1 };
+}
+
+/** @param {NotificationRead} options */
 export async function loadUnreadNotificationCount({ supabase, userId }) {
     if (!userId) return 0;
 
@@ -71,20 +110,22 @@ export async function loadUnreadNotificationCount({ supabase, userId }) {
         .eq('is_read', false);
 
     if (error) throw error;
-    return Number(count ?? 0);
+    return notificationCount(count ?? 0);
 }
 
+/** @param {NotificationRead & { notificationId: unknown }} options */
 export async function markNotificationRead({ supabase, userId, notificationId }) {
     if (!userId || notificationId == null) return;
     const { error } = await supabase
         .from('user_notifications')
         .update({ is_read: true })
-        .eq('id', notificationId)
+        .eq('id', notificationIdKey(notificationId))
         .eq('user_id', userId)
         .eq('is_read', false);
     if (error) throw error;
 }
 
+/** @param {NotificationRead} options */
 export async function markAllNotificationsRead({ supabase, userId }) {
     if (!userId) return;
     const { error } = await supabase
@@ -130,9 +171,13 @@ export function notificationHref(item) {
     if (item.kind === 'account_suspended') return '/suspended';
     if (item.kind === 'account_reinstated') return '/profile';
     if (item.kind === 'admin_submission_received' || item.kind === 'admin_moderation_decision') return '/admin?section=moderation';
-    if (!item.gameId) return '/profile';
-    if (item.decision === 'approved' && item.markerId) return `/games/${encodeURIComponent(item.gameId)}/map?marker=${item.markerId}`;
-    if (item.submissionId) return `/games/${encodeURIComponent(item.gameId)}/map?contribution=${item.submissionId}`;
+    if (!item.routeGameSlug) return '/profile';
+    try {
+        if (item.decision === 'approved' && item.markerId && item.routeMarkerIsPublished === true) {
+            return `/games/${encodeURIComponent(item.routeGameSlug)}/map?marker=${notificationIdKey(item.markerId)}`;
+        }
+        if (item.submissionId) return `/games/${encodeURIComponent(item.routeGameSlug)}/map?contribution=${notificationIdKey(item.submissionId)}`;
+    } catch { /* Invalid or already-rounded identities cannot target a public row. */ }
     return '/profile';
 }
 

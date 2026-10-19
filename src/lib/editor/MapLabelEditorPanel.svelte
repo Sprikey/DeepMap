@@ -1,4 +1,6 @@
 <script>
+    import { onMount, untrack } from 'svelte';
+    import { createSessionScope } from '$lib/auth/session-scope.js';
     import CoordinateStepper from '$lib/editor/CoordinateStepper.svelte';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import {
@@ -10,12 +12,13 @@
     } from '$lib/editor/map-label-editor.js';
 
     let {
-        gameId,
+        gameUuid,
+        gameMapUuid,
+        legacyGameId,
         language = 'en',
         active = false,
         point = null,
         selectedLabelId = null,
-        mapDefinitions = {},
         onChanged = async () => {},
         onPreview = () => {},
         onSelectionChange = () => {},
@@ -25,6 +28,15 @@
         onMoveStateChange = () => {},
         onOriginalVisibilityChange = () => {}
     } = $props();
+
+    let sessionRevision = $state(0);
+    let activationRevision = 0;
+    const sessionScope = createSessionScope(() => {
+        ++sessionRevision;
+        labels = []; editorLayers = []; editorDataReady = false; loading = false; saving = false; deleting = false;
+        errorMessage = ''; successMessage = '';
+    });
+    onMount(() => sessionScope.start(getSupabaseBrowserClient()));
 
     const TEXT = {
         en: {
@@ -121,18 +133,26 @@
 
     let t = $derived(TEXT[language] ?? TEXT.en);
 
+    /** @type {Awaited<ReturnType<typeof loadEditorMapLabels>>['labels']} */
     let labels = $state([]);
+    /** @type {Awaited<ReturnType<typeof loadEditorMapLabels>>['layers']} */
+    let editorLayers = $state([]);
+    let editorDataReady = $state(false);
     let loading = $state(false);
     let saving = $state(false);
     let deleting = $state(false);
     let errorMessage = $state('');
     let successMessage = $state('');
-    let loadedOnce = false;
+    /** @type {string | null} */
+    let loadedContextKey = null;
+    let loadRevision = 0;
     let lastPointRevision = null;
+    /** @type {string | number | null} */
     let lastSelectedLabelId = null;
 
+    /** @type {string | number | null} */
     let editingId = $state(null);
-    let mapLayer = $state('surface');
+    let selectedLayerUuid = $state('');
     let slug = $state('');
     let textEn = $state('');
     let textPt = $state('');
@@ -148,11 +168,13 @@
     let labelMoved = $state(false);
 
     let sortedLayers = $derived(
-        Object.values(mapDefinitions).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        [...editorLayers].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     );
+    let mapLayer = $derived(sortedLayers.find((layer) => layer.layerUuid === selectedLayerUuid)?.id ?? '');
+    let contextKey = $derived(`${gameUuid}:${gameMapUuid}:${sessionRevision}`);
     let drafts = $derived(labels.filter((item) => !item.isPublished));
     let published = $derived(labels.filter((item) => item.isPublished));
-    let selected = $derived(editingId === null ? null : labels.find((item) => item.id === editingId) ?? null);
+    let selected = $derived(editingId === null ? null : labels.find((item) => String(item.id) === String(editingId)) ?? null);
 
     function localisedLabel(item) {
         return item?.label?.[language] ?? item?.label?.en ?? item?.label?.pt ?? item?.id ?? '';
@@ -165,7 +187,7 @@
 
     function resetForm({ keepCoordinates = true } = {}) {
         editingId = null;
-        mapLayer = sortedLayers[0]?.id ?? 'surface';
+        selectedLayerUuid = (sortedLayers.find((layer) => layer.isActive) ?? sortedLayers[0])?.layerUuid ?? '';
         slug = '';
         textEn = '';
         textPt = '';
@@ -192,7 +214,7 @@
     function loadIntoForm(item) {
         if (!item) return;
         editingId = item.id;
-        mapLayer = item.mapLayer;
+        selectedLayerUuid = item.layerUuid;
         slug = item.slug;
         textEn = item.textEn;
         textPt = item.textPt;
@@ -215,23 +237,44 @@
     }
 
     async function refresh({ preserveSelection = true } = {}) {
+        const ownsSession = sessionScope.capture();
+        const requestedContext = contextKey;
+        const revision = ++loadRevision;
+        editorDataReady = false;
         loading = true;
         errorMessage = '';
         const previousId = preserveSelection ? editingId : null;
         try {
-            labels = await loadEditorMapLabels({
+            const next = await loadEditorMapLabels({
                 supabase: getSupabaseBrowserClient(),
-                gameId
+                gameUuid,
+                gameMapUuid
             });
+            if (!ownsSession() || !active || revision !== loadRevision || requestedContext !== contextKey) return false;
+            labels = next.labels;
+            editorLayers = next.layers;
             if (previousId !== null) {
-                const same = labels.find((item) => item.id === previousId);
+                const same = labels.find((item) => String(item.id) === String(previousId));
                 if (same) loadIntoForm(same);
+                else resetForm({ keepCoordinates: false });
+            } else if (!editorLayers.some((layer) => layer.layerUuid === selectedLayerUuid)) {
+                selectedLayerUuid = (sortedLayers.find((layer) => layer.isActive) ?? sortedLayers[0])?.layerUuid ?? '';
             }
+            editorDataReady = editorLayers.length > 0;
+            if (!editorDataReady) errorMessage = t.loadError;
+            return editorDataReady;
         } catch (error) {
+            if (!ownsSession() || !active || revision !== loadRevision || requestedContext !== contextKey) return false;
             console.error('DeepMap zone title editor load:', error);
-            errorMessage = t.loadError;
+            if (ownsSession() && active && revision === loadRevision && requestedContext === contextKey) {
+                labels = [];
+                editorLayers = [];
+                resetForm({ keepCoordinates: false });
+                errorMessage = t.loadError;
+            }
+            return false;
         } finally {
-            loading = false;
+            if (ownsSession() && active && revision === loadRevision) loading = false;
         }
     }
 
@@ -243,6 +286,10 @@
         }
         const item = labels.find((entry) => String(entry.id) === value);
         if (item) loadIntoForm(item);
+        else {
+            resetForm({ keepCoordinates: false });
+            errorMessage = t.loadError;
+        }
     }
 
     function buildInput(nextPublished = isPublished) {
@@ -287,7 +334,7 @@
     }
 
     async function save(nextPublished) {
-        if (saving || deleting) return;
+        if (!sessionScope.capture()() || saving || deleting || loading || !editorDataReady) return;
         clearMessages();
         const input = buildInput(nextPublished);
         const validation = validate(input);
@@ -297,51 +344,80 @@
         }
         slug = input.slug;
         saving = true;
+        const mutationContext = contextKey;
+        const ownsSession = sessionScope.capture();
+        const activation = activationRevision;
+        const isCurrent = () => ownsSession() && active && mutationContext === contextKey && activation === activationRevision;
+        if (!isCurrent()) return;
         try {
             const supabase = getSupabaseBrowserClient();
             const saved = editingId === null
-                ? await createEditorMapLabel({ supabase, gameId, label: input })
-                : await updateEditorMapLabel({ supabase, gameId, labelId: editingId, label: input });
-            await refresh({ preserveSelection: false });
+                ? await createEditorMapLabel({ supabase, gameUuid, gameMapUuid, legacyGameId, selectedLayerUuid, label: input, isCurrent })
+                : await updateEditorMapLabel({ supabase, gameUuid, gameMapUuid, labelId: editingId, selectedLayerUuid, label: input, isCurrent });
+            if (!isCurrent()) return;
+            const refreshed = await refresh({ preserveSelection: false });
+            if (!isCurrent()) return;
             resetForm({ keepCoordinates: false });
-            successMessage = t.saved;
+            if (refreshed) successMessage = t.saved;
+            else errorMessage = t.loadError;
             await onChanged({ action: 'save-label', label: saved });
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap zone title editor save:', error);
-            errorMessage = t.saveError;
+            if (isCurrent()) errorMessage = t.saveError;
         } finally {
-            saving = false;
+            if (isCurrent()) saving = false;
         }
     }
 
     async function remove() {
-        if (editingId === null || saving || deleting) return;
+        if (editingId === null || saving || deleting || loading || !editorDataReady) return;
         if (!window.confirm(t.confirmDelete)) return;
         deleting = true;
+        const mutationContext = contextKey;
+        const ownsSession = sessionScope.capture();
+        const activation = activationRevision;
+        const isCurrent = () => ownsSession() && active && mutationContext === contextKey && activation === activationRevision;
+        if (!isCurrent()) return;
         clearMessages();
         try {
             const deletedId = editingId;
             await deleteEditorMapLabel({
                 supabase: getSupabaseBrowserClient(),
-                gameId,
-                labelId: deletedId
+                gameUuid,
+                gameMapUuid,
+                labelId: deletedId,
+                isCurrent
             });
+            if (!isCurrent()) return;
             resetForm({ keepCoordinates: false });
-            await refresh({ preserveSelection: false });
-            successMessage = t.deleted;
+            const refreshed = await refresh({ preserveSelection: false });
+            if (!isCurrent()) return;
+            if (refreshed) successMessage = t.deleted;
             await onChanged({ action: 'delete-label', labelId: deletedId });
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('DeepMap zone title editor delete:', error);
-            errorMessage = t.deleteError;
+            if (isCurrent()) errorMessage = t.deleteError;
         } finally {
-            deleting = false;
+            if (isCurrent()) deleting = false;
         }
     }
 
     $effect(() => {
-        if (!active || loadedOnce) return;
-        loadedOnce = true;
-        void refresh({ preserveSelection: false });
+        if (!sessionRevision || !sessionScope.accountId || !active || loadedContextKey === contextKey) return;
+        const switchingContext = loadedContextKey !== null;
+        loadedContextKey = contextKey;
+        untrack(() => {
+            saving = false; deleting = false;
+            labels = [];
+            editorLayers = [];
+            lastSelectedLabelId = null;
+            if (switchingContext) lastPointRevision = point?.revision ?? null;
+            resetForm({ keepCoordinates: false });
+            void refresh({ preserveSelection: false });
+        });
+        return () => { ++activationRevision; ++loadRevision; loadedContextKey = null; };
     });
 
     $effect(() => {
@@ -358,7 +434,7 @@
     });
 
     $effect(() => {
-        if (!active) return;
+        if (!active || loading || saving || deleting || !editorDataReady) return;
 
         if (selectedLabelId === null) {
             lastSelectedLabelId = null;
@@ -367,15 +443,19 @@
 
         if (selectedLabelId === lastSelectedLabelId) return;
 
-        const item = labels.find((entry) => Number(entry.id) === Number(selectedLabelId));
+        const item = typeof selectedLabelId === 'number' && !Number.isSafeInteger(selectedLabelId)
+            ? null : labels.find((entry) => String(entry.id) === String(selectedLabelId));
         if (item) {
             lastSelectedLabelId = selectedLabelId;
             loadIntoForm(item);
+        } else {
+            resetForm({ keepCoordinates: false });
+            errorMessage = t.loadError;
         }
     });
 
     $effect(() => {
-        if (!active) return;
+        if (!active || !editorDataReady) return;
         if (!hasCoordinateValue(coordinateX) || !hasCoordinateValue(coordinateY)) {
             onPreview(null, { clear: true });
             return;
@@ -423,8 +503,8 @@
 
         <label>
             <span>{t.layer}</span>
-            <select bind:value={mapLayer} disabled={saving || deleting}>
-                {#each sortedLayers as layer}<option value={layer.id}>{localisedLabel(layer)}</option>{/each}
+            <select bind:value={selectedLayerUuid} disabled={saving || deleting || loading || !editorDataReady}>
+                {#each sortedLayers as layer}<option value={layer.layerUuid}>{localisedLabel(layer)}</option>{/each}
             </select>
         </label>
 
@@ -517,15 +597,15 @@
 
         <div class="actions">
             {#if isPublished}
-                <button class="primary" type="button" onclick={() => save(true)} disabled={saving || deleting}>{saving ? t.saving : t.saveChanges}</button>
-                <button class="secondary" type="button" onclick={() => save(false)} disabled={saving || deleting}>{t.moveDraft}</button>
+                <button class="primary" type="button" onclick={() => save(true)} disabled={saving || deleting || loading || !editorDataReady}>{saving ? t.saving : t.saveChanges}</button>
+                <button class="secondary" type="button" onclick={() => save(false)} disabled={saving || deleting || loading || !editorDataReady}>{t.moveDraft}</button>
             {:else}
-                <button class="secondary" type="button" onclick={() => save(false)} disabled={saving || deleting}>{saving ? t.saving : t.saveDraft}</button>
-                <button class="primary" type="button" onclick={() => save(true)} disabled={saving || deleting}>{saving ? t.saving : t.publish}</button>
+                <button class="secondary" type="button" onclick={() => save(false)} disabled={saving || deleting || loading || !editorDataReady}>{saving ? t.saving : t.saveDraft}</button>
+                <button class="primary" type="button" onclick={() => save(true)} disabled={saving || deleting || loading || !editorDataReady}>{saving ? t.saving : t.publish}</button>
             {/if}
             {#if editingId !== null}
                 <button class="secondary" type="button" onclick={() => resetForm({ keepCoordinates: false })} disabled={saving || deleting}>{t.cancelEdit}</button>
-                <button class="danger" type="button" onclick={remove} disabled={saving || deleting}>{deleting ? t.deleting : t.delete}</button>
+                <button class="danger" type="button" onclick={remove} disabled={saving || deleting || loading || !editorDataReady}>{deleting ? t.deleting : t.delete}</button>
             {/if}
         </div>
 

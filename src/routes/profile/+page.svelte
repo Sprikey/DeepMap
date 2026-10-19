@@ -27,6 +27,7 @@
     let currentLanguage = $state('en');
     let t = $derived(profileTranslations[currentLanguage] ?? profileTranslations.en);
 
+    /** @type {import('@supabase/supabase-js').User | null} */
     let user = $state(null);
     let checkingSession = $state(true);
     let working = $state(false);
@@ -58,12 +59,14 @@
     let usernameInput = $state('');
     let usernameError = $state('');
     let usernameCheckStatus = $state('idle');
+    /** @type {string | null} */
     let usernameUserId = null;
     let usernameLoadVersion = 0;
     let usernameCheckVersion = 0;
     let usernameCheckTimer = null;
     // Feedback local do botão de partilha no cabeçalho.
     let profileLinkStatus = $state('');
+    /** @type {ReturnType<typeof setTimeout> | null} */
     let profileLinkFeedbackTimer = null;
 
     // O bloqueio é imposto pelo trigger no Supabase. Aqui apenas o apresentamos.
@@ -114,10 +117,15 @@
     let initial = $derived(displayName.charAt(0).toLocaleUpperCase('pt-PT'));
 
     // Modal de avatares
-    let avatarDialog;
-    let avatarFileInput;
+    /** @type {HTMLDialogElement | undefined} */
+    let avatarDialog = $state();
+    /** @type {HTMLInputElement | undefined} */
+    let avatarFileInput = $state();
+    /** @type {string | null} */
     let pendingAvatarChoice = $state(null);
+    /** @type {File | null} */
     let pendingAvatarFile = $state(null);
+    /** @type {string | null} */
     let pendingAvatarPreview = $state(null);
     let pendingAvatarFilename = $state('');
     let processingFile = $state(false);
@@ -172,51 +180,187 @@
         !!pendingAvatarChoice &&
         (pendingAvatarChoice !== 'custom' || !!pendingAvatarFile || !!customAvatarUrl)
     );
+    let mounted = false;
+    /** @type {string | null} */
+    let accountId = null;
+    /** @type {string | null} */
+    let sessionToken = null;
+    let identityGeneration = 0;
+    let mutationGeneration = 0;
+    let avatarOperationGeneration = 0;
+    let profileLinkVersion = 0;
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let profileLoadTimer;
+    /** @typedef {{ actor: string | null, identity: number, mutation: number }} Operation */
+    /** @type {{ operation: Operation, metadata: Record<string, unknown> } | null} */
+    let expectedAuthWrite = null;
+    /** @type {(Operation & { signedOut?: boolean }) | null} */
+    let expectedLogout = null;
+    /** @type {Operation | null} */
+    let avatarMutation = null;
+
+    function captureIdentity() {
+        return { actor: accountId, identity: identityGeneration };
+    }
+
+    /** @param {{ actor: string | null, identity: number }} owner */
+    function ownsIdentity(owner) {
+        return mounted && !!sessionToken && owner.actor !== null && accountId === owner.actor &&
+            user?.id === owner.actor && identityGeneration === owner.identity;
+    }
+
+    function beginMutation() {
+        usernameLoadVersion += 1;
+        stopUsernameCheck();
+        usernameLoading = false;
+        return { ...captureIdentity(), mutation: ++mutationGeneration };
+    }
+
+    /** @param {Operation} operation */
+    function ownsMutation(operation) {
+        return ownsIdentity(operation) && operation.mutation === mutationGeneration;
+    }
+
+    /** @param {Operation} operation @param {Record<string, unknown>} metadata */
+    async function updateOwnedMetadata(operation, metadata) {
+        if (!ownsMutation(operation)) return null;
+        const expected = { operation, metadata };
+        expectedAuthWrite = expected;
+        try {
+            return await getSupabaseBrowserClient().auth.updateUser({ data: metadata });
+        } finally {
+            if (expectedAuthWrite === expected) expectedAuthWrite = null;
+        }
+    }
+
+    function clearAccountState() {
+        resetUsernameState();
+        profileLinkVersion += 1;
+        working = false;
+        signingOut = false;
+        errorMessage = '';
+        successMessage = '';
+        editingName = false;
+        editingBio = false;
+        nameInput = '';
+        bioInput = '';
+        profileEditMode = false;
+        settingsMenuOpen = false;
+        avatarFailed = false;
+        avatarDialog?.close();
+        resetAvatarModal();
+    }
+
+    /** @param {string} event @param {{ user: import('@supabase/supabase-js').User, access_token?: string } | null} session */
+    function replaceSession(event, session) {
+        const nextUser = session?.user ?? null;
+        const sameAccount = nextUser !== null && nextUser.id === accountId;
+        const needsProfileLoad = !!nextUser && (!sameAccount || usernameLoading || usernameUserId !== nextUser.id);
+        // Only the exact metadata acknowledgement from the unchanged session may
+        // hand ownership to its initiating write. Replacement sessions never do.
+        const acknowledgement = event === 'USER_UPDATED' && expectedAuthWrite &&
+            ownsMutation(expectedAuthWrite.operation) && !!sessionToken &&
+            session?.access_token === sessionToken && nextUser?.id === accountId &&
+            Object.entries(expectedAuthWrite.metadata).every(([key, value]) => nextUser?.user_metadata?.[key] === value)
+                ? expectedAuthWrite.operation : null;
+        const logoutAcknowledgement = event === 'SIGNED_OUT' && !nextUser && expectedLogout &&
+            ownsMutation(expectedLogout) ? expectedLogout : null;
+        identityGeneration += 1;
+        usernameLoadVersion += 1;
+        stopUsernameCheck();
+        clearTimeout(profileLoadTimer);
+        profileLinkVersion += 1;
+        if (profileLinkFeedbackTimer !== null) clearTimeout(profileLinkFeedbackTimer);
+        profileLinkFeedbackTimer = null;
+        profileLinkStatus = '';
+        user = nextUser;
+        accountId = nextUser?.id ?? null;
+        sessionToken = session?.access_token ?? null;
+        checkingSession = accountId !== null && !sessionToken;
+        if (acknowledgement) {
+            acknowledgement.identity = identityGeneration;
+            expectedAuthWrite = null;
+            return;
+        }
+        mutationGeneration += 1;
+        expectedAuthWrite = null;
+        expectedLogout = null;
+        if (sameAccount) {
+            // Epoch replacement cancels async owners, not this account's local drafts.
+            if (working) {
+                errorMessage = '';
+                successMessage = '';
+                usernameError = '';
+            }
+            if (privacySaving) { privacyError = ''; privacySuccess = ''; }
+            if (avatarMutation || processingFile) avatarModalError = '';
+            working = false;
+            privacySaving = false;
+            signingOut = false;
+            avatarMutation = null;
+            avatarOperationGeneration += 1;
+            fileSelectionVersion += 1;
+            processingFile = false;
+            if (editingUsername && usernameCheckStatus === 'checking') {
+                const candidate = usernameInput.trim().toLowerCase();
+                const ticket = usernameCheckVersion;
+                usernameCheckTimer = setTimeout(() => void checkUsernameAvailability(candidate, ticket), 400);
+            }
+        } else {
+            clearAccountState();
+        }
+        if (logoutAcknowledgement) {
+            logoutAcknowledgement.identity = identityGeneration;
+            logoutAcknowledgement.mutation = mutationGeneration;
+            logoutAcknowledgement.signedOut = true;
+            expectedLogout = logoutAcknowledgement;
+            working = true;
+            signingOut = true;
+            checkingSession = true;
+            return;
+        }
+        if (accountId && sessionToken && needsProfileLoad) {
+            const owner = captureIdentity();
+            usernameLoading = true;
+            // Never start SDK work while Supabase is holding the auth callback lock.
+            profileLoadTimer = setTimeout(() => {
+                if (ownsIdentity(owner)) void loadUsername(owner.actor, sameAccount);
+            }, 0);
+        }
+    }
+
     onMount(() => {
+        mounted = true;
         currentLanguage = setSiteLanguage(getSiteLanguage());
         const unsubscribeLanguage = subscribeSiteLanguage((language) => { currentLanguage = language; });
         const supabase = getSupabaseBrowserClient();
-        let active = true;
-
-        async function checkSession() {
-            const { data, error } = await supabase.auth.getUser();
-            if (!active || signingOut) return;
-
-            if (error && error.name !== 'AuthSessionMissingError') {
-                errorMessage = t.session_error;
-            }
-
-            user = error ? null : data.user;
-            if (user && user.id !== usernameUserId) {
-                void loadUsername(user.id);
-            } else if (!user) {
-                resetUsernameState();
-            }
-            checkingSession = false;
-        }
-
-        checkSession();
-
-        const { data: { subscription } } =
-            supabase.auth.onAuthStateChange((event, session) => {
-                if (!active || signingOut || event === 'INITIAL_SESSION') return;
-                user = session?.user ?? null;
-                if (!user) {
-                    resetUsernameState();
-                } else if (user.id !== usernameUserId) {
-                    void loadUsername(user.id);
+        const initialGeneration = identityGeneration;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (mounted) replaceSession(event, session);
+        });
+        void (async () => {
+            try {
+                const { data, error } = await supabase.auth.getUser();
+                if (!mounted || identityGeneration !== initialGeneration) return;
+                // A validated getUser identity alone has no session credential. Keep
+                // authenticated UI pending until the subscription supplies its session.
+                if (error || !data.user) replaceSession('BOOTSTRAP', null);
+                if (error && error.name !== 'AuthSessionMissingError') errorMessage = t.session_error;
+            } catch {
+                if (mounted && identityGeneration === initialGeneration) {
+                    replaceSession('BOOTSTRAP', null);
+                    errorMessage = t.session_error;
                 }
-                avatarFailed = false;
-                checkingSession = false;
-            });
-
+            }
+        })();
         return () => {
-            active = false;
-            usernameLoadVersion++;
-            stopUsernameCheck();
-            fileSelectionVersion++;
-            clearAvatarFile();
-            if (profileLinkFeedbackTimer !== null) clearTimeout(profileLinkFeedbackTimer);
+            mounted = false;
+            identityGeneration += 1;
+            mutationGeneration += 1;
+            expectedAuthWrite = null;
+            expectedLogout = null;
+            clearTimeout(profileLoadTimer);
+            clearAccountState();
             unsubscribeLanguage();
             subscription.unsubscribe();
         };
@@ -256,7 +400,7 @@
 
     async function saveProfileEdits(event) {
         event?.preventDefault();
-        if (working || !user || usernameLoading || usernameLoadError) return;
+        if (working || privacySaving || !user || usernameLoading || usernameLoadError) return;
 
         errorMessage = '';
         successMessage = '';
@@ -298,20 +442,26 @@
             }
         }
 
+        const operation = beginMutation();
+        if (!ownsMutation(operation)) return;
         working = true;
         const supabase = getSupabaseBrowserClient();
 
         try {
+            /** @type {Record<string, unknown>} */
             const metadata = {};
             if (cleanName !== displayName) metadata.display_name = cleanName;
             if (cleanBio !== bio) metadata.bio = cleanBio;
 
             if (Object.keys(metadata).length) {
-                const { data, error } = await supabase.auth.updateUser({ data: metadata });
+                const result = await updateOwnedMetadata(operation, metadata);
+                if (!ownsMutation(operation) || !result) return;
+                const { data, error } = result;
                 if (error || !data.user) {
                     errorMessage = error?.message || t.name_save_error;
                     return;
                 }
+                if (data.user.id !== operation.actor) return;
                 user = data.user;
             }
 
@@ -319,6 +469,7 @@
                 const { data: usernameRows, error } = await supabase.rpc('set_deepmap_username', {
                     p_username: candidate
                 });
+                if (!ownsMutation(operation)) return;
                 const data = Array.isArray(usernameRows) ? usernameRows[0] : usernameRows;
 
                 if (error || !data) {
@@ -348,10 +499,11 @@
             stopUsernameCheck();
             successMessage = profileUi.saved;
         } catch (error) {
+            if (!ownsMutation(operation)) return;
             console.error('DeepMap profile save:', error);
             errorMessage = t.name_save_error;
         } finally {
-            working = false;
+            if (ownsMutation(operation)) working = false;
         }
     }
 
@@ -388,20 +540,25 @@
         profileLinkFeedbackTimer = null;
     }
 
-    async function loadUsername(userId) {
+    async function loadUsername(userId, preserveDrafts = false) {
+        const owner = captureIdentity();
+        if (!ownsIdentity(owner) || owner.actor !== userId) return;
         const ticket = ++usernameLoadVersion;
+        const isCurrent = () => ownsIdentity(owner) && ticket === usernameLoadVersion;
         usernameUserId = userId;
-        username = null;
-        usernameChangedAt = null;
-        usernameIsGenerated = false;
-        profileIsPublic = true;
-        privacyError = '';
-        privacySuccess = '';
+        if (!preserveDrafts) {
+            username = null;
+            usernameChangedAt = null;
+            usernameIsGenerated = false;
+            profileIsPublic = true;
+            privacyError = '';
+            privacySuccess = '';
+            editingUsername = false;
+            usernameCooldownNotice = false;
+            stopUsernameCheck();
+        }
         usernameLoading = true;
         usernameLoadError = '';
-        editingUsername = false;
-        usernameCooldownNotice = false;
-        stopUsernameCheck();
 
         try {
             const { data, error } = await getSupabaseBrowserClient()
@@ -410,7 +567,7 @@
                 .eq('id', userId)
                 .maybeSingle();
 
-            if (ticket !== usernameLoadVersion) return;
+            if (!isCurrent()) return;
             if (error) {
                 usernameLoadError = t.username_load_error;
                 return;
@@ -420,14 +577,18 @@
             usernameIsGenerated = data?.username_is_generated === true;
             profileIsPublic = data?.is_public ?? true;
         } catch {
-            if (ticket === usernameLoadVersion) usernameLoadError = t.username_load_error;
+            if (isCurrent()) usernameLoadError = t.username_load_error;
         } finally {
-            if (ticket === usernameLoadVersion) usernameLoading = false;
+            if (isCurrent()) usernameLoading = false;
         }
     }
 
     async function copyPermanentProfileLink() {
         if (!user?.id || !username || usernameLoading || usernameLoadError) return;
+        const owner = captureIdentity();
+        if (!ownsIdentity(owner)) return;
+        const request = ++profileLinkVersion;
+        const isCurrent = () => ownsIdentity(owner) && request === profileLinkVersion;
         const accountId = user.id;
         const url = `${window.location.origin}/p/${encodeURIComponent(accountId)}`;
         if (profileLinkFeedbackTimer !== null) clearTimeout(profileLinkFeedbackTimer);
@@ -452,12 +613,13 @@
                     input.remove();
                 }
             }
-            if (user?.id === accountId) profileLinkStatus = 'copied';
+            if (isCurrent()) profileLinkStatus = 'copied';
         } catch {
-            if (user?.id === accountId) profileLinkStatus = 'error';
+            if (isCurrent()) profileLinkStatus = 'error';
         }
-        if (user?.id === accountId) {
+        if (isCurrent()) {
             profileLinkFeedbackTimer = setTimeout(() => {
+                if (!isCurrent()) return;
                 profileLinkStatus = '';
                 profileLinkFeedbackTimer = null;
             }, 3000);
@@ -468,7 +630,9 @@
         // Sem @username ainda não existe registo na tabela profiles.
         if (!user || !username || usernameLoading || usernameLoadError || privacySaving || working) return;
 
-        const userId = user.id;
+        const operation = beginMutation();
+        if (!ownsMutation(operation)) return;
+        const userId = operation.actor;
         const nextIsPublic = !profileIsPublic;
         privacySaving = true;
         privacyError = '';
@@ -482,7 +646,7 @@
                 .select('is_public')
                 .single();
 
-            if (user?.id !== userId) return;
+            if (!ownsMutation(operation)) return;
             if (error || !data || data.is_public !== nextIsPublic) {
                 privacyError = t.visibility_save_error;
                 return;
@@ -491,9 +655,9 @@
             profileIsPublic = data.is_public;
             privacySuccess = t.visibility_saved;
         } catch {
-            if (user?.id === userId) privacyError = t.visibility_save_error;
+            if (ownsMutation(operation)) privacyError = t.visibility_save_error;
         } finally {
-            privacySaving = false;
+            if (ownsMutation(operation)) privacySaving = false;
         }
     }
 
@@ -526,20 +690,23 @@
 
     async function checkUsernameAvailability(candidate, ticket) {
         if (ticket !== usernameCheckVersion || !user || !editingUsername) return;
+        const owner = captureIdentity();
+        const isCurrent = () => ownsIdentity(owner) && ticket === usernameCheckVersion && editingUsername;
+        if (!isCurrent()) return;
         try {
             // A RPC considera usernames ativos E usernames libertados na última hora.
             // A validação definitiva continua no trigger do Supabase.
             const { data, error } = await getSupabaseBrowserClient()
                 .rpc('username_availability', { p_username: candidate });
 
-            if (ticket !== usernameCheckVersion || !editingUsername) return;
+            if (!isCurrent()) return;
             if (error || !['available', 'taken', 'held'].includes(data)) {
                 usernameCheckStatus = 'check_error';
                 return;
             }
             usernameCheckStatus = data;
         } catch {
-            if (ticket === usernameCheckVersion && editingUsername) {
+            if (isCurrent()) {
                 usernameCheckStatus = 'check_error';
             }
         }
@@ -570,7 +737,7 @@
 
     async function saveUsername(event) {
         event.preventDefault();
-        if (working || !user || usernameLoading || usernameLoadError) return;
+        if (working || privacySaving || !user || usernameLoading || usernameLoadError) return;
         if (usernameOnCooldown) { usernameError = t.username_cooldown_error; return; }
         usernameError = '';
         errorMessage = '';
@@ -592,6 +759,8 @@
         if (usernameCheckStatus === 'taken' || usernameCheckStatus === 'held') return;
 
         stopUsernameCheck();
+        const operation = beginMutation();
+        if (!ownsMutation(operation)) return;
         working = true;
         const supabase = getSupabaseBrowserClient();
 
@@ -599,6 +768,7 @@
             const { data: usernameRows, error } = await supabase.rpc('set_deepmap_username', {
                 p_username: candidate
             });
+            if (!ownsMutation(operation)) return;
             const data = Array.isArray(usernameRows) ? usernameRows[0] : usernameRows;
 
             if (error || !data) {
@@ -626,9 +796,10 @@
             usernameCheckStatus = 'idle';
             successMessage = t.username_saved;
         } catch {
+            if (!ownsMutation(operation)) return;
             usernameError = t.username_save_error;
         } finally {
-            working = false;
+            if (ownsMutation(operation)) working = false;
         }
     }
 
@@ -649,7 +820,7 @@
 
     async function saveDisplayName(event) {
         event.preventDefault();
-        if (working || !user) return;
+        if (working || privacySaving || !user) return;
         errorMessage = '';
         successMessage = '';
 
@@ -663,20 +834,27 @@
             return;
         }
 
+        const operation = beginMutation();
+        if (!ownsMutation(operation)) return;
         working = true;
-        const { data, error } = await getSupabaseBrowserClient().auth.updateUser({
-            data: { display_name: cleanName }
-        });
-        working = false;
-
-        if (error || !data.user) {
-            errorMessage = error?.message || t.name_save_error;
-            return;
+        try {
+            const result = await updateOwnedMetadata(operation, { display_name: cleanName });
+            if (!ownsMutation(operation) || !result) return;
+            const { data, error } = result;
+            if (error || !data.user) {
+                errorMessage = error?.message || t.name_save_error;
+                return;
+            }
+            if (data.user.id !== operation.actor) return;
+            user = data.user;
+            nameInput = '';
+            editingName = false;
+            successMessage = t.name_saved;
+        } catch {
+            if (ownsMutation(operation)) errorMessage = t.name_save_error;
+        } finally {
+            if (ownsMutation(operation)) working = false;
         }
-        user = data.user;
-        nameInput = '';
-        editingName = false;
-        successMessage = t.name_saved;
     }
 
     function startEditingBio() {
@@ -696,7 +874,7 @@
 
     async function saveBio(event) {
         event.preventDefault();
-        if (working || !user) return;
+        if (working || privacySaving || !user) return;
         errorMessage = '';
         successMessage = '';
 
@@ -710,20 +888,27 @@
             return;
         }
 
+        const operation = beginMutation();
+        if (!ownsMutation(operation)) return;
         working = true;
-        const { data, error } = await getSupabaseBrowserClient().auth.updateUser({
-            data: { bio: cleanBio }
-        });
-        working = false;
-
-        if (error || !data.user) {
-            errorMessage = error?.message || t.bio_save_error;
-            return;
+        try {
+            const result = await updateOwnedMetadata(operation, { bio: cleanBio });
+            if (!ownsMutation(operation) || !result) return;
+            const { data, error } = result;
+            if (error || !data.user) {
+                errorMessage = error?.message || t.bio_save_error;
+                return;
+            }
+            if (data.user.id !== operation.actor) return;
+            user = data.user;
+            bioInput = '';
+            editingBio = false;
+            successMessage = t.bio_saved;
+        } catch {
+            if (ownsMutation(operation)) errorMessage = t.bio_save_error;
+        } finally {
+            if (ownsMutation(operation)) working = false;
         }
-        user = data.user;
-        bioInput = '';
-        editingBio = false;
-        successMessage = t.bio_saved;
     }
 
     function clearAvatarFile() {
@@ -736,7 +921,9 @@
 
     function openAvatarModal() {
         if (working || !user || !avatarDialog) return;
+        avatarOperationGeneration += 1;
         fileSelectionVersion++;
+        processingFile = false;
         clearAvatarFile();
         pendingAvatarChoice = avatarChoice === 'initial' ? null : avatarChoice;
         avatarModalError = '';
@@ -752,6 +939,9 @@
     }
 
     function resetAvatarModal() {
+        if (avatarMutation && ownsMutation(avatarMutation)) working = false;
+        avatarMutation = null;
+        avatarOperationGeneration += 1;
         fileSelectionVersion++;
         clearAvatarFile();
         processingFile = false;
@@ -761,6 +951,7 @@
 
     function selectAvatar(choice) {
         if (working || processingFile) return;
+        avatarOperationGeneration += 1;
         fileSelectionVersion++;
         clearAvatarFile();
         pendingAvatarChoice = choice;
@@ -796,8 +987,12 @@
     // Remove EXIF, limita dimensões e guarda um quadrado WebP 512×512.
     async function handleAvatarFile(event) {
         const file = event.currentTarget.files?.[0];
-        if (!file || working) return;
+        if (!file || working || !user) return;
+        const owner = captureIdentity();
+        if (!ownsIdentity(owner)) return;
+        const avatarOperation = ++avatarOperationGeneration;
         const ticket = ++fileSelectionVersion;
+        const isCurrent = () => ownsIdentity(owner) && avatarOperation === avatarOperationGeneration && ticket === fileSelectionVersion;
         clearAvatarFile();
         avatarModalError = '';
 
@@ -814,9 +1009,11 @@
         let bitmap;
         try {
             const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+            if (!isCurrent()) return;
             if (!isRealImage(file, bytes)) throw new Error('invalid-image');
 
             bitmap = await createImageBitmap(file);
+            if (!isCurrent()) return;
             if (bitmap.width * bitmap.height > 24_000_000) {
                 throw new Error('oversized-image');
             }
@@ -839,17 +1036,18 @@
             const blob = await new Promise((resolve) =>
                 canvas.toBlob(resolve, 'image/webp', 0.84)
             );
+            if (!isCurrent()) return;
             if (!blob || blob.type !== 'image/webp' || blob.size > MAX_AVATAR_BYTES) {
                 throw new Error('canvas-failed');
             }
-            if (ticket !== fileSelectionVersion) return;
+            if (!isCurrent()) return;
 
             pendingAvatarFile = new File([blob], 'avatar.webp', { type: 'image/webp' });
             pendingAvatarPreview = URL.createObjectURL(pendingAvatarFile);
             pendingAvatarFilename = file.name;
             pendingAvatarChoice = 'custom';
         } catch (error) {
-            if (ticket !== fileSelectionVersion) return;
+            if (!isCurrent()) return;
             avatarModalError = error?.message === 'invalid-image'
                 ? t.image_invalid_error
                 : error?.message === 'oversized-image'
@@ -857,122 +1055,125 @@
                     : t.image_process_error;
         } finally {
             bitmap?.close?.();
-            if (ticket === fileSelectionVersion) processingFile = false;
+            if (isCurrent()) processingFile = false;
         }
     }
 
     async function saveAvatar() {
-        if (working || processingFile || !user || !canSaveAvatar) return;
+        if (working || privacySaving || processingFile || !user || !canSaveAvatar) return;
         const choice = pendingAvatarChoice;
         const allowed =
             (choice === 'google' && googleAvatarUrl) ||
             (choice === 'custom' && (pendingAvatarFile || customAvatarUrl)) ||
             AVATAR_PRESETS.some((item) => item.id === choice);
-        if (!allowed) {
-            avatarModalError = t.invalid_avatar;
-            return;
-        }
+        if (!allowed) { avatarModalError = t.invalid_avatar; return; }
         if (avatarChoice === choice && !(choice === 'custom' && pendingAvatarFile)) {
             closeAvatarModal();
             return;
         }
 
+        const operation = beginMutation();
+        if (!ownsMutation(operation)) return;
+        const avatarOperation = ++avatarOperationGeneration;
+        const dialog = fileSelectionVersion;
+        const isCurrent = () => ownsMutation(operation) && avatarOperation === avatarOperationGeneration &&
+            dialog === fileSelectionVersion;
+        avatarMutation = operation;
+        const file = pendingAvatarFile;
+        const previousPath = getCustomAvatarPath(user);
+        // Both paths are immutable snapshots. Never reconstruct them from current user.
+        const uploadedPath = choice === 'custom' && file
+            ? operation.actor + '/avatar-' + createAvatarId() + '.webp' : null;
+        const supabase = getSupabaseBrowserClient();
         working = true;
         avatarModalError = '';
         errorMessage = '';
         successMessage = '';
 
-        const supabase = getSupabaseBrowserClient();
-        const previousPath = getCustomAvatarPath(user);
-        let uploadedPath = null;
-        let successful = false;
-
         try {
+            /** @type {Record<string, unknown>} */
             const metadata = { avatar_choice: choice };
-
             if (choice === 'custom') {
-                if (pendingAvatarFile) {
-                    uploadedPath = `${user.id}/avatar-${createAvatarId()}.webp`;
-                    const { error: uploadError } = await supabase.storage
-                        .from('avatars')
-                        .upload(uploadedPath, pendingAvatarFile, {
-                            contentType: 'image/webp',
-                            cacheControl: '3600',
-                            upsert: false
-                        });
-                    if (uploadError) {
-                        avatarModalError = uploadError.message || t.avatar_upload_error;
-                        return;
-                    }
+                if (uploadedPath && file) {
+                    const { error: uploadError } = await supabase.storage.from('avatars').upload(uploadedPath, file, {
+                        contentType: 'image/webp', cacheControl: '3600', upsert: false
+                    });
+                    // An old upload may leave an orphan; it must never mutate as the new session.
+                    if (!isCurrent()) return;
+                    if (uploadError) { avatarModalError = uploadError.message || t.avatar_upload_error; return; }
                 }
-
                 metadata.avatar_custom_path = uploadedPath || previousPath;
-                if (!metadata.avatar_custom_path) {
-                    avatarModalError = t.image_no_file_error;
-                    return;
-                }
+                if (!metadata.avatar_custom_path) { avatarModalError = t.image_no_file_error; return; }
             }
 
-            const { data, error } = await supabase.auth.updateUser({ data: metadata });
+            if (!isCurrent()) return;
+            const result = await updateOwnedMetadata(operation, metadata);
+            if (!isCurrent() || !result) return;
+            const { data, error } = result;
             if (error || !data.user) {
                 avatarModalError = error?.message || t.avatar_save_error;
-                if (uploadedPath) {
+                // Failure cleanup is restricted to this exact new object while still owned.
+                if (uploadedPath && isCurrent() && getCustomAvatarPath(user) !== uploadedPath) {
                     await supabase.storage.from('avatars').remove([uploadedPath]);
+                    if (!isCurrent()) return;
                 }
                 return;
             }
-
+            if (data.user.id !== operation.actor) return;
             user = data.user;
             avatarFailed = false;
             successMessage = t.avatar_saved;
-            successful = true;
 
-            // Só eliminar a imagem antiga DEPOIS de a nova estar guardada no perfil.
-            if (uploadedPath && previousPath && previousPath !== uploadedPath) {
-                const { error: removeError } = await supabase.storage
-                    .from('avatars')
-                    .remove([previousPath]);
+            // Preserve normal replacement cleanup only for the captured actor's old object,
+            // after metadata is confirmed. A session/dialog change suppresses this write too.
+            if (uploadedPath && previousPath && previousPath !== uploadedPath &&
+                previousPath.startsWith(operation.actor + '/') && isCurrent()) {
+                const { error: removeError } = await supabase.storage.from('avatars').remove([previousPath]);
+                if (!isCurrent()) return;
                 if (removeError) console.warn('Previous DeepMap avatar cleanup:', removeError.message);
             }
+            if (isCurrent()) {
+                working = false;
+                avatarDialog?.close();
+                resetAvatarModal();
+            }
         } catch (error) {
+            if (!isCurrent()) return;
             avatarModalError = t.avatar_save_error;
             console.error('DeepMap avatar:', error);
         } finally {
-            working = false;
-        }
-
-        if (successful) {
-            avatarDialog?.close();
-            resetAvatarModal();
+            if (isCurrent()) {
+                working = false;
+                avatarMutation = null;
+            }
         }
     }
 
     async function logout() {
-        if (working) return;
+        if (working || privacySaving || !user) return;
+        const operation = beginMutation();
+        if (!ownsMutation(operation)) return;
+        expectedLogout = operation;
+        const isCurrent = () => mounted && expectedLogout === operation &&
+            operation.identity === identityGeneration && operation.mutation === mutationGeneration;
         working = true;
-        errorMessage = '';
-
-        // Ao terminar sessão, regressar à homepage global do DeepMap.
-        const logoutDestination = '/';
         signingOut = true;
-        let error;
+        errorMessage = '';
         try {
-            ({ error } = await getSupabaseBrowserClient().auth.signOut());
-        } catch (caught) {
-            error = caught;
-        }
-        if (error) {
+            const { error } = await getSupabaseBrowserClient().auth.signOut();
+            if (!isCurrent()) return;
+            if (error) throw error;
+        } catch (error) {
+            if (!isCurrent()) return;
             signingOut = false;
-            errorMessage = error.message || t.session_error;
             working = false;
+            errorMessage = error instanceof Error ? error.message : t.session_error;
             return;
         }
-        // SIGNED_OUT não mostra o estado de visitante neste intervalo.
-        // Substituir o perfil no histórico pela homepage.
         try {
-            await goto(logoutDestination, { replaceState: true });
+            await goto('/', { replaceState: true });
         } catch {
-            window.location.assign(logoutDestination);
+            if (isCurrent()) window.location.assign('/');
         }
     }
 </script>
@@ -1347,7 +1548,7 @@
                     bind:this={avatarDialog}
                     class="avatar-dialog"
                     aria-labelledby="avatar-modal-title"
-                    onclose={resetAvatarModal}
+                    onclose={() => { if (!avatarDialog?.open) resetAvatarModal(); }}
                     oncancel={(event) => {
                         if (working) event.preventDefault();
                     }}
