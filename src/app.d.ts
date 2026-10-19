@@ -3,7 +3,9 @@
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			supabase: import('@supabase/supabase-js').SupabaseClient;
+		}
 		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}

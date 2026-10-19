@@ -17,7 +17,7 @@
             "language": "Language",
             "eyebrow": "TRUST & TRANSPARENCY",
             "subtitle": "Your journey matters. So does your privacy.",
-            "updated": "Last updated: 18 October 2026",
+            "updated": "Last updated: 19 October 2026",
             "intro": "This policy describes DeepMap’s current processing for site access, authentication, profiles, map contributions, moderation, notifications and usage statistics. It explains what is public and what you can request about your data.",
             "contactLabel": "CONTACT",
             "accountLabel": "DEEPMAP ACCOUNT",
@@ -57,6 +57,7 @@
                 {
                     "title": "Purposes and legal bases",
                     "paragraphs": [
+                        "For accounts completing the new registration step, we keep the user UUID, the Terms and Privacy Policy versions and the database timestamp of acceptance. We do not collect IP or browser details for this record. Older accounts are not recorded as having accepted without evidence.",
                         "Performance of the requested service: creating/authenticating accounts, managing profiles and preferences, receiving/processing contributions and presenting related notifications. Authentication data is necessary for account features; without it you can still browse the available public areas.",
                         "Legitimate interests: protecting accounts and the platform, preventing abuse, reviewing content, maintaining coherent maps and necessary authorship, decision and security records, answering enquiries and understanding service use. We balance these interests against your rights, particularly for children. Truly anonymous statistics are not personal data; any personal data needed to produce them requires a legal basis and compliance with applicable tracking rules.",
                         "Legal obligations: responding to requests and retaining or disclosing data where an applicable law or lawful order requires it. Consent is used only where legally needed for a specific processing activity, not as a blanket basis for accounts. Accepting the Terms or reading this policy does not amount to consent to every processing activity."
@@ -73,8 +74,8 @@
                     "title": "Web Analytics and external resources",
                     "paragraphs": [
                         "DeepMap integrates Vercel Web Analytics for usage statistics, such as pages visited, referral sources, approximate country and browser/device characteristics. According to Vercel’s documentation, its default setup provides aggregated statistics, does not use third-party cookies and does not keep a permanent visitor identifier; its technical visit identification is short-lived.",
-                        "We do not configure custom events containing email or UUID. However, page addresses are processed for measurement and may include, for example, a public username. The absence of third-party cookies does not mean no data is processed or guarantee absolute anonymity for every technical request.",
-                        "Google avatars, external images and YouTube/Vimeo videos may be requested directly by your browser when displaying content, including when opening a map popup. Those third parties may receive your IP, browser and request information and apply their own cookies or technologies under their rules. Embedded videos currently have no dedicated consent control in DeepMap. Opening external content does not itself constitute consent to unnecessary tracking."
+                        "We do not configure custom events containing email or UUID. Before sending page addresses to Web Analytics, we replace dynamic path segments with route placeholders and remove query parameters and fragments. Unknown paths are grouped under a generic placeholder. The absence of third-party cookies does not mean no data is processed or guarantee absolute anonymity for every technical request.",
+                        "Google avatars and external images may be requested directly by your browser when displaying content, including when opening a map popup. YouTube/Vimeo players are loaded only after you click the video button; the placeholder does not request an external thumbnail. Those third parties may receive your IP, browser and request information and apply their own cookies or technologies under their rules. YouTube embeds use its privacy-enhanced domain and Vimeo embeds request Do Not Track mode; neither starts automatically. Opening external content does not itself constitute consent to unnecessary tracking."
                     ]
                 },
                 {
@@ -135,7 +136,7 @@
             "language": "Idioma",
             "eyebrow": "CONFIANÇA E TRANSPARÊNCIA",
             "subtitle": "A tua jornada importa. A tua privacidade também.",
-            "updated": "Última atualização: 18 de outubro de 2026",
+            "updated": "Última atualização: 19 de outubro de 2026",
             "intro": "Esta política descreve os tratamentos atuais do DeepMap: acesso ao site, autenticação, perfis, contribuições para mapas, moderação, notificações e estatísticas de utilização. Explica o que é público e o que podes pedir relativamente aos teus dados.",
             "contactLabel": "CONTACTO",
             "accountLabel": "CONTA DEEPMAP",
@@ -175,6 +176,7 @@
                 {
                     "title": "Finalidades e fundamentos jurídicos",
                     "paragraphs": [
+                        "Nas contas que concluem o novo passo de registo, guardamos o UUID do utilizador, as versões dos Termos e da Política de Privacidade e a data de aceitação atribuída pela base de dados. Não recolhemos IP nem dados do navegador para este registo. Não registamos contas anteriores como tendo aceite sem prova.",
                         "Execução do serviço pedido: criar e autenticar a conta, gerir perfil e preferências, receber e processar contribuições e apresentar notificações relacionadas. Os dados de autenticação são necessários para funções com conta; sem eles podes continuar a consultar as áreas públicas disponíveis.",
                         "Interesses legítimos: proteger contas e plataforma, prevenir abuso, rever conteúdo, manter a coerência dos mapas e um histórico necessário de autoria, decisões e segurança, responder a contactos e compreender a utilização do serviço. Ponderamos estes interesses com os teus direitos, especialmente no caso de menores. As estatísticas efetivamente anónimas não são dados pessoais; os dados pessoais eventualmente necessários à sua produção exigem fundamento e as regras de rastreio aplicáveis.",
                         "Obrigação legal: responder a pedidos e conservar ou comunicar dados quando uma norma aplicável ou uma ordem legítima o exigir. O consentimento é usado apenas quando legalmente necessário para um tratamento específico, não como fundamento genérico para a conta. Aceitar os Termos ou conhecer esta política não equivale a consentir em todo o tratamento."
@@ -191,8 +193,8 @@
                     "title": "Web Analytics e recursos externos",
                     "paragraphs": [
                         "O DeepMap integra Vercel Web Analytics para estatísticas de utilização, como páginas visitadas, origem das visitas, país aproximado e características de navegador/dispositivo. Segundo a documentação da Vercel, a configuração padrão fornece estatísticas agregadas, não usa cookies de terceiros e não mantém um identificador permanente de visitante; a identificação técnica de visita é de curta duração.",
-                        "Não configuramos eventos personalizados com email ou UUID. Contudo, os endereços de páginas são tratados na medição e podem conter, por exemplo, um username público. A ausência de cookies de terceiros não significa ausência de qualquer tratamento de dados nem permite garantir anonimato absoluto de todos os pedidos técnicos.",
-                        "Avatares Google, imagens externas e vídeos YouTube/Vimeo podem ser pedidos diretamente pelo teu navegador ao apresentar o conteúdo, incluindo ao abrir um popup do mapa. Esses terceiros podem receber IP, dados do navegador e informação do pedido, e aplicar cookies ou tecnologias próprias segundo as suas regras. Atualmente os vídeos incorporados não têm um controlo de consentimento específico no DeepMap. Abrir conteúdo externo não constitui, por si só, consentimento para rastreio não necessário."
+                        "Não configuramos eventos personalizados com email ou UUID. Antes de enviar endereços de páginas ao Web Analytics, substituímos segmentos dinâmicos por placeholders de rota e removemos parâmetros de pesquisa e fragmentos. Os caminhos desconhecidos são agrupados num placeholder genérico. A ausência de cookies de terceiros não significa ausência de qualquer tratamento de dados nem permite garantir anonimato absoluto de todos os pedidos técnicos.",
+                        "Avatares Google e imagens externas podem ser pedidos diretamente pelo teu navegador ao apresentar o conteúdo, incluindo ao abrir um popup do mapa. Os leitores YouTube/Vimeo só são carregados depois de clicares no botão do vídeo; o placeholder não pede thumbnails externas. Esses terceiros podem receber IP, dados do navegador e informação do pedido, e aplicar cookies ou tecnologias próprias segundo as suas regras. O YouTube usa o domínio de privacidade reforçada e o Vimeo pede o modo Do Not Track; nenhum inicia automaticamente. Abrir conteúdo externo não constitui, por si só, consentimento para rastreio não necessário."
                     ]
                 },
                 {

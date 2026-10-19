@@ -1,7 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
-    import { safeInternalPath } from '$lib/auth/internal-path.js';
+    import { safeAccountPath } from '$lib/auth/account-path.js';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
     import { getSiteLanguage, setSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { authTranslations } from '$lib/i18n/auth.js';
@@ -19,33 +19,17 @@
     let confirmPassword = $state('');
     let showPassword = $state(false);
     let showConfirmPassword = $state(false);
-    let acceptedTerms = $state(false);
     let errorKey = $state('');
     let successKey = $state('');
-
-    let legalTexts = $derived(currentLanguage === 'pt' ? {
-        agree_prefix: 'Concordo com os',
-        terms: 'Termos de Utilização',
-        and_acknowledge: 'e declaro que tomei conhecimento da',
-        privacy: 'Política de Privacidade',
-        terms_required: 'Tens de aceitar os Termos de Utilização e tomar conhecimento da Política de Privacidade para criar a conta.'
-    } : {
-        agree_prefix: 'I agree to the',
-        terms: 'Terms of Use',
-        and_acknowledge: 'and acknowledge the',
-        privacy: 'Privacy Policy',
-        terms_required: 'You must agree to the Terms of Use and acknowledge the Privacy Policy to create an account.'
-    });
 
     let returnTo = $state('/profile');
 
     function safeReturnPath(raw) {
-        const path = safeInternalPath(raw, window.location.origin, '/profile');
-        const target = new URL(path, window.location.origin);
-        // Preserve login's existing auth-route loop prevention.
-        if (target.pathname === '/login' || target.pathname === '/reset-password' ||
-            target.pathname.startsWith('/auth/')) return '/profile';
-        return path;
+        return safeAccountPath(raw, window.location.origin);
+    }
+
+    function continuePath() {
+        return '/auth/continue?next=' + encodeURIComponent(returnTo);
     }
 
     function authErrorKey(error, fallback) {
@@ -82,7 +66,7 @@
                 !params.has('auth_error');
             if (shouldRedirect) {
                 try {
-                    await goto(returnTo, { replaceState: true });
+                    await goto(continuePath(), { replaceState: true });
                 } catch {
                     // Se a navegação falhar, manter o acesso manual ao perfil.
                 }
@@ -111,7 +95,6 @@
         showConfirmPassword = false;
         errorKey = '';
         successKey = '';
-        if (mode !== 'register') acceptedTerms = false;
     }
 
     async function loginWithEmail(event) {
@@ -137,7 +120,7 @@
         showPassword = false;
         // Manter o formulário em estado de processamento até sair da rota.
         try {
-            await goto(returnTo, { replaceState: true });
+            await goto(continuePath(), { replaceState: true });
         } catch {
             working = false; // Aparece o acesso manual ao perfil se falhar.
         }
@@ -148,11 +131,6 @@
         if (working) return;
         errorKey = '';
         successKey = '';
-
-        if (!acceptedTerms) {
-            errorKey = 'terms_required';
-            return;
-        }
 
         if (password !== confirmPassword) {
             errorKey = 'password_mismatch';
@@ -165,10 +143,10 @@
 
         working = true;
         const supabase = getSupabaseBrowserClient();
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
             email: email.trim(), password,
             options: {
-                emailRedirectTo: `${window.location.origin}/auth/callback?next=%2Flogin%3Femail_confirmed%3D1`
+                emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnTo)}`
             }
         });
         working = false;
@@ -183,7 +161,9 @@
         confirmPassword = '';
         showPassword = false;
         showConfirmPassword = false;
-        acceptedTerms = false;
+        if (data.session) {
+            await goto(continuePath(), { replaceState: true });
+        }
     }
 
     async function recoverPassword(event) {
@@ -353,22 +333,10 @@
                     </div>
                 {/if}
 
-                {#if authMode === 'register'}
-                    <label class="terms-consent">
-                        <input type="checkbox" bind:checked={acceptedTerms} disabled={working} />
-                        <span>
-                            {legalTexts.agree_prefix}
-                            <a href="/terms" target="_blank" rel="noopener noreferrer">{legalTexts.terms}</a>
-                            {legalTexts.and_acknowledge}
-                            <a href="/privacy" target="_blank" rel="noopener noreferrer">{legalTexts.privacy}</a>.
-                        </span>
-                    </label>
-                {/if}
-
                 <button
                     type="submit"
                     class="submit-button"
-                    disabled={working || (authMode === 'register' && !acceptedTerms)}
+                    disabled={working}
                 >
                     {working ? texts.processing : authMode === 'login' ? texts.sign_in : texts.create_account}
                 </button>
@@ -394,7 +362,7 @@
 
         {#if errorKey}
             <p class="error-message" role="alert">
-                {errorKey === 'terms_required' ? legalTexts.terms_required : (texts[errorKey] ?? texts.auth_error)}
+                {texts[errorKey] ?? texts.auth_error}
             </p>
         {/if}
         {#if successKey}
@@ -635,35 +603,6 @@
     .legal-links a:hover { color: #e5c894; }
     .legal-links a:focus-visible { outline: 2px solid #c8a355; outline-offset: 4px; }
     .legal-links span { color: #666670; }
-
-    .terms-consent {
-        display: grid;
-        grid-template-columns: 20px minmax(0, 1fr);
-        align-items: start;
-        gap: 10px;
-        margin-top: 10px;
-        color: #aeb0b8;
-        font-size: 0.78rem;
-        line-height: 1.5;
-        cursor: pointer;
-    }
-
-    .terms-consent input {
-        width: 17px;
-        height: 17px;
-        margin: 2px 0 0;
-        padding: 0;
-        accent-color: #c8a355;
-        cursor: pointer;
-    }
-
-    .terms-consent a {
-        color: #d7b573;
-        text-decoration: underline;
-        text-underline-offset: 2px;
-    }
-
-    .terms-consent a:hover { color: #eed18a; }
 
     @media (max-width: 420px) {
         .auth-card { padding: 24px 18px; }

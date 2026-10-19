@@ -1,5 +1,6 @@
 
 import { redirect } from '@sveltejs/kit';
+import { authenticatedAccountPath } from '$lib/server/legal-onboarding.js';
 
 export const GET = async ({ url, locals }) => {
     const token_hash = url.searchParams.get('token_hash');
@@ -19,5 +20,5 @@ export const GET = async ({ url, locals }) => {
         redirect(303, '/login?email_error=confirmation_failed');
     }
 
-    redirect(303, '/login?email_confirmed=1');
+    redirect(303, await authenticatedAccountPath(locals.supabase, url.searchParams.get('next'), url.origin));
 };

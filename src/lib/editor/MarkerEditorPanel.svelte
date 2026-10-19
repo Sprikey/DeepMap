@@ -249,7 +249,9 @@
     });
 
     let videoLinkUrl = $derived(normaliseHttpUrl(videoUrl));
+    let loadedVideo = $state(/** @type {string | null} */ (null));
     let videoEmbedUrl = $derived(getVideoEmbedUrl(videoUrl));
+    $effect(() => { videoUrl; editingId; contextKey; loadedVideo = null; });
 
     function localisedLabel(item) {
         return item?.label?.[language] ?? item?.label?.en ?? item?.label?.pt ?? item?.id ?? '';
@@ -909,13 +911,20 @@
         {#if videoEmbedUrl}
             <div class="video-preview">
                 <span>{t.videoPreview}</span>
+                {#if loadedVideo === videoEmbedUrl}
                 <iframe
                     src={videoEmbedUrl}
                     title={t.videoPreview}
                     loading="lazy"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allow="encrypted-media; picture-in-picture; fullscreen"
+                    referrerpolicy="strict-origin-when-cross-origin"
                     allowfullscreen
                 ></iframe>
+                {:else}
+                    <button type="button" class="video-link-preview" onclick={() => loadedVideo = videoEmbedUrl}>
+                        ▶ {language === 'pt' ? 'Ver vídeo' : 'Watch video'}
+                    </button>
+                {/if}
             </div>
         {:else if videoLinkUrl}
             <a class="video-link-preview" href={videoLinkUrl} target="_blank" rel="noreferrer">

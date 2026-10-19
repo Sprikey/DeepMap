@@ -221,9 +221,17 @@ test('normal same-session helper chains retain every intended write',async()=>{
 });
 
 test('current map session still receives validated user/admin access',async()=>{
-    const db=client(async()=>({data:'admin',error:null}));const h=harness('../map/GameMapPage',db);
+    const db=client(async(/** @type {string} */ name)=>({data:name==='requires_legal_acceptance'?false:'admin',error:null}));const h=harness('../map/GameMapPage',db);
     db.emit('a');await h.api.run('loadEditorAccess()');
     assert.equal(h.api.read('currentMapUser.id'),'a');assert.equal(h.api.read('isEditorAdmin'),true);h.cleanup();
+});
+
+for (const response of [{data:true,error:null},{data:null,error:{code:'PGRST202'}}]) test('public map keeps pending/unverified account read-only: '+String(response.data),async()=>{
+    const calls=/** @type {string[]} */([]);
+    const db=client(async(/** @type {string} */ name)=>{calls.push(name);return name==='requires_legal_acceptance'?response:{data:'admin',error:null};});
+    const h=harness('../map/GameMapPage',db);db.emit('a');await h.api.run('loadEditorAccess()');
+    assert.equal(h.api.read('currentMapUser'),null);assert.equal(h.api.read('isEditorAdmin'),false);
+    assert.ok(!calls.includes('get_deepmap_role'));assert.ok(!calls.includes('is_deepmap_admin'));h.cleanup();
 });
 for(const event of ['TOKEN_REFRESHED','SIGNED_IN']) test('same account preserves capture after '+event,()=>{
     const db=client();let changes=0;const scope=createSessionScope(()=>{changes++;});

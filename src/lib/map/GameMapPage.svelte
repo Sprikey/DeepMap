@@ -130,6 +130,17 @@
                 return;
             }
 
+            // Public browsing stays available; pending accounts have no editor or contribution UI.
+            const { data: legalPending, error: legalError } = await supabase.rpc('requires_legal_acceptance');
+            if (!isCurrent()) return;
+            if (legalError || legalPending !== false) {
+                currentMapUser = null;
+                currentMapRole = 'guest';
+                isEditorAdmin = false;
+                if (communityPanelOpen) closeCommunityPanel();
+                return;
+            }
+
             const { data: role, error: roleError } = await supabase.rpc('get_deepmap_role');
 
             if (!isCurrent()) return;
@@ -585,13 +596,11 @@
             if (item.embedUrl) {
                 return `
                     <div class="deepmap-popup-media-slide deepmap-popup-video-slide${index === 0 ? ' active' : ''}" data-media-index="${index}">
-                        <iframe
-                            src="${escapeHtml(item.embedUrl)}"
-                            title="${escapeHtml(videoLabel)} — ${escapeHtml(title)}"
-                            loading="lazy"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                            allowfullscreen
-                        ></iframe>
+                        <button type="button" class="deepmap-popup-video-link" data-load-video="${escapeHtml(item.embedUrl)}"
+                            data-video-title="${escapeHtml(videoLabel)} — ${escapeHtml(title)}">
+                            ▶ ${currentLanguage === 'pt' ? 'Ver vídeo' : 'Watch video'}
+                            (${new URL(item.embedUrl).hostname.includes('vimeo') ? 'Vimeo' : 'YouTube'})
+                        </button>
                     </div>
                 `;
             }
@@ -738,6 +747,21 @@
         const mediaRoot = popupElement?.querySelector('.deepmap-popup-media');
         if (!mediaRoot || mediaRoot.dataset.mediaReady === 'true') return;
         mediaRoot.dataset.mediaReady = 'true';
+
+        mediaRoot.querySelectorAll('[data-load-video]').forEach((/** @type {HTMLButtonElement} */ button) => {
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const iframe = document.createElement('iframe');
+                iframe.src = button.getAttribute('data-load-video') ?? '';
+                iframe.title = button.getAttribute('data-video-title') ?? '';
+                iframe.allow = 'encrypted-media; picture-in-picture; fullscreen';
+                iframe.allowFullscreen = true;
+                iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+                button.replaceWith(iframe);
+                ensurePopupInsideMap(marker);
+            }, { once: true, signal: popupEvents.signal });
+        });
 
         const slides = [...mediaRoot.querySelectorAll('.deepmap-popup-media-slide')];
         if (slides.length <= 1) return;
@@ -977,6 +1001,11 @@
                     className: 'deepmap-leaflet-popup'
                 }
             );
+
+            marker.on('popupclose', () => {
+                // Reopening always requires a fresh click.
+                marker.setPopupContent(buildLocationPopup(location));
+            });
 
             marker.on('popupopen', () => {
                 setupPopupMedia(marker);
@@ -2919,6 +2948,9 @@
     }
 
     :global(.deepmap-popup-video-link) {
+        border: 0;
+        cursor: pointer;
+        padding: 16px 40px;
         width: 100%;
         height: 100%;
         display: grid;
