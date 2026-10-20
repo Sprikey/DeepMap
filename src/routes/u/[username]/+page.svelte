@@ -1,4 +1,5 @@
 <script>
+    import '$lib/avatar/rendering.css';
     import { onMount } from 'svelte';
     import { getSiteLanguage, setSiteLanguage, subscribeSiteLanguage } from '$lib/i18n/site.js';
     import { publicProfileTranslations } from '$lib/i18n/public-profile.js';
@@ -53,6 +54,10 @@
     });
 
     let profile = $derived(data.profile);
+    $effect(() => {
+        profile?.avatarUrl;
+        avatarFailed = false;
+    });
 
     let initial = $derived(
         (profile?.displayName || profile?.username || '?')
@@ -122,7 +127,7 @@
 
                 <div class="profile-identity-shell private-identity-shell">
                     <div class="profile-avatar-column">
-                        <div class="avatar profile-main-avatar" aria-hidden="true">
+                        <div class="avatar profile-main-avatar user-avatar-frame" aria-hidden="true">
                             {#if profile.avatarUrl && !avatarFailed}
                                 <img
                                     src={profile.avatarUrl}
@@ -213,7 +218,7 @@
 
                 <div class="profile-identity-shell">
                     <div class="profile-avatar-column">
-                        <div class="avatar profile-main-avatar" aria-hidden="true">
+                        <div class="avatar profile-main-avatar user-avatar-frame" aria-hidden="true">
                             {#if profile.avatarUrl && !avatarFailed}
                                 <img
                                     src={profile.avatarUrl}

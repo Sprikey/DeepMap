@@ -1,4 +1,5 @@
 <script>
+    import '$lib/avatar/rendering.css';
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
@@ -1201,7 +1202,7 @@
 
                 <!-- SEM SESSÃO -->
 
-                <div class="avatar fallback-avatar">
+                <div class="avatar fallback-avatar user-avatar-frame">
                     <span>?</span>
                 </div>
 
@@ -1241,7 +1242,7 @@
                         <div class="profile-avatar-column" class:profile-avatar-editing={profileEditMode}>
                             <button
                                 type="button"
-                                class="avatar profile-main-avatar"
+                                class="avatar profile-main-avatar user-avatar-frame"
                                 class:avatar-editable={profileEditMode}
                                 onclick={() => profileEditMode && openAvatarModal()}
                                 aria-label={profileEditMode ? t.edit_avatar : displayName}
@@ -1595,14 +1596,17 @@
                             >
 
                                 <span
-                                    class="avatar-option-art"
+                                    class="avatar-option-art user-avatar-frame"
                                     aria-hidden="true"
                                 >
 
                                     {#if preset.image}
 
                                         <img
-                                            src={preset.image}
+                                            class="user-avatar-frame"
+                                    onerror={(event) => { event.currentTarget.classList.add('avatar-image-failed'); }}
+                                    onload={(event) => { event.currentTarget.classList.remove('avatar-image-failed'); }}
+                                    src={preset.image}
                                             alt=""
                                             loading="lazy"
                                         />
@@ -1641,6 +1645,9 @@
                             >
 
                                 <img
+                                    class="user-avatar-frame"
+                                    onerror={(event) => { event.currentTarget.classList.add('avatar-image-failed'); }}
+                                    onload={(event) => { event.currentTarget.classList.remove('avatar-image-failed'); }}
                                     src={googleAvatarUrl}
                                     alt=""
                                     referrerpolicy="no-referrer"
@@ -1665,7 +1672,10 @@
                                 onclick={() => selectAvatar('custom')}
                                 disabled={working || processingFile}
                             >
-                                <img src={customAvatarUrl} alt="" />
+                                <img class="user-avatar-frame"
+                                    onerror={(event) => { event.currentTarget.classList.add('avatar-image-failed'); }}
+                                    onload={(event) => { event.currentTarget.classList.remove('avatar-image-failed'); }}
+                                    src={customAvatarUrl} alt="" />
                                 {t.custom_avatar}
                             </button>
                         </div>
@@ -1711,7 +1721,10 @@
                                 onclick={() => pendingAvatarChoice = 'custom'}
                                 disabled={working}
                             >
-                                <img src={pendingAvatarPreview} alt="" />
+                                <img class="user-avatar-frame"
+                                    onerror={(event) => { event.currentTarget.classList.add('avatar-image-failed'); }}
+                                    onload={(event) => { event.currentTarget.classList.remove('avatar-image-failed'); }}
+                                    src={pendingAvatarPreview} alt="" />
                                 {t.image_preview}
                             </button>
                         {/if}
@@ -2369,7 +2382,7 @@
 
         width: 78px;
         height: 78px;
-        max-width: calc(100% - 8px);
+
         aspect-ratio: 1;
 
         overflow: hidden;
@@ -2613,7 +2626,7 @@
         }
     }
 
-    
+
 /* Upload de avatar — conteúdo centrado */
 
 .avatar-upload-area {

@@ -1,4 +1,5 @@
 <script>
+    import '$lib/avatar/rendering.css';
     import { onMount } from 'svelte';
     import { page } from '$app/state';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
@@ -166,7 +167,7 @@
     <div class="account-wrap" bind:this={menuWrap}>
         <button
             type="button"
-            class="avatar-link"
+            class="avatar-link user-avatar-frame"
             title={accountLabel}
             aria-label={`${accountLabel}: ${displayName}`}
             aria-expanded={menuOpen}

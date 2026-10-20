@@ -1,0 +1,20 @@
+/* Shared geometry; surfaces retain their existing sizes and colours. */
+.user-avatar-frame {
+    box-sizing: border-box;
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    padding: 0;
+}
+.user-avatar-frame img,
+img.user-avatar-frame {
+    display: block;
+    object-fit: cover;
+    object-position: center;
+    flex-shrink: 0;
+}
+
+.user-avatar-frame.avatar-image-failed {
+    visibility: hidden;
+}
