@@ -1,5 +1,6 @@
 <script>
     import '$lib/avatar/rendering.css';
+    import { uploadLegacyAvatar, deleteLegacyAvatar } from '$lib/storage/legacy-supabase-client.js';
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { getSupabaseBrowserClient } from '$lib/supabase/client.js';
@@ -1096,9 +1097,7 @@
             const metadata = { avatar_choice: choice };
             if (choice === 'custom') {
                 if (uploadedPath && file) {
-                    const { error: uploadError } = await supabase.storage.from('avatars').upload(uploadedPath, file, {
-                        contentType: 'image/webp', cacheControl: '3600', upsert: false
-                    });
+                    const { error: uploadError } = await uploadLegacyAvatar(supabase, uploadedPath, file);
                     // An old upload may leave an orphan; it must never mutate as the new session.
                     if (!isCurrent()) return;
                     if (uploadError) { avatarModalError = uploadError.message || t.avatar_upload_error; return; }
@@ -1115,7 +1114,7 @@
                 avatarModalError = error?.message || t.avatar_save_error;
                 // Failure cleanup is restricted to this exact new object while still owned.
                 if (uploadedPath && isCurrent() && getCustomAvatarPath(user) !== uploadedPath) {
-                    await supabase.storage.from('avatars').remove([uploadedPath]);
+                    await deleteLegacyAvatar(supabase, uploadedPath);
                     if (!isCurrent()) return;
                 }
                 return;
@@ -1129,7 +1128,7 @@
             // after metadata is confirmed. A session/dialog change suppresses this write too.
             if (uploadedPath && previousPath && previousPath !== uploadedPath &&
                 previousPath.startsWith(operation.actor + '/') && isCurrent()) {
-                const { error: removeError } = await supabase.storage.from('avatars').remove([previousPath]);
+                const { error: removeError } = await deleteLegacyAvatar(supabase, previousPath);
                 if (!isCurrent()) return;
                 if (removeError) console.warn('Previous DeepMap avatar cleanup:', removeError.message);
             }

@@ -1,4 +1,6 @@
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { normalizeFileReference } from '../storage/references.js';
+import { resolveFileUrl } from '../storage/resolve.js';
 
 // Os IDs antigos mantêm-se para preservar as escolhas já guardadas nas contas.
 export const AVATAR_PRESETS = [
@@ -23,7 +25,8 @@ export function getDisplayName(user) {
 
 export function getGoogleAvatarUrl(user) {
     const avatar = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
-    return typeof avatar === 'string' && /^https:\/\//i.test(avatar) ? avatar : null;
+    return typeof avatar === 'string' && /^https:\/\//i.test(avatar)
+        ? resolveFileUrl(normalizeFileReference('google', avatar)) : null;
 }
 
 // Nunca usar URLs arbitrários vindos de user_metadata como avatar personalizado.
@@ -42,8 +45,7 @@ export function getCustomAvatarPath(user) {
 export function getCustomAvatarUrl(user) {
     const path = getCustomAvatarPath(user);
     if (!path) return null;
-    const segments = path.split('/').map(encodeURIComponent).join('/');
-    return `${PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${segments}`;
+    return resolveFileUrl(normalizeFileReference('legacy-supabase-avatar', path), { supabaseUrl: PUBLIC_SUPABASE_URL });
 }
 
 export function getAvatarPresentation(user) {

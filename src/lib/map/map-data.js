@@ -3,6 +3,8 @@
  */
 
 import { markerIdKey as bigintIdKey } from '../editor/marker-editor.js';
+import { normalizeFileReference } from '../storage/references.js';
+import { resolveFileUrl } from '../storage/resolve.js';
 
 function keyedObject(rows, transform) {
     return Object.fromEntries(rows.map((row) => {
@@ -12,12 +14,7 @@ function keyedObject(rows, transform) {
 }
 
 function resolveAsset(source, ref) {
-    if (!ref) return null;
-
-    // R2 será resolvido numa fase própria quando ligarmos uploads/CDN.
-    if (source === 'r2') return null;
-
-    return ref;
+    return resolveFileUrl(normalizeFileReference(source, ref));
 }
 
 function normaliseLayer(row) {

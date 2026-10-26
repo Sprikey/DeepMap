@@ -1,3 +1,6 @@
+import { normalizeFileReference } from '../storage/references.js';
+import { resolveFileUrl } from '../storage/resolve.js';
+
 const IMAGE_SELECT = `
     id,
     marker_id,
@@ -14,9 +17,7 @@ const IMAGE_SELECT = `
 `;
 
 export function resolveMarkerImageUrl(image) {
-    if (!image?.imageRef) return null;
-    if (image.source === 'r2') return null;
-    return image.imageRef;
+    return resolveFileUrl(normalizeFileReference(image?.source, image?.imageRef));
 }
 
 function normaliseImage(row) {

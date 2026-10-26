@@ -1,6 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { AVATAR_PRESETS } from '$lib/avatar/avatars.js';
+import { normalizeFileReference } from '$lib/storage/references.js';
+import { resolveFileUrl } from '$lib/storage/resolve.js';
 
 // A rota nunca consulta auth.users nem expõe os metadados de autenticação.
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
@@ -16,8 +18,7 @@ function avatarFromSafeFields(row, ownerId = null) {
         // A RPC já valida o caminho, mas voltamos a validar à saída do servidor.
         if (typeof path === 'string' && CUSTOM_PATH_PATTERN.test(path) &&
             (!ownerId || path.startsWith(`${ownerId}/`))) {
-            const escaped = path.split('/').map(encodeURIComponent).join('/');
-            return `${PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${escaped}`;
+            return resolveFileUrl(normalizeFileReference('legacy-supabase-avatar', path), { supabaseUrl: PUBLIC_SUPABASE_URL });
         }
     }
 
